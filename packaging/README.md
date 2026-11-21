@@ -50,10 +50,11 @@ How it signs in (set up once; nothing expires):
 
 - crates.io, PyPI and npm: trusted publishing. Each registry trusts
   `ultrafastmov/ultrafast`'s `release.yml` in the GitHub environment
-  `release`, so no registry tokens are stored. (crates.io only trusts crates
-  that exist, so a brand-new crate needs a one-off `CARGO_REGISTRY_TOKEN`
-  secret for its first release; the job uses that secret whenever it is
-  set.)
+  `release`, so no registry tokens are stored. crates.io's tokens last 30
+  minutes, so `publish-crates.sh` gets a new one for each crate. (crates.io
+  only trusts crates that exist, so a brand-new crate needs a one-off
+  `CARGO_REGISTRY_TOKEN` secret for its first release; the job uses that
+  secret whenever it is set.)
 - The Homebrew tap: the `ultrafastmov-release` GitHub App, installed on
   `ultrafastmov/homebrew-tap` only, with contents: write
   (`vars.RELEASE_APP_ID`, `secrets.RELEASE_APP_PRIVATE_KEY`). Its commits
