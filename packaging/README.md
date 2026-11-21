@@ -8,6 +8,8 @@ Every install path the docs name, and what builds it:
 | prebuilt archives (macOS arm64, Linux x86_64 glibc 2.28+) | `dist.sh` | GitHub release assets |
 | `brew install ultrafastmov/tap/ultrafast` | `homebrew/formula.sh` (from the archives) | `ultrafastmov/homebrew-tap`, `Formula/ultrafast.rb` |
 | `docker run --gpus all ghcr.io/ultrafastmov/ultrafast:latest info` / `serve` | `docker/Dockerfile` (from the Linux archive) | ghcr.io, tags `X.Y.Z`, `X.Y`, `latest` |
+| `pip install ultrafastmov` | `sdk/python` | PyPI, at the version in `pyproject.toml` (skipped if published) |
+| `npm install ultrafastmov` | `sdk/typescript` | npm, at the version in `package.json` (skipped if published) |
 
 Slang: the archives carry the compiler libraries ultrafast loads (libslang,
 libslang-compiler, slang-glslang for spirv-opt, the GLSL module; not LLVM or
@@ -33,22 +35,28 @@ cargo package --workspace                           # what crates.io gets, built
 
 ## A release
 
-1. Set `version` in the root `Cargo.toml` and commit.
-2. Run **Release** by hand with publish off: it builds and tests every path
-   (archives on Linux, a clean Ubuntu 22.04 and Rocky 8; macOS; brew install
-   and audit of the real formula on both; the image with `info`, the
-   quickstart and `serve`) and publishes nothing.
-3. Push the tag `vX.Y.Z`. The same run then publishes crates, the GitHub
-   release, the image and the formula.
+1. Set `version` in the root `Cargo.toml` (and, for a new SDK release, the
+   SDK's own version) and commit.
+2. Optionally run **Release** by hand with publish off: it builds and tests
+   every path (archives on Linux, a clean Ubuntu 22.04 and Rocky 8; macOS;
+   brew install and audit of the real formula on both; the image with
+   `info`, the quickstart and `serve`; both SDKs' tests and packages) and
+   publishes nothing.
+3. Push the tag `vX.Y.Z`. The run publishes crates, the GitHub release, the
+   image, the formula and any SDK version not yet published. Nobody needs to
+   sign in or approve anything.
 
-Once, before the first release:
+How it signs in (set up once; nothing expires):
 
-- The repository must be public: brew and anonymous downloads fetch the
-  release assets from it.
-- `ultrafastmov/homebrew-tap` must exist (an empty public repository), with a
-  fine-grained token that can write to it saved as `HOMEBREW_TAP_TOKEN`.
-- A crates.io token that can publish new crates saved as
-  `CARGO_REGISTRY_TOKEN` (later releases can switch to trusted publishing for
-  each crate and drop it).
-- After the first image push, make the `ultrafast` package on ghcr.io public
-  (organization packages start private) and link it to the repository.
+- crates.io, PyPI and npm: trusted publishing. Each registry trusts
+  `ultrafastmov/ultrafast`'s `release.yml` in the GitHub environment
+  `release`, so no registry tokens are stored. (crates.io only trusts crates
+  that exist, so a brand-new crate needs a one-off `CARGO_REGISTRY_TOKEN`
+  secret for its first release; the job uses that secret whenever it is
+  set.)
+- The Homebrew tap: the `ultrafastmov-release` GitHub App, installed on
+  `ultrafastmov/homebrew-tap` only, with contents: write
+  (`vars.RELEASE_APP_ID`, `secrets.RELEASE_APP_PRIVATE_KEY`). Its commits
+  are signed as `ultrafastmov-release[bot]`.
+- ghcr.io: the workflow's own `GITHUB_TOKEN`. The `ultrafast` package is
+  public.

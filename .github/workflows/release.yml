@@ -1,16 +1,22 @@
 name: Release
 
 # A tag vX.Y.Z builds every install path, tests each one, then publishes:
-# release archives on GitHub, crates on crates.io, the image on ghcr.io and
-# the formula in ultrafastmov/homebrew-tap. Run it by hand with publish off
+# release archives on GitHub, crates on crates.io, the image on ghcr.io, the
+# formula in ultrafastmov/homebrew-tap, and the Python and TypeScript SDKs
+# (`ultrafastmov` on PyPI and npm, at the versions in their package files;
+# versions already published are skipped). Run it by hand with publish off
 # to build and test everything without publishing anything.
 #
-# Secrets used when publishing:
-#   CARGO_REGISTRY_TOKEN  crates.io token (the first release; later ones can
-#                         use trusted publishing instead)
-#   HOMEBREW_TAP_TOKEN    fine-grained token with contents: write on
-#                         ultrafastmov/homebrew-tap
-# The image is pushed with this workflow's GITHUB_TOKEN.
+# Nothing here needs a person. Credentials:
+#   crates.io  trusted publishing (OIDC), set up for each crate; a
+#              CARGO_REGISTRY_TOKEN secret, if present, is used instead
+#              (new crates: crates.io trusts only crates that exist)
+#   PyPI, npm  trusted publishing (OIDC) from this workflow, environment
+#              `release`
+#   Homebrew   the ultrafastmov-release GitHub App (vars.RELEASE_APP_ID,
+#              secrets.RELEASE_APP_PRIVATE_KEY), installed on homebrew-tap
+#              only, with contents: write
+#   ghcr.io    this workflow's GITHUB_TOKEN
 
 on:
   push:
@@ -18,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Publish to GitHub releases, crates.io, ghcr.io and the Homebrew tap (only when run on a v* tag; off: build and test only)"
+        description: "Publish to GitHub releases, crates.io, ghcr.io, the Homebrew tap, PyPI and npm (only when run on a v* tag; off: build and test only)"
         type: boolean
         default: false
 
@@ -209,6 +215,7 @@ jobs:
     needs: [linux, macos, homebrew, image]
     if: github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish)
     runs-on: ubuntu-24.04
+    environment: release
     permissions:
       contents: read
       id-token: write
@@ -258,19 +265,98 @@ jobs:
           pattern: dist-*
           path: dist
           merge-multiple: true
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ultrafastmov
+          repositories: homebrew-tap
       - uses: actions/checkout@v4
         with:
           repository: ultrafastmov/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          token: ${{ steps.app.outputs.token }}
           path: tap
       - name: Update Formula/ultrafast.rb
+        env:
+          APP: ${{ steps.app.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           mkdir -p tap/Formula
           packaging/homebrew/formula.sh dist > tap/Formula/ultrafast.rb
+          bot_id=$(gh api "/users/${APP}%5Bbot%5D" --jq .id)
           cd tap
-          git config user.name "ultrafast release"
-          git config user.email "release@ultrafast.mov"
+          git config user.name "${APP}[bot]"
+          git config user.email "${bot_id}+${APP}[bot]@users.noreply.github.com"
           git add Formula/ultrafast.rb
           if git diff --cached --quiet; then echo "formula unchanged"; exit 0; fi
           git commit -m "ultrafast $(sed -n 's/^version = "\(.*\)"$/\1/p' ../Cargo.toml | head -1)"
           git push
+
+  # The SDKs: tested, built, and published unless that version is out.
+  pypi:
+    needs: [linux, macos, homebrew, image]
+    runs-on: ubuntu-24.04
+    environment: ${{ github.ref_type == 'tag' && 'release' || 'build' }}
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test
+        run: PYTHONPATH=src python -m unittest discover -s tests -t .
+      - name: Build
+        run: |
+          python -m pip install -q build twine
+          python -m build
+          twine check --strict dist/*
+      - name: Already on PyPI?
+        id: out
+        run: |
+          v=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+          code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/ultrafastmov/$v/json")
+          echo "version $v: PyPI answers $code"
+          echo "published=$([ "$code" = 200 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: env.PUBLISH == 'true' && steps.out.outputs.published == 'false'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist
+
+  npm:
+    needs: [linux, macos, homebrew, image]
+    runs-on: ubuntu-24.04
+    environment: ${{ github.ref_type == 'tag' && 'release' || 'build' }}
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+      # Trusted publishing needs npm 11.5.1 or newer.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@latest && npm --version
+      - run: npm ci
+      - run: npm test
+      - name: Pack
+        run: npm pack --dry-run
+      - name: Already on npm?
+        id: out
+        run: |
+          v=$(node -p 'require("./package.json").version')
+          if npm view "ultrafastmov@$v" version >/dev/null 2>&1; then p=true; else p=false; fi
+          echo "version $v: published $p"
+          echo "published=$p" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        if: env.PUBLISH == 'true' && steps.out.outputs.published == 'false'
+        run: npm publish --access public
