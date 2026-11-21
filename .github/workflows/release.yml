@@ -237,6 +237,22 @@ jobs:
           docker run --rm "$IMAGE:$VERSION" --version
           docker run --rm "$IMAGE:$VERSION" info
           docker run --rm -v "$PWD/packaging/smoke.sh:/smoke.sh:ro" --entrypoint sh "$IMAGE:$VERSION" /smoke.sh uf
+      # The root Dockerfile (for MCP directories such as Glama): this image
+      # run as `ultrafast mcp`, built with the default builder so FROM finds
+      # the image just loaded, and driven over stdio.
+      - name: The root Dockerfile serves MCP over stdio
+        run: |
+          docker buildx build --builder default --load --build-arg "VERSION=$VERSION" -t ultrafast-mcp:test .
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' |
+            docker run -i --rm ultrafast-mcp:test |
+            python3 -c '
+          import json, sys
+          tools = [m for m in map(json.loads, sys.stdin) if m.get("id") == 2][0]["result"]["tools"]
+          print(len(tools), "tools")
+          sys.exit(0 if len(tools) >= 20 else 1)'
       # Up means /v1/health answers (503 while the GPU warms up, then 200).
       - name: serve answers
         run: |

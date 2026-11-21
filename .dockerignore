@@ -1,0 +1,2 @@
+# The root Dockerfile builds from the release image and needs nothing here.
+*

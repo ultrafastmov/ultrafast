@@ -8,6 +8,7 @@ Every install path the docs name, and what builds it:
 | prebuilt archives (macOS arm64, Linux x86_64 glibc 2.28+) | `dist.sh` | GitHub release assets |
 | `brew install ultrafastmov/tap/ultrafast` | `homebrew/formula.sh` (from the archives) | `ultrafastmov/homebrew-tap`, `Formula/ultrafast.rb` |
 | `docker run --gpus all ghcr.io/ultrafastmov/ultrafast:latest info` / `serve` | `docker/Dockerfile` (from the Linux archive) | ghcr.io, tags `X.Y.Z`, `X.Y`, `latest` |
+| `docker build .` (MCP directories such as Glama build a server from its repository) | the root `Dockerfile`: the released image run as `ultrafast mcp` | nothing (built by whoever builds it) |
 | `pip install ultrafastmov` | `sdk/python` | PyPI, at the version in `pyproject.toml` (skipped if published) |
 | `npm install ultrafastmov` | `sdk/typescript` | npm, at the version in `package.json` (skipped if published) |
 | Claude Desktop: `ultrafast-X.Y.Z-macos-arm64.mcpb`, `-linux-x86_64.mcpb` | `mcpb/build.sh` (from the archives) | GitHub release assets |
