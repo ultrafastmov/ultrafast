@@ -58,9 +58,8 @@ jobs:
           done
       - run: cargo test --release --workspace --no-fail-fast
 
-  # Metal. Manual for now (macOS minutes are expensive on private repos).
+  # Metal.
   test-macos:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
