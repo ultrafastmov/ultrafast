@@ -1,7 +1,8 @@
 # ultrafastmov
 
 TypeScript client for ultrafast, the GPU video engine. A video is a JSON
-document; the render service turns it into an MP4. This package talks to
+document; the render service turns it into a video (MP4, ProRes, WebM, a
+GIF, an image sequence) at any size. This package talks to
 ultrafast Cloud or your own `ultrafast serve`.
 
 ```bash

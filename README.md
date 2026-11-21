@@ -32,6 +32,12 @@ warps, blurs; looks such as bloom, grain, grades, halftone, CRT, glitch,
 glass panes, lens flares and light leaks; sound mixed into exports, with
 params driven by a soundtrack's loudness.
 
+**Every deliverable from one document.** H.264, HEVC and AV1 MP4s, ProRes
+(proxy to 4444 XQ) and transparent ProRes 4444, VP9 WebM with alpha, GIFs,
+PNG and EXR sequences and sound alone; rendered at any size, so 720p and a
+sharp 4K come from the same 1080p document; any frame rate; four quality
+levels from a fast draft to a master.
+
 **Made for agents.** Write JSON or call MCP tools. `ultrafast check` finds
 mistakes before rendering; `ultrafast review` renders the film and reports text
 that is unreadable, clipped, overlapping or on screen too briefly, and
@@ -82,6 +88,8 @@ uf sheet film.json --count 9 --out sheet.png
 uf live film.json
 uf review film.json
 uf export film.json film.mp4
+uf export film.json overlay.mov --codec prores --alpha --size 4k
+uf export film.json preview.gif --quality draft --size 480p --fps 15
 ```
 
 The films in `examples/films` (each a short Python script that writes the

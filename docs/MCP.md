@@ -60,7 +60,7 @@ stdout goes to stderr, so it can't corrupt the protocol stream.
 | `ultrafast_review` | renders the film and reports unreadable, too-brief, clipped, overlapping or tiny text, unsafe areas and seizure-risk flashing |
 | `ultrafast_inspect` | what is on screen at a time: each element's node, bounds and words |
 | `ultrafast_edit` | apply an edit batch to the document file (atomic) |
-| `ultrafast_export` | encode to H.264/HEVC with audio and motion blur |
+| `ultrafast_export` | encode to MP4, MOV/ProRes, MKV, WebM, GIF, PNG or EXR sequences or sound alone, at any size, frame rate and quality level (`format`, `codec`, `quality`, `size`, `fps`, `alpha`, ...) |
 | `ultrafast_estimate` | rendered minutes, Cloud price, GPU seconds and time to first frame, before rendering |
 | `ultrafast_batch` | one document, a video per row of a data file (CSV, JSON, JSON lines) or inline rows |
 | `ultrafast_profile` | GPU ms per render group (which nodes cost what), for slow films |

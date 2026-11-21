@@ -1,6 +1,6 @@
 ---
 name: ultrafast
-description: Make and edit videos with ultrafast, a GPU video engine where a video is a JSON document. Covers social clips, explainers, titles, captions, lower thirds, charts and data videos, promos, motion graphics, 3D and shader looks, and edits of existing footage, exported as MP4. Use when someone asks for a video, an animation, motion graphics, captions burned into a clip or an MP4/MOV export, or when you are changing an ultrafast document (a .json with "version", "format", "nodes" and "output"). Works through the ultrafast MCP tools (names start with ultrafast_) or the `uf` command line.
+description: Make and edit videos with ultrafast, a GPU video engine where a video is a JSON document. Covers social clips, explainers, titles, captions, lower thirds, charts and data videos, promos, motion graphics, 3D and shader looks, and edits of existing footage, exported as MP4, ProRes or WebM (transparent where needed), GIF, PNG or EXR sequences or sound alone, at any size from 720p to 4K. Use when someone asks for a video, an animation, motion graphics, captions burned into a clip, a GIF, a transparent overlay or an MP4/MOV/WebM export, or when you are changing an ultrafast document (a .json with "version", "format", "nodes" and "output"). Works through the ultrafast MCP tools (names start with ultrafast_) or the `uf` command line.
 license: Apache-2.0 OR MIT
 compatibility: Needs the ultrafast MCP server (local `uf mcp`, or a remote one over HTTP) or the `uf` CLI on a machine with a Metal or Vulkan GPU.
 metadata:
@@ -43,8 +43,8 @@ looked at.
 | find | `ultrafast_inspect` (what is on screen at `t`, and which node) | `uf inspect film.json --at 2.5` |
 | change | `ultrafast_edit` (atomic edit batch) | edit the file, or `uf edit film.json edits.json` |
 | review | `ultrafast_review` (`safe: "social"` for vertical video) | `uf review film.json --safe social` |
-| cost | `ultrafast_estimate` (rendered minutes, Cloud price, GPU seconds) | `uf estimate film.json` |
-| export | `ultrafast_export` | `uf export film.json film.mp4` |
+| cost | `ultrafast_estimate` with the export settings (rendered minutes, Cloud price, GPU seconds) | `uf estimate film.json --size 4k` |
+| export | `ultrafast_export` (settings below) | `uf export film.json film.mp4 --quality high` |
 | many versions | `ultrafast_batch` (one video per row of data) | `uf batch film.json --data rows.csv --out 'out/{name}.mp4'` |
 
 Rules:
@@ -60,11 +60,42 @@ Rules:
   keep one deliberately, say which one and why.
 - **Report what you made**: the file or link, size, duration and the review
   result. Show a frame or the sheet when the person can see images.
-- **Many variants** (a name, a price, a language, a size per file): make one
+- **Many variants** (a name, a price, a language per file): make one
   document, review it, then batch it with one row per video, instead of
   writing many documents. Each row sets `node.param` keys (and
-  `format.width`, `format.height` for other sizes); every row is checked
-  before anything renders.
+  `format.width`, `format.height` for another shape); every row is checked
+  before anything renders. Another *resolution* of the same shape is an
+  export setting (`size`), not another document.
+
+## Export
+
+The format follows the output's extension; the settings are the same in
+`ultrafast_export`, `uf export` flags (`--quality high`) and the HTTP API.
+
+| want | settings |
+|---|---|
+| a quick look at the motion | `quality: "draft"` (no motion blur, fastest), often with `size: "720p"` |
+| the deliverable | the defaults: H.264 MP4, `quality: "standard"` |
+| an upload that gets re-encoded (YouTube, social) | `quality: "high"`, and `size: "4k"` when it should be 4K |
+| a master for editing or archiving | `.mov` with `codec: "prores"` (`prores_profile: "hq"` by default), `quality: "master"` |
+| a transparent overlay for an editor | `.mov`, `codec: "prores"`, `alpha: true` (ProRes 4444) |
+| a transparent video for a web page | `.webm`, `alpha: true` (VP9) |
+| compositing (Nuke, After Effects) | a PNG or EXR sequence: `out` a folder (`frames/`) or `frames/{frame:05}.exr`, `alpha: true`; the sound lands beside it as `audio.wav` |
+| a GIF | `.gif` with `size: "480p"` and `fps: 15` (it gets large fast); `loops: 0` plays once |
+| a smaller modern file | `codec: "hevc"`, or `codec: "av1"` (MP4 or WebM) |
+| the sound alone | `.wav`, `.mp3`, `.m4a`, `.flac` or `.opus` |
+
+- `size` (`720p`, `1080p`, `1440p`, `4k`, or `WxH` of the same shape) renders
+  at that size, sharp; it is not an upscale. `720p` means the short side, so
+  a vertical film stays vertical. `scale: 2` doubles it.
+- `fps` changes the frame rate; the film plays at the same speed.
+- Transparency needs a document without a full-frame background: drop the
+  `bg` node (or make it transparent), and check a frame.
+- Settings that don't go together (alpha in an MP4, ProRes in an MP4, a GIF
+  at 60 fps) are refused before anything renders, with the fix in the
+  message.
+- Estimate with the same settings first when the render is big:
+  `ultrafast_estimate {"size": "4k", "quality": "high"}`.
 
 ## The document
 

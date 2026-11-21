@@ -36,7 +36,11 @@ that return frames and contact sheets as images ([MCP.md](MCP.md)).
    vertical apps), collides with other text or is too small; and flashing
    faster than 3 per second. Fix what it reports, then:
 7. **Export**: `ultrafast export film.json out.mp4` (hardware encode, audio
-   mixed, motion blur if the format asks for it).
+   mixed, motion blur if the format asks for it). The extension picks the
+   format (`.mov`, `.webm`, `.gif`, `frames/` for PNGs, `.wav`), and
+   `--quality draft|standard|high|master`, `--size 720p|1080p|4k`, `--fps`,
+   `--codec h264|hevc|av1|vp9|prores` and `--alpha` cover the rest; a draft
+   is the quickest way to watch the motion.
 
 ## Making it look good
 

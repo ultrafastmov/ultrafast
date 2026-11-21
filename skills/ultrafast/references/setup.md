@@ -11,8 +11,11 @@ docker run --gpus all ghcr.io/ultrafastmov/ultrafast:latest info
 ```
 
 It renders with Metal on macOS (Apple silicon) and Vulkan on Linux and
-Windows (WSL2). `uf info` names the GPU it found. Exports on Vulkan use
-ffmpeg.
+Windows (WSL2). `uf info` names the GPU it found. H.264 and HEVC exports
+encode on the GPU (Metal, or NVENC on NVIDIA); everything else (ProRes,
+AV1, VP9, GIF, PNG and EXR sequences, sound alone) and exports on other
+GPUs go through ffmpeg, so install it (`brew install ffmpeg`,
+`apt install ffmpeg`).
 
 ## Connect a local agent (stdio)
 

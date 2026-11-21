@@ -8,7 +8,8 @@ Claude Code two things:
 - **The ultrafast skill**, which teaches the document format and the loop:
   start from a template, check, look at contact sheets and frames, fix what
   `review` finds (unreadable, clipped or too-brief text, unsafe areas,
-  flashing), then export an MP4.
+  flashing), then export: MP4, ProRes, WebM, GIF, image sequences or sound,
+  at any size.
 - **The ultrafast MCP server** (`uf mcp`), 18 tools that let Claude write,
   look at, review and export videos without a shell.
 
