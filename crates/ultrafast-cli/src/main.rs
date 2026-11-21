@@ -53,10 +53,11 @@ usage:
   ultrafast beats  <audio or video> [--band all|low|mid|high]
                                              tempo, beat grid, downbeats and onsets (JSON): cut on the beat
   ultrafast plan   <doc.json>                    print the fused render plan
-  ultrafast render <doc.json> [--at SECS] [--out frame.png]
+  ultrafast render <doc.json> [--at SECS] [--out frame.png] [--size 720p|1080p|4k|WxH | --scale S]
+                                             one frame as a PNG, drawn sharp at any size
   ultrafast sheet  <doc.json> [--at T,T,...] [--count N] [--columns C] [--out sheet.png]
                                              labeled contact sheet of frames, to review motion at a glance
-  ultrafast frames <doc.json> --out-dir DIR [--every N]
+  ultrafast frames <doc.json> --out-dir DIR [--every N] [--size 720p|1080p|4k|WxH | --scale S]
   ultrafast edit   <doc.json> <edits.json> [--out doc.json]
                                              apply an edit batch, print change kind
   ultrafast inspect <doc.json> --at T [--point X,Y]
@@ -346,16 +347,17 @@ fn main() -> Result<()> {
                 .transpose()?
                 .unwrap_or(0.0);
             let out = flag("--out").unwrap_or_else(|| "frame.png".into());
+            let size = still_size(&flag, &doc)?;
             let start = Instant::now();
             let mut r = renderer(&path)?;
+            r.set_output_size(size);
+            let (w, h) = r.frame_size(&doc);
             let setup = start.elapsed();
             let (px, rep) = r.render_rgba8(&doc, t)?;
             let total = start.elapsed();
-            write_png(Path::new(&out), doc.format.width, doc.format.height, &px)?;
+            write_png(Path::new(&out), w, h, &px)?;
             println!(
-                "rendered t={t} {}x{}: {} kernels, setup {:.1} ms, total {:.1} ms -> {out}",
-                doc.format.width,
-                doc.format.height,
+                "rendered t={t} {w}x{h}: {} kernels, setup {:.1} ms, total {:.1} ms -> {out}",
                 rep.kernels_run,
                 setup.as_secs_f64() * 1000.0,
                 total.as_secs_f64() * 1000.0,
@@ -533,16 +535,14 @@ fn main() -> Result<()> {
             let dir = PathBuf::from(flag("--out-dir").context("missing --out-dir")?);
             let every: u64 = flag("--every").map(|s| s.parse()).transpose()?.unwrap_or(1).max(1);
             std::fs::create_dir_all(&dir)?;
+            let size = still_size(&flag, &doc)?;
             let mut r = renderer(&path)?;
+            r.set_output_size(size);
+            let (w, h) = r.frame_size(&doc);
             let n = doc.format.frame_count();
             for f in (0..n).step_by(every as usize) {
                 let (px, _) = r.render_rgba8(&doc, doc.format.time_of(f))?;
-                write_png(
-                    &dir.join(format!("{f:05}.png")),
-                    doc.format.width,
-                    doc.format.height,
-                    &px,
-                )?;
+                write_png(&dir.join(format!("{f:05}.png")), w, h, &px)?;
             }
             println!("wrote {} frames to {}", n.div_ceil(every), dir.display());
             report_diagnostics(&r);
@@ -1302,6 +1302,29 @@ fn print_pipelines(device: &Device) {
     if loaded + compiled > 0 {
         println!("  pipelines: {loaded} from cache, {compiled} compiled ({secs:.1} s)");
     }
+}
+
+/// The size `--size` or `--scale` asks a still to render at (None: the
+/// document's), the shape kept as exports keep it.
+fn still_size(flag: &dyn Fn(&str) -> Option<String>, doc: &Document) -> Result<Option<(u32, u32)>> {
+    let settings = ultrafast_live::output::Settings {
+        size: flag("--size")
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(anyhow::Error::msg)?,
+        scale: flag("--scale")
+            .map(|s| s.parse::<f64>())
+            .transpose()
+            .context("--scale takes a number")?,
+        ..Default::default()
+    };
+    if settings.size.is_none() && settings.scale.is_none() {
+        return Ok(None);
+    }
+    let t = settings
+        .resolve(Some(Path::new("still.png")), &doc.format)
+        .map_err(anyhow::Error::msg)?;
+    Ok(Some((t.width, t.height)))
 }
 
 /// `uf ops | head`: a reader that stops early closes stdout, and printing
