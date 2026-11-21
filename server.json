@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ultrafastmov/ultrafast",
   "title": "ultrafast",
-  "description": "The GPU video engine for agents: JSON documents in, video out.",
+  "description": "Video shot on the GPU: shaders, 3D, motion type and camera optics, written by your agent.",
   "version": "0.1.1",
   "websiteUrl": "https://ultrafast.mov",
   "repository": {
@@ -14,25 +14,38 @@
       "registryType": "mcpb",
       "identifier": "https://github.com/ultrafastmov/ultrafast/releases/download/v0.1.1/ultrafast-0.1.1-macos-arm64.mcpb",
       "fileSha256": "51edc7ec7b1a664cfd40bba0671410d189afc0819f1dd2028eb14c1c0aed6eff",
-      "transport": { "type": "stdio" }
+      "transport": {
+        "type": "stdio"
+      }
     },
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/ultrafastmov/ultrafast/releases/download/v0.1.1/ultrafast-0.1.1-linux-x86_64.mcpb",
       "fileSha256": "cf8de7b0a349c3a1eba711d9422c359c4d8957ff77a12d2e1ddd672711294ea1",
-      "transport": { "type": "stdio" }
+      "transport": {
+        "type": "stdio"
+      }
     },
     {
       "registryType": "cargo",
       "identifier": "ultrafast",
       "version": "0.1.1",
-      "transport": { "type": "stdio" },
-      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
     },
     {
       "registryType": "oci",
       "identifier": "ghcr.io/ultrafastmov/ultrafast:0.1.1",
-      "transport": { "type": "stdio" },
+      "transport": {
+        "type": "stdio"
+      },
       "runtimeArguments": [
         {
           "type": "named",
@@ -56,7 +69,12 @@
           "isRequired": false
         }
       ],
-      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
     }
   ]
 }

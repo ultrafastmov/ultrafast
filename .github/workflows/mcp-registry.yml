@@ -1,0 +1,69 @@
+name: MCP Registry
+
+# Publishes a release's entry to the MCP Registry (registry.modelcontextprotocol.io,
+# which PulseMCP, VS Code and GitHub read) as io.github.ultrafastmov/ultrafast.
+# Release calls it on every v* tag once the bundles, crate and image are out;
+# run it by hand to publish a release that is already out (default: the latest).
+#
+# The entry comes from the root server.json (packaging/mcpb/server-json.py
+# --live): the release's .mcpb bundles with their SHA-256, plus the crate and
+# the image when what is published for that version carries the registry's
+# ownership marker. Signs in with this job's GitHub OIDC token, which proves
+# the io.github.ultrafastmov/ namespace: no secret, no person.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release to publish, e.g. 0.1.1 (default: the latest release)"
+        type: string
+        required: false
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT: ${{ inputs.version }}
+        run: |
+          v=${INPUT#v}
+          [ -n "$v" ] || v=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName | sed 's/^v//')
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "Publishing $v"
+      - name: The bundles' checksums, from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern '*.mcpb.sha256' --dir mcpb
+      # crates.io renders a new crate's README a little after it publishes.
+      - name: Wait for the crate's README on crates.io
+        run: |
+          grep -q 'mcp-name: io.github.ultrafastmov/ultrafast' README.md || exit 0
+          url="https://static.crates.io/readmes/ultrafast/ultrafast-$VERSION.html"
+          for _ in $(seq 60); do
+            curl -fsS "$url" 2>/dev/null | grep -q 'mcp-name: io.github.ultrafastmov/ultrafast' && exit 0
+            sleep 10
+          done
+          echo "::warning::$url has no mcp-name line; publishing without the crate"
+      - name: server.json
+        run: |
+          python3 packaging/mcpb/server-json.py "$VERSION" mcpb --live > server.release.json
+          cat server.release.json
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - run: packaging/mcpb/get-mcp-publisher.sh "$RUNNER_TEMP/bin"
+      - name: Publish
+        run: |
+          "$RUNNER_TEMP/bin/mcp-publisher" validate server.release.json
+          "$RUNNER_TEMP/bin/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/bin/mcp-publisher" publish server.release.json

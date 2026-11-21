@@ -79,3 +79,5 @@ How it signs in (set up once; nothing expires):
   README crates.io shows (visible text: crates.io strips HTML comments), the
   image by its `io.modelcontextprotocol.server.name` label. `server-json.py`
   leaves out the crate or the image if its marker is missing.
+  `mcp-registry.yml` does the publishing: Release calls it on a tag, and
+  running it by hand publishes a release that is already out.
