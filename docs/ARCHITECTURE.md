@@ -281,6 +281,15 @@ composition is **zero readbacks and zero uploads beyond uniforms**.
   the motion-blur shutter keep the document's own clock. Quality levels set
   the motion-blur samples on a fork of the document (the shutter never
   changes).
+- **Output sizes** (`Renderer::set_output_size`): another size changes the
+  pixel density, not the document. Positions stay in the document's frame
+  pixels; slots, rasters and intermediates are sized for the view, and the
+  kernel header's texel size (`P[1]`, frame px per texel) carries the
+  density, so text, paths, blurs, particles and 3D are drawn for the size
+  (a 4K export of a 1080p document is not an upscale). Placed textures carry
+  their texel size; a layer is loaded texel for texel when its texels are
+  the output's and sampled otherwise. Simulations keep the document's grids.
+  Every change is the identity at the document's own size.
 - **Linux decode**: still `ffmpeg` processes with uploads. Next: NVDEC into
   CUDA memory exported to Vulkan.
 - Decoders run ahead in a **bounded** window (a few frames). Seeking or editing
