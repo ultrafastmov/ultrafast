@@ -1,21 +1,22 @@
 # ultrafastmov
 
 The Python client for [ultrafast](https://ultrafast.mov), the GPU video
-engine. A video is a JSON document; this package sends it to an ultrafast
-render service and gives you back frames, contact sheets, reviews, estimates
-and MP4s.
+engine. A video is a JSON document; this package sends it to your own
+`ultrafast serve` and gives you back frames, contact sheets, reviews,
+estimates and videos.
 
 ```bash
+ultrafast serve           # on the machine with the GPU; prints its API key when it starts
 pip install ultrafastmov
 ```
 
 ```python
 from ultrafastmov import Ultrafast
 
-uf = Ultrafast()  # ULTRAFAST_API_KEY
+uf = Ultrafast()  # the server on this machine; ULTRAFAST_API_KEY
 
 doc = uf.load("film.json")
-print(uf.estimate(doc))      # $0.004, 8 s of 1080p
+print(uf.estimate(doc))      # 8 s of 1080p, 2.1 GPU seconds
 for issue in uf.review(doc):
     print(issue.kind, issue.node, issue.message)
 uf.render(doc).save("film.mp4")
@@ -23,22 +24,25 @@ uf.render(doc).save("film.mp4")
 
 Python 3.9 or later. No dependencies.
 
-## Your own server
+## The server
 
 `ultrafast serve` is the open-source render service for one machine with a
-GPU. Point the client at it:
+GPU: install `ultrafast` with `cargo install ultrafast`,
+`brew install ultrafastmov/tap/ultrafast` or the
+`ghcr.io/ultrafastmov/ultrafast` image
+([self-hosting](https://github.com/ultrafastmov/ultrafast/blob/main/docs/service/SELF_HOST.md)).
+The client talks to `http://127.0.0.1:8080` unless told otherwise:
 
 ```bash
-export ULTRAFAST_BASE_URL=http://localhost:8080
-export ULTRAFAST_API_KEY=...   # the server's key (it prints one at first start)
+export ULTRAFAST_BASE_URL=http://gpu-box:8080   # a server on another machine
+export ULTRAFAST_API_KEY=...                    # the server's key
 ```
 
-or `Ultrafast(base_url="http://localhost:8080", api_key="...")`. Without
-`ULTRAFAST_BASE_URL` the client talks to `https://api.ultrafast.mov`.
+or `Ultrafast(base_url="http://gpu-box:8080", api_key="...")`.
 
-Everything here works against it except what only ultrafast Cloud has:
-jobs and webhooks, `uri=` (your own bucket) and `gs://`, `s3://` or
-`r2://` inputs. Those raise `CloudOnly` (`e.feature` says which).
+Jobs and webhooks, `uri=` (your own bucket) and `gs://`, `s3://` or
+`r2://` inputs are for ultrafast Cloud, which isn't open yet. The server
+answers them with `CloudOnly` (`e.feature` says which).
 
 ## Local files
 
@@ -47,8 +51,8 @@ Documents name footage, images, fonts and audio by path
 client uploads every local file the document reads, once per client, and
 sends a copy that points at the uploads (`asset://...`). Your document is
 not changed. Image sequences (`"frames/f_{frame:06}.png"`) go up as one zip.
-Family names (`"font": "Inter"`) and references (`asset://`, `https://`,
-and on Cloud `gs://`, `s3://`, `r2://`) are sent as they are.
+Family names (`"font": "Inter"`) and references (`asset://`, `https://`)
+are sent as they are.
 
 ```python
 asset = uf.upload("interview.mp4")     # or upload yourself
@@ -64,16 +68,13 @@ print(asset.uri)                       # asset://7KqH2...
 | `uf.frame(doc, at=2.5)` | PNG bytes with `.save(path)` (`format="jpeg"` too) |
 | `uf.sheet(doc, count=9)` | a labeled contact sheet, the same way |
 | `uf.review(doc, safe="social")` | issues with `kind`, `node`, `from_`, `to`, `message` |
-| `uf.estimate(doc)` | `.usd`, `.seconds`, `.minutes`, ...; prints as `$0.004, 8 s of 1080p` |
+| `uf.estimate(doc)` | `.seconds`, `.minutes`, `.gpu_seconds`, ... (and `.usd` where the server sets a price); prints as `8 s of 1080p, 2.1 GPU seconds` |
 | `uf.render(doc)` | a `Render`: `.url`, `.sha256`, `.bytes`, `.duration`, `.save(path)` |
-| `uf.render(doc, webhook=url)`, `uf.submit(doc)` | a `Job` (Cloud): `.status`, `.wait()`, `.save(path)`, `.cancel()` |
-| `uf.job(id)`, `uf.jobs.list()` | jobs (Cloud) |
 | `uf.upload(path)` | an `Asset`: `.id`, `.uri`, `.sha256` |
-| `uf.me()` | `caller`, `auth` (and `webhook_secret` on Cloud) |
+| `uf.me()` | `caller`, `auth` |
 
 `render` options: `inline=True` (the file comes back in the response, up to
-32 MiB), `uri="s3://bucket/key"` (Cloud: create it in your bucket; also
-`r2://`, `gs://`), `audio=False`, `range=[from, to]`, `name`, `deadline`,
+32 MiB), `audio=False`, `range=[from, to]`, `name`, `deadline`,
 and `attempt=True` (or your own render id), which sends an attempt id and
 retries the request safely on `429`, `503` and dropped connections. `save`
 streams to disk and checks the receipt's sha256; given a folder it names
@@ -90,7 +91,7 @@ uf.render(doc, format="webm", alpha=True)                   # VP9 with alpha, fo
 uf.render(doc, format="gif", fps=15, size="480p", loops=0)  # a GIF that plays once
 uf.render(doc, format="png", alpha=True).save("frames/")    # a zip of PNG frames and audio.wav
 uf.render(doc, format="wav")                                # the sound alone
-print(uf.estimate(doc, size="4k", quality="master"))        # priced at the output size
+print(uf.estimate(doc, size="4k", quality="master"))        # counted at the output size
 ```
 
 `format` (`mp4`, `mov`, `mkv`, `webm`, `gif`, `png`, `exr`, `wav`, `mp3`,
@@ -103,7 +104,13 @@ print(uf.estimate(doc, size="4k", quality="master"))        # priced at the outp
 Reads (`frame`, `sheet`, `check`, `review`, `estimate`, `GET`s, uploads) are
 retried twice on `429` and `503` when the server says so.
 
-## Jobs and webhooks (Cloud)
+## Jobs and webhooks (ultrafast Cloud, not open yet)
+
+`uf.render(doc, webhook=url)` and `uf.submit(doc)` return a `Job`
+(`.status`, `.wait()`, `.save(path)`, `.cancel()`); `uf.job(id)` and
+`uf.jobs.list()` read them; `uri="s3://bucket/key"` (also `r2://`,
+`gs://`) writes the render to your bucket. `ultrafast serve` answers these
+with `CloudOnly`.
 
 ```python
 job = uf.render(doc, webhook="https://example.com/rendered")

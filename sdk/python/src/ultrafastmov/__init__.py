@@ -2,9 +2,9 @@
 
     from ultrafastmov import Ultrafast
 
-    uf = Ultrafast()  # ULTRAFAST_API_KEY
+    uf = Ultrafast()  # your ultrafast serve: ULTRAFAST_BASE_URL, ULTRAFAST_API_KEY
     doc = uf.load("film.json")
-    print(uf.estimate(doc))      # $0.004, 8 s of 1080p
+    print(uf.estimate(doc))      # 8 s of 1080p, 2.1 GPU seconds
     for issue in uf.review(doc):
         print(issue.kind, issue.node, issue.message)
     uf.render(doc).save("film.mp4")

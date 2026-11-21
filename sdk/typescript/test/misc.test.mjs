@@ -24,6 +24,10 @@ test("estimate formatting", async () => {
   const est = (o) => String(new Estimate({ width: 1920, height: 1080, seconds: 8, ...o }));
   assert.equal(est({ usd: 0.004 }), "$0.004, 8 s of 1080p");
   assert.equal(est({ usd: null }), "8 s of 1080p");
+  assert.equal(est({ usd: null, gpu_seconds: 2.14 }), "8 s of 1080p, 2.1 GPU seconds");
+  assert.equal(est({ usd: null, gpu_seconds: 0.043 }), "8 s of 1080p, 0.04 GPU seconds");
+  assert.equal(est({ usd: null, gpu_seconds: 1.02 }), "8 s of 1080p, 1 GPU second");
+  assert.equal(est({ usd: 0.004, gpu_seconds: 2.1 }), "$0.004, 8 s of 1080p");
   assert.equal(est({ usd: 0.006, seconds: 11.6, width: 1080, height: 1920 }), "$0.006, 11.6 s of 1080p");
   assert.equal(est({ usd: 1.234, seconds: 754 }), "$1.23, 12.6 min of 1080p");
   assert.equal(est({ usd: 0, width: 3840, height: 2160 }), "$0, 8 s of 2160p");
@@ -35,7 +39,7 @@ test("estimate formatting", async () => {
   assert.equal(e.device, "NVIDIA L4");
   assert.equal(server.requestsTo("POST", "/v1/estimate").at(-1).json.range, null);
   server.state.usdPerMinute = null;
-  assert.equal(String(await uf.estimate(doc, { range: [0, 4] })), "4 s of 1080p");
+  assert.equal(String(await uf.estimate(doc, { range: [0, 4] })), "4 s of 1080p, 2.1 GPU seconds");
 });
 
 test("review is iterable over its issues", async () => {
@@ -90,9 +94,9 @@ test("me, health, user agent", async () => {
   assert.equal(VERSION, pkg.version);
 });
 
-test("default base URL is ultrafast Cloud", () => {
+test("default base URL is a local ultrafast serve", () => {
   delete process.env.ULTRAFAST_BASE_URL;
-  assert.equal(new Ultrafast({ apiKey: "k" }).baseUrl, "https://api.ultrafast.mov");
+  assert.equal(new Ultrafast({ apiKey: "k" }).baseUrl, "http://127.0.0.1:8080");
   assert.equal(new Ultrafast({ apiKey: "k", baseUrl: "http://localhost:8080/" }).baseUrl, "http://localhost:8080");
 });
 
@@ -106,7 +110,7 @@ test("the CommonJS build works the same", async () => {
   const require = createRequire(import.meta.url);
   const cjs = require("../dist/cjs/index.js");
   const c = new cjs.Ultrafast({ apiKey: "test-key", baseUrl: server.url });
-  assert.equal(String(await c.estimate(doc)), "8 s of 1080p");
+  assert.equal(String(await c.estimate(doc)), "8 s of 1080p, 2.1 GPU seconds");
   await assert.rejects(c.new("nope"), (e) => e instanceof cjs.NotFoundError);
   const sig = "sha256=" + (await import("node:crypto")).createHmac("sha256", "s").update("{}").digest("hex");
   await assert.rejects(cjs.verifyWebhook("{}", sig, "s"), { code: "bad_body" });

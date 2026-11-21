@@ -275,7 +275,11 @@ export class Review implements ReviewData {
   }
 }
 
-/** What a document will cost. `String(estimate)` reads like "$0.004, 8 s of 1080p". */
+/**
+ * What a document will cost. `String(estimate)` reads like
+ * "8 s of 1080p, 2.1 GPU seconds", or "$0.004, 8 s of 1080p" from a server
+ * that sets a price.
+ */
 export class Estimate implements EstimateData {
   readonly minutes!: number;
   readonly usd!: number | null;
@@ -301,6 +305,10 @@ export class Estimate implements EstimateData {
     let what = formatSeconds(this.seconds);
     if (this.width && this.height) what += ` of ${Math.min(this.width, this.height)}p`;
     parts.push(what);
+    if (typeof this.usd !== "number" && typeof this.gpu_seconds === "number") {
+      const n = Number(this.gpu_seconds.toFixed(this.gpu_seconds >= 1 ? 1 : 2));
+      parts.push(`${n} GPU second${n === 1 ? "" : "s"}`);
+    }
     return parts.join(", ");
   }
 }

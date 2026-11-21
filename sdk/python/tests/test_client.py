@@ -334,7 +334,7 @@ class ClientTest(unittest.TestCase):
         self.server.usd_per_minute = None
         doc = self.doc()
         doc["format"].update(width=1080, height=1920)
-        self.assertEqual(str(self.uf.estimate(doc, range=[0, 2.5])), "2.5 s of 1080p")
+        self.assertEqual(str(self.uf.estimate(doc, range=[0, 2.5])), "2.5 s of 1080p, 1 GPU second")
         self.assertEqual(self.server.seen("/v1/estimate")[0].json["range"], [0, 2.5])
         self.uf.estimate(doc, size="4k", quality="high")
         self.assertEqual(self.server.seen("/v1/estimate")[1].json["output"], {"size": "4k", "quality": "high"})
@@ -418,7 +418,7 @@ class ClientTest(unittest.TestCase):
     def test_base_url_forms(self):
         self.assertEqual(Ultrafast(base_url="http://localhost:8080/v1/").base_url, "http://localhost:8080")
         with mock.patch.dict(os.environ, {"ULTRAFAST_BASE_URL": ""}):
-            self.assertEqual(Ultrafast().base_url, "https://api.ultrafast.mov")
+            self.assertEqual(Ultrafast().base_url, "http://127.0.0.1:8080")
         with self.assertRaises(ValueError):
             Ultrafast(base_url="localhost:8080")
 

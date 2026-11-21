@@ -5,12 +5,12 @@ The HTTP API of the ultrafast render service. Two servers speak it:
 - `ultrafast serve`, the open-source server for one machine: one API key,
   local storage, everything below except what is marked **Cloud**. How to
   run it: [SELF_HOST.md](SELF_HOST.md).
-- ultrafast Cloud (`https://api.ultrafast.mov`), which adds the parts
-  marked **Cloud**: jobs with signed webhooks, writing renders to your own
-  bucket, inputs read from buckets, many keys and OIDC sign-in.
+- ultrafast Cloud (not open yet), which adds the parts marked **Cloud**:
+  jobs with signed webhooks, writing renders to your own bucket, inputs
+  read from buckets, many keys and OIDC sign-in.
 
-A client written against one works against the other by changing the base
-URL and the key. On `ultrafast serve`, a Cloud feature answers `501` with
+A client written against one will work against the other by changing the
+base URL and the key. On `ultrafast serve`, a Cloud feature answers `501` with
 code `cloud_only` and a `feature` field (`jobs`, `bucket_output`,
 `bucket_inputs`).
 

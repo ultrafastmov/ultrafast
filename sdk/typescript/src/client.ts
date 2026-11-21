@@ -6,12 +6,13 @@ import { contentTypeFor, env, node, randomId } from "./runtime.js";
 import type { Document } from "./schema.js";
 import type { Asset, Attempt, CheckResult, EstimateData, Health, JobData, Me, Receipt, ReviewData } from "./types.js";
 
-export const DEFAULT_BASE_URL = "https://api.ultrafast.mov";
+/** A local `ultrafast serve` on its default port. */
+export const DEFAULT_BASE_URL = "http://127.0.0.1:8080";
 
 export interface UltrafastOptions {
-  /** Default: `ULTRAFAST_API_KEY`. */
+  /** Default: `ULTRAFAST_API_KEY` (the key the server prints at first start). */
   apiKey?: string;
-  /** Default: `ULTRAFAST_BASE_URL`, else ultrafast Cloud. A self-hosted server: `http://localhost:8080`. */
+  /** Default: `ULTRAFAST_BASE_URL`, else `http://127.0.0.1:8080`, a server on this machine. */
   baseUrl?: string;
   /** A fetch implementation (default: the global one). */
   fetch?: FetchLike;
@@ -196,8 +197,7 @@ export class Jobs {
 }
 
 /**
- * A client of the ultrafast render service: ultrafast Cloud, or your own
- * `ultrafast serve`.
+ * A client of an ultrafast render service: your own `ultrafast serve`.
  *
  * ```ts
  * const uf = new Ultrafast(); // ULTRAFAST_API_KEY

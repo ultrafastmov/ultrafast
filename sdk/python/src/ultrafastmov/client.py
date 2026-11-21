@@ -45,7 +45,8 @@ else:
 
 __all__ = ["Ultrafast", "Jobs", "DEFAULT_BASE_URL"]
 
-DEFAULT_BASE_URL = "https://api.ultrafast.mov"
+#: A local ``ultrafast serve`` on its default port.
+DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 #: Seconds to wait on a response. Synchronous renders may take up to 10 minutes.
 DEFAULT_TIMEOUT = 660.0
 
@@ -208,11 +209,12 @@ class Jobs:
 
 
 class Ultrafast:
-    """A client for an ultrafast render service: ultrafast Cloud, or your own ``ultrafast serve``.
+    """A client for an ultrafast render service: your own ``ultrafast serve``.
 
-    ``api_key`` defaults to ``ULTRAFAST_API_KEY``; ``base_url`` to
-    ``ULTRAFAST_BASE_URL``, else ``https://api.ultrafast.mov``. Self-hosted:
-    ``Ultrafast(base_url="http://localhost:8080")``.
+    ``api_key`` defaults to ``ULTRAFAST_API_KEY`` (the key the server
+    prints at first start); ``base_url`` to ``ULTRAFAST_BASE_URL``, else
+    ``http://127.0.0.1:8080``, a server on this machine. Another machine:
+    ``Ultrafast(base_url="http://gpu-box:8080")``.
 
     Local files a document names (``"src": "footage/a.mp4"``) are uploaded
     before each call, once per client (by sha256 and size), and a copy of
@@ -705,7 +707,7 @@ class Ultrafast:
         return Review(self._request_json("POST", "/v1/review", body, retry=True))
 
     def estimate(self, doc: DocumentLike, range: Optional[Sequence[float]] = None, **settings: Any) -> Estimate:
-        """What rendering will cost; ``print(estimate)`` shows ``$0.004, 8 s of 1080p``.
+        """What rendering will cost; ``print(estimate)`` shows ``8 s of 1080p, 2.1 GPU seconds``.
 
         Pass the export settings you will render with (``size="4k"``,
         ``quality="high"``, ``fps=60``, ...): minutes count the output size

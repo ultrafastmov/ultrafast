@@ -1,46 +1,46 @@
 # ultrafastmov
 
 TypeScript client for ultrafast, the GPU video engine. A video is a JSON
-document; the render service turns it into a video (MP4, ProRes, WebM, a
-GIF, an image sequence) at any size. This package talks to
-ultrafast Cloud or your own `ultrafast serve`.
+document; your own `ultrafast serve` turns it into a video (MP4, ProRes,
+WebM, a GIF, an image sequence) at any size, and this package talks to it.
 
 ```bash
+ultrafast serve           # on the machine with the GPU; prints its API key when it starts
 npm i ultrafastmov
 ```
 
 ```typescript
 import { Ultrafast } from "ultrafastmov";
 
-const uf = new Ultrafast(); // ULTRAFAST_API_KEY
+const uf = new Ultrafast(); // the server on this machine; ULTRAFAST_API_KEY
 
 const doc = await uf.load("film.json");
-const sheet = await uf.sheet(doc, { count: 9 });
-const job = await uf.render(doc, {
-  webhook: "https://example.com/rendered",
-});
-console.log(job.id, job.status);
+await (await uf.sheet(doc, { count: 9 })).save("sheet.png");
+const render = await uf.render(doc);
+await render.save("film.mp4");
 ```
 
 Node 18 or later, no dependencies. ESM and CommonJS.
 
-## Your own server
+## The server
 
 `ultrafast serve` is the open-source render service for one machine with a
-GPU.
+GPU: install `ultrafast` with `cargo install ultrafast`,
+`brew install ultrafastmov/tap/ultrafast` or the
+`ghcr.io/ultrafastmov/ultrafast` image
+([self-hosting](https://github.com/ultrafastmov/ultrafast/blob/main/docs/service/SELF_HOST.md)).
+The client talks to `http://127.0.0.1:8080` unless told otherwise:
 
 ```bash
-export ULTRAFAST_BASE_URL=http://localhost:8080
-export ULTRAFAST_API_KEY=...   # the server's key (it prints one at first start)
+export ULTRAFAST_BASE_URL=http://gpu-box:8080   # a server on another machine
+export ULTRAFAST_API_KEY=...                    # the server's key
 ```
 
-or `new Ultrafast({ baseUrl: "http://localhost:8080", apiKey })`. Without
-`ULTRAFAST_BASE_URL` the client uses ultrafast Cloud,
-`https://api.ultrafast.mov`.
+or `new Ultrafast({ baseUrl: "http://gpu-box:8080", apiKey })`.
 
-Everything here works against it except what only ultrafast Cloud has:
-jobs and webhooks (`{ job }`, `{ webhook }`, `uf.jobs`), `{ uri }` output
-to your own bucket, and `gs://`, `s3://` or `r2://` inputs. Those throw
+Jobs and webhooks (`{ job }`, `{ webhook }`, `uf.jobs`), `{ uri }` output
+to your own bucket, and `gs://`, `s3://` or `r2://` inputs are for
+ultrafast Cloud, which isn't open yet. The server answers them with
 `CloudOnlyError` (`e.feature` says which).
 
 ## Methods
@@ -55,7 +55,7 @@ const { ok, issues } = await uf.check(doc);
 for (const issue of await uf.review(doc, { safe: "social" })) {
   console.log(issue.kind, issue.node, issue.from, issue.to, issue.message);
 }
-console.log(`${await uf.estimate(doc)}`);       // $0.004, 8 s of 1080p
+console.log(`${await uf.estimate(doc)}`);       // 8 s of 1080p, 2.1 GPU seconds
 
 const render = await uf.render(doc);            // stored; render.url is signed
 await render.save("film.mp4");                  // streamed, sha256 checked
@@ -68,11 +68,7 @@ await uf.render(doc, { codec: "prores", alpha: true, name: "overlay.mov" }); // 
 await uf.render(doc, { format: "webm", alpha: true });                       // VP9 with alpha
 await uf.render(doc, { format: "gif", fps: 15, size: "480p", loops: 0 });    // a GIF that plays once
 await uf.render(doc, { format: "png", alpha: true });                        // a zip of PNG frames
-console.log(`${await uf.estimate(doc, { size: "4k", quality: "master" })}`); // priced at the output size
-
-const job = await uf.render(doc, { job: true }); // or { webhook } (Cloud)
-const done = await job.wait();                  // polls; throws the job's error if it failed
-await uf.jobs.get(job.id);
+console.log(`${await uf.estimate(doc, { size: "4k", quality: "master" })}`); // counted at the output size
 
 const asset = await uf.upload("interview.mp4"); // or a Blob, File or bytes
 // "src": asset.uri
@@ -88,13 +84,18 @@ client, while its size and mtime stay the same) and sends a copy with
 `asset://` references in their place; your object is not changed. Paths
 resolve against the document's directory when it came from `uf.load`
 (spread copies keep it), else the working directory. Font family names (`"Inter"`), inline face tracks
-and `asset://`, `https://`, `data:` and (on Cloud) `gs://`, `s3://`, `r2://` values are
-sent as they are. `uf.prepare(doc)` returns the copy without rendering.
+and `asset://`, `https://` and `data:` values are sent as they are. `uf.prepare(doc)` returns the copy without rendering.
 
 Reading files needs Node. In edge runtimes, pass documents as objects whose
 media are already references.
 
-## Webhooks (Cloud)
+## Jobs and webhooks (ultrafast Cloud, not open yet)
+
+```typescript
+const job = await uf.render(doc, { job: true }); // or { webhook }
+const done = await job.wait();                  // polls; throws the job's error if it failed
+await uf.jobs.get(job.id);
+```
 
 ```typescript
 import { verifyWebhook } from "ultrafastmov";
@@ -123,8 +124,9 @@ writes to an `output.uri`, where the request's `attempt` ids make the
 retry a replay.
 
 A synchronous render holds the request open until the video is written,
-and Node's fetch stops waiting for response headers after 5 minutes: on
-Cloud, use a job for long renders.
+and Node's fetch stops waiting for response headers after 5 minutes. For
+longer renders, pass a `fetch` with a longer `headersTimeout` (undici's
+`Agent`), or render in parts with `range`.
 
 ## Types
 

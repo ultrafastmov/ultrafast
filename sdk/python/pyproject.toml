@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ultrafastmov"
 version = "0.1.2"
-description = "Python client for ultrafast, the GPU video engine: render JSON documents to MP4, ProRes, WebM, GIF or image sequences on ultrafast Cloud or your own server"
+description = "Python client for ultrafast, the GPU video engine: render JSON documents to MP4, ProRes, WebM, GIF or image sequences on your own ultrafast serve"
 readme = "README.md"
 license = "Apache-2.0 OR MIT"
 license-files = ["LICENSE-APACHE", "LICENSE-MIT"]

@@ -25,6 +25,10 @@ class EstimateTest(unittest.TestCase):
             (dict(usd=0.0, seconds=2, width=640, height=360), "$0, 2 s of 640x360"),
             (dict(usd=0.0006, seconds=2, width=1080, height=1080), "$0.001, 2 s of 1080p"),
             (dict(usd=None, seconds=3), "3 s"),
+            (dict(usd=None, seconds=8, width=1920, height=1080, gpu_seconds=2.14), "8 s of 1080p, 2.1 GPU seconds"),
+            (dict(usd=None, seconds=2, width=1920, height=1080, gpu_seconds=0.043), "2 s of 1080p, 0.04 GPU seconds"),
+            (dict(usd=None, seconds=2, width=1920, height=1080, gpu_seconds=1.02), "2 s of 1080p, 1 GPU second"),
+            (dict(usd=0.004, seconds=8, width=1920, height=1080, gpu_seconds=2.1), "$0.004, 8 s of 1080p"),
         ]
         for fields, text in cases:
             self.assertEqual(str(Estimate(**fields)), text, fields)

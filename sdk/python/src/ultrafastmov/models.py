@@ -249,7 +249,8 @@ def resolution_label(width: Optional[int], height: Optional[int]) -> Optional[st
 
 @dataclass
 class Estimate:
-    """What a render will cost. ``str(estimate)`` reads like ``$0.004, 8 s of 1080p``."""
+    """What a render will cost. ``str(estimate)`` reads like ``8 s of 1080p, 2.1 GPU seconds``,
+    or ``$0.004, 8 s of 1080p`` from a server that sets a price."""
 
     seconds: Optional[float] = None
     usd: Optional[float] = None
@@ -292,6 +293,11 @@ class Estimate:
         text = " of ".join(what)
         if self.price is not None:
             return f"{self.price}, {text}" if text else self.price
+        if self.gpu_seconds is not None:
+            g = float(self.gpu_seconds)
+            n = _fmt_number(g, 1 if g >= 1 else 2)
+            gpu = f"{n} GPU second" + ("" if n == "1" else "s")
+            return f"{text}, {gpu}" if text else gpu
         return text
 
 
