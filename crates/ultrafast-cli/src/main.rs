@@ -71,9 +71,14 @@ usage:
                                              on this GPU) and the time to the first frame
   ultrafast bench  <doc.json> [--frames N] [--live-edits]
                                              GPU throughput, no readback
-  ultrafast export <doc.json> <out.mp4|out.mov> [--codec h264|hevc] [--bitrate BPS] [--from S] [--to S]
-               [--workers N] [--no-audio]
-                                             hardware-encode the composition, zero readback
+  ultrafast export <doc.json> <out> [--quality draft|standard|high|master] [--size 720p|1080p|4k|WxH | --scale S]
+               [--fps N] [--format F] [--codec h264|hevc|av1|vp9|prores] [--prores-profile P] [--alpha]
+               [--crf N | --bitrate 8M] [--audio-codec C] [--audio-bitrate 192k] [--no-audio] [--loops N]
+               [--from S] [--to S] [--workers N]
+                                             encode the composition; the format follows <out>: .mp4 .mov .mkv
+                                             .webm .gif, a folder/ or frames/{frame:05}.png|.exr for a
+                                             sequence, .wav .mp3 .m4a .flac .opus for sound alone. H.264 and
+                                             HEVC hardware-encode with zero readback
   ultrafast serve  [--port 8080] [--host 0.0.0.0]
                                              the self-hosted render service on this machine: the
                                              v1 HTTP API (render, uploads, frames, sheets, check,
