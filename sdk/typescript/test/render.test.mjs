@@ -173,8 +173,10 @@ test("job.save(), list, cancel, and a failed job", async () => {
     return true;
   });
 
-  const slow = await uf.jobs.create(doc);
-  await assert.rejects(slow.wait({ pollMs: 5, timeoutMs: 1 }), (e) => e instanceof UltrafastError && e.code === "timeout");
+  // A job that never finishes, so the timeout is the only way out of wait().
+  const slow = await uf.jobs.create({ ...doc, meta: { hold: true } });
+  await assert.rejects(slow.wait({ pollMs: 5, timeoutMs: 40 }), (e) => e instanceof UltrafastError && e.code === "timeout");
+  assert.equal(slow.status, "rendering", "wait() polled before timing out");
 });
 
 test("jobs refuse inline output; job creation is not resent after a drop", async () => {

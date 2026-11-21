@@ -111,6 +111,7 @@ export async function startFakeServer({ keys = ["test-key"], secret = "whsec_tes
       job.started_at = new Date().toISOString();
       job.progress = { frames: 0, of: 30 };
     } else if (job.status === "rendering") {
+      if (job.hold) return; // `meta.hold`: renders until the test ends
       if (job.fail) {
         job.status = "failed";
         job.error = error(500, "render_failed", "render failed: GPU device lost (renderer rebuilt)").error;
@@ -120,11 +121,11 @@ export async function startFakeServer({ keys = ["test-key"], secret = "whsec_tes
         job.progress = { frames: 30, of: 30 };
       }
       job.finished_at = new Date().toISOString();
-      const { document, fail, ...pub } = job;
+      const { document, fail, hold, ...pub } = job;
       await deliver(pub);
     }
   };
-  const publicJob = ({ document, fail, ...pub }) => pub;
+  const publicJob = ({ document, fail, hold, ...pub }) => pub;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, base);
@@ -244,6 +245,7 @@ export async function startFakeServer({ keys = ["test-key"], secret = "whsec_tes
         document: doc,
         attempt: json.attempt,
         fail: doc?.meta?.fail === true,
+        hold: doc?.meta?.hold === true,
       };
       state.jobs.set(job.id, job);
       return send(202, publicJob(job));
