@@ -218,22 +218,37 @@ pub fn export_target(
     } else {
         doc
     };
-    if !target.native_size(&fmt) {
-        return Err(format!(
-            "exporting at {}x{} (the document is {}x{}) needs a renderer that draws at other densities; not yet",
-            target.width, target.height, fmt.width, fmt.height
-        ));
-    }
     if target.video.is_none() {
         return export_audio(renderer.base_dir(), doc, path, target, clock);
     }
+    // Another size draws the document at that density (text, paths, blurs
+    // and 3D rendered for it, not a scaled image); the renderer goes back to
+    // its own size afterwards.
+    let own = renderer.output_size();
+    let size = (!target.native_size(&fmt)).then_some((target.width, target.height));
+    renderer.set_output_size(size);
+    let result = export_frames(renderer, doc, path, target, clock, opts, &mut progress);
+    renderer.set_output_size(own);
+    result
+}
+
+/// The picture of an export, routed to the encoder that takes it.
+fn export_frames(
+    renderer: &mut Renderer,
+    doc: &Document,
+    path: &Path,
+    target: Target,
+    clock: Clock,
+    opts: ExportOptions,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<ExportReport, String> {
     #[cfg(all(target_os = "macos", not(feature = "vulkan")))]
     if metal::takes(&target, &opts.settings) {
         return metal::export(renderer, doc, path, target, clock, opts, progress);
     }
     #[cfg(any(target_os = "linux", windows))]
     if nvenc::takes(&target) && std::env::var_os("ULTRAFAST_NVENC").is_none_or(|v| v != "0") {
-        match nvenc::export(renderer, doc, path, target, clock, opts, &mut progress) {
+        match nvenc::export(renderer, doc, path, target, clock, opts, progress) {
             Ok(r) => return Ok(r),
             Err(nvenc::Error::Unavailable(e)) => {
                 eprintln!("ultrafast: NVENC unavailable ({e}); exporting through ffmpeg with readbacks")
@@ -241,7 +256,7 @@ pub fn export_target(
             Err(nvenc::Error::Failed(e)) => return Err(e),
         }
     }
-    export_ffmpeg(renderer, doc, path, target, clock, opts, &mut progress)
+    export_ffmpeg(renderer, doc, path, target, clock, opts, progress)
 }
 
 /// The bitrate a hardware encoder without constant quality is given: about

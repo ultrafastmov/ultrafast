@@ -103,7 +103,8 @@ pub struct Estimate {
 }
 
 /// Estimates a render of `doc` on `renderer` (whose base directory is set
-/// for the document's files). Leaves the renderer in the mode it found it.
+/// for the document's files). Leaves the renderer in the mode and at the
+/// size it found it.
 pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Result<Estimate, String> {
     let fmt = doc.format;
     let target = opts.target.unwrap_or_else(|| crate::output::Target::of(&fmt));
@@ -142,6 +143,11 @@ pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Resu
 
     let prev_mode = renderer.mode();
     renderer.set_mode(Mode::Exact);
+    // Timed at the size the export draws (4K costs what 4K costs).
+    let own_size = renderer.output_size();
+    if target.video.is_some() && !target.native_size(&fmt) {
+        renderer.set_output_size(Some((target.width, target.height)));
+    }
     let result = (|| -> Result<(f64, f64, u32), String> {
         // The first frame pays for planning, compiles and opening media:
         // what a caller waits before the first byte.
@@ -220,6 +226,7 @@ pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Resu
         Ok((first_byte, gpu_ms / timed as f64, timed))
     })();
     renderer.set_mode(prev_mode);
+    renderer.set_output_size(own_size);
     let (first_byte_s, ms_per_frame, sampled_frames) = result?;
     Ok(Estimate {
         minutes: price.minutes,

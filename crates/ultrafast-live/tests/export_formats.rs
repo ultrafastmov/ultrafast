@@ -240,3 +240,72 @@ fn bad_combinations_fail_before_rendering() {
         assert!(e.is_err(), "{json} {name} should fail");
     }
 }
+
+/// Width and height of the first video stream, and its first frame as RGBA.
+fn first_frame(path: &Path) -> (u32, u32, Vec<u8>) {
+    let o = Command::new("ffprobe")
+        .args(["-v", "error", "-select_streams", "v:0"])
+        .args(["-show_entries", "stream=width,height", "-of", "csv=p=0"])
+        .arg(path)
+        .output()
+        .unwrap();
+    let s = String::from_utf8_lossy(&o.stdout);
+    let mut it = s.trim().split(',').map(|v| v.parse::<u32>().unwrap());
+    let (w, h) = (it.next().unwrap(), it.next().unwrap());
+    let o = Command::new("ffmpeg")
+        .args(["-v", "error", "-i"])
+        .arg(path)
+        .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "-"])
+        .output()
+        .unwrap();
+    (w, h, o.stdout)
+}
+
+#[test]
+fn other_sizes_draw_the_document_at_their_size() {
+    if !ffmpeg() {
+        eprintln!("no ffmpeg: skipped");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("ultrafast-sizes-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let doc = Document::from_json(DOC).unwrap();
+    let mut r = Renderer::new(Device::new().unwrap()).unwrap();
+    let disc = [255, 122, 46, 255];
+    let half_on_black = [35, 111, 188, 255];
+    // Twice the size (the hardware route where there is one), half the size
+    // through ffmpeg with alpha: the picture is where it is at 320x180.
+    for (name, json, (w, h), alpha) in [
+        ("big.mp4", r#"{"scale": 2}"#, (640, 360), false),
+        ("small/", r#"{"size": "160x90", "alpha": true}"#, (160, 90), true),
+    ] {
+        let rep = export(&mut r, &doc, &dir.join(name), json);
+        assert_eq!((rep.target.width, rep.target.height), (w, h), "{json}");
+        let file = if alpha {
+            dir.join(name).join("00000.png")
+        } else {
+            dir.join(name)
+        };
+        let (fw, fh, px) = first_frame(&file);
+        assert_eq!((fw, fh), (w, h), "{json}");
+        let s = w as f64 / 320.0;
+        let at = |x: f64, y: f64| {
+            let i = ((y * s) as usize * w as usize + (x * s) as usize) * 4;
+            [px[i], px[i + 1], px[i + 2], px[i + 3]]
+        };
+        // H.264's 4:2:0 color moves a few levels; PNG is exact.
+        let tol = if alpha { 3 } else { 20 };
+        assert!(close(at(100.0, 90.0), disc, tol), "{json}: disc {:?}", at(100.0, 90.0));
+        let square = if alpha { [51, 153, 255, 128] } else { half_on_black };
+        let sq = at(220.0, 90.0);
+        assert!(close(sq, square, tol), "{json}: square {sq:?}");
+        let corner = if alpha { [0, 0, 0, 0] } else { [0, 0, 0, 255] };
+        assert!(close(at(2.0, 2.0), corner, tol), "{json}: corner {:?}", at(2.0, 2.0));
+    }
+    // The renderer is back at the document's size.
+    assert_eq!(r.output_size(), None);
+    let rep = export(&mut r, &doc, &dir.join("own.mp4"), "{}");
+    assert_eq!((rep.target.width, rep.target.height), (320, 180));
+    assert_eq!(first_frame(&dir.join("own.mp4")).0, 320);
+    let _ = std::fs::remove_dir_all(&dir);
+}
