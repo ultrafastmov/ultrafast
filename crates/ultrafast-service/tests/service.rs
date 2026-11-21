@@ -427,12 +427,10 @@ fn renders_from_uploads_to_local_storage() {
         .expect("the sequence stored as frames.zip");
     assert_eq!(meta.content_type.as_deref(), Some("application/zip"));
     let zip = zip::ZipArchive::new(std::fs::File::open(m.dir.join("storage/renders/r9/frames.zip")).unwrap()).unwrap();
-    let names: Vec<&str> = zip.file_names().collect();
-    assert!(
-        names.contains(&"00000.png") && names.contains(&"00014.png"),
-        "{names:?}"
-    );
-    assert!(names.contains(&"audio.wav"), "the sound beside the frames: {names:?}");
+    let names: Vec<String> = zip.file_names().map(|n| n.unwrap().into_owned()).collect();
+    let has = |n: &str| names.iter().any(|m| m == n);
+    assert!(has("00000.png") && has("00014.png"), "{names:?}");
+    assert!(has("audio.wav"), "the sound beside the frames: {names:?}");
 
     // Cloud features: bucket output and bucket inputs.
     let mut to_bucket = request("r2", "a1");

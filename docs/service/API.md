@@ -27,7 +27,7 @@ versions are strings (int64 does not survive every JSON parser).
 
 | Method and path | Body | Success |
 |---|---|---|
-| `POST /v1/render` | render request | `200` mp4 bytes (`output.inline`), or `200` receipt |
+| `POST /v1/render` | render request | `200` the file's bytes (`output.inline`), or `200` receipt |
 | `POST /v1/jobs` (**Cloud**) | job request | `202` job (`queued`) |
 | `GET /v1/jobs/{id}` (**Cloud**) | none | `200` job |
 | `GET /v1/jobs` (**Cloud**) | none | `200` `{"jobs": [...]}`, the caller's most recent first (`?limit=`, default 20) |
@@ -67,8 +67,10 @@ billed), and OIDC ID tokens. A missing, unknown or expired credential is
 
 ## POST /v1/render
 
-A document in, a video out. Short renders come back in the response; the
-rest go to storage and the response is a receipt with a signed URL.
+A document in, a video out: MP4, MOV, MKV, WebM, a GIF, a PNG or EXR
+sequence, or sound alone, at any size and frame rate and at one of four
+quality levels. Short renders come back in the response; the rest go to
+storage and the response is a receipt with a signed URL.
 
 ```json
 {
@@ -76,6 +78,8 @@ rest go to storage and the response is a receipt with a signed URL.
   "output": {
     "inline": true,
     "codec": "h264",
+    "quality": "draft",
+    "size": "720p",
     "bitrate": null,
     "audio": true,
     "range": null
@@ -83,9 +87,18 @@ rest go to storage and the response is a receipt with a signed URL.
 }
 ```
 
+A transparent ProRes master at 4K and 60 fps from the same document
+([fixtures/render-request-master.json](fixtures/render-request-master.json)):
+
+```json
+"output": { "name": "overlay.mov", "codec": "prores", "prores_profile": "4444",
+            "alpha": true, "quality": "master", "size": "4k", "fps": 60,
+            "audio_codec": "pcm-24" }
+```
+
 - `document` (required): an ultrafast document (see Documents below).
 - `output` (optional, default `{}`): where the video goes.
-  - `inline: true`: the mp4 is the response body (at most 32 MiB, else
+  - `inline: true`: the file is the response body (at most 32 MiB, else
     `413`; use storage, or on Cloud a job).
   - `uri` (**Cloud**): create this object in your own bucket instead
     (`s3://BUCKET/KEY`, `r2://BUCKET/KEY` or `gs://BUCKET/OBJECT`). It must
@@ -94,11 +107,36 @@ rest go to storage and the response is a receipt with a signed URL.
     video.
   - neither: the video is stored in the server's storage (local disk on
     `ultrafast serve`) and the receipt carries a signed `url`.
-  - `name`: the stored file's name (default `film.mp4`).
-  - `codec`: `h264` (default) or `hevc`. `bitrate`: bits per second, or
-    null for the default for the format. `audio`: mix the document's sound
-    (default true). `range`: `[from, to]` seconds of the document (default
-    all of it).
+  - `name`: the stored file's name (default `film.<format>`, or
+    `frames.zip` for an image sequence). Its extension picks the format
+    when `format` is missing; a name without the format's extension gets
+    it.
+  - `range`: `[from, to]` seconds of the document (default all of it).
+  - The encode settings, all optional, the same as `ultrafast export`'s
+    flags and the MCP export tools' arguments. Settings that don't go
+    together are a `400` before anything is fetched or rendered.
+
+    | Field | Values | Default |
+    |---|---|---|
+    | `format` | `mp4`, `mov`, `mkv`, `webm`, `gif`; `png` or `exr` (an image sequence, delivered as a zip with the sound as `audio.wav`); `wav`, `mp3`, `m4a`, `flac`, `opus` (sound alone) | from `name`, else from `codec`, else `mp4` |
+    | `codec` | `h264`, `hevc` (`h265`), `av1`, `vp9`, `prores` | the format's first: `h264`, `vp9` for `webm` |
+    | `quality` | `draft` (a fast preview: no motion blur, the fastest encode), `standard`, `high`, `master` (twice the motion-blur samples, the slowest and best encode) | `standard` |
+    | `crf` | constant quality on the codec's scale, lower is better (H.264 and HEVC 0-51, AV1 and VP9 0-63) | the quality level's: H.264 28/18/15/12, HEVC 30/23/20/16, AV1 42/30/25/20, VP9 42/28/24/18 |
+    | `bitrate` | bits per second, or text such as `"8M"`; instead of `crf` | null |
+    | `prores_profile` | `proxy`, `light`, `standard`, `hq`, `4444`, `4444-xq` | `hq`; `4444` with `alpha`; `proxy` for a draft |
+    | `alpha` | keep transparency: ProRes 4444, VP9, GIF (on or off per pixel), PNG, EXR | false |
+    | `size` | `720p`, `1080p`, `1440p`, `4k` (the short side, so a vertical film stays vertical), `"WxH"` or `[w, h]` of the document's shape; rendered at that size, not scaled up | the document's |
+    | `scale` | a multiple of the document's size, instead of `size` | 1 |
+    | `fps` | 1 to 240 (`29.97` and the like are fine): the film plays at the same speed, simulations and motion blur keep the document's clock | the document's; at most 30 for a GIF |
+    | `audio` | mix the document's sound in | true |
+    | `audio_codec` | `aac`, `opus`, `mp3`, `flac`, `pcm`, `pcm-24` | `aac`; `opus` for `webm`; `pcm` with ProRes |
+    | `audio_bitrate` | bits per second or `"192k"` | the quality level's: AAC and MP3 128k/192k/256k/320k, Opus 96k/128k/160k/192k |
+    | `loops` | GIF: times it plays again after the first; 0 plays once | forever |
+
+    H.264 and HEVC without alpha encode on the GPU with no readback; on
+    NVIDIA they run at constant quality capped at the level's bits per
+    pixel (standard's is 0.12, what renders always had), so a standard
+    file is never larger than before.
 - `attempt` (optional): `{"render_id", "attempt_id"}`, each 1 to 128
   characters of `A-Z a-z 0-9 . _ : -`. Stored on the object and echoed in
   the receipt; with `output.uri` it makes retries safe (see replays). The
@@ -136,16 +174,19 @@ rest go to storage and the response is a receipt with a signed URL.
   stops working (7 days by default).
 - `duration`, `frames`, `bytes`, `sha256` (hex, of the mp4 bytes): the
   video written.
-- `minutes`: rendered minutes as Cloud counts them (1080p minutes; 720p
-  and below count half, above 1080p three times). Cloud adds
-  `minutes_billed`.
+- `minutes`: rendered minutes as Cloud counts them, at the size written
+  (1080p minutes; 720p and below count half, above 1080p three times; sound
+  alone counts as 720p). Cloud adds `minutes_billed`.
 - `attempt`: echoed. `object`: `uri`, `bucket`, `name`, `generation`
   (GCS generation, S3 version id or ETag), `size`, `crc32c` and `md5`
   (base64, where the store reports them), `sha256` (hex), `content_type`.
 - `manifest`: `{uri, generation}` of `<object>.manifest.json`, the full
   receipt stored beside the video, or null.
-- `video`: `frames`, `fps`, `width`, `height`, `duration`, `codec`,
-  `audio`, `range`.
+- `video`: what was written: `frames`, `fps`, `width`, `height` (the
+  output's), `duration`, `codec` (`h264`, `hevc`, `av1`, `vp9`,
+  `prores-<profile>`, `gif`, `png`, `exr`, or the sound's codec for sound
+  alone), `audio`, `range`, `format`, `quality`, and `alpha` when it is
+  kept.
 - `renderer`: `service`, `version`, `git`, `image_digest`.
 - `document`: `sha256` (of the canonical JSON, below), `format_version`,
   and `meta` as the document declared it.
@@ -163,7 +204,10 @@ rest go to storage and the response is a receipt with a signed URL.
 
 ### Inline output
 
-`200`, `Content-Type: video/mp4`, the mp4 as the body, the receipt
+`200`, the file as the body with its type as `Content-Type` (`video/mp4`,
+`video/quicktime`, `video/x-matroska`, `video/webm`, `image/gif`,
+`application/zip` for an image sequence, `audio/wav`, `audio/mpeg`,
+`audio/mp4`, `audio/flac`, `audio/ogg`), the receipt
 (without `object`, `manifest` and `url`) as compact JSON in the
 `X-Ultrafast-Receipt` header, and the mp4's sha256 (hex) in
 `X-Ultrafast-Sha256`.
@@ -199,7 +243,7 @@ S3 and 8 KiB GCS limits; see
 | `ultrafast-render-id`, `ultrafast-attempt-id` | the request's `attempt` ids |
 | `ultrafast-document-sha256` | sha256 of the document as received (canonical JSON) |
 | `ultrafast-sha256`, `sha256` | sha256 (hex) of the mp4 bytes |
-| `ultrafast-frames`, `ultrafast-duration`, `ultrafast-width`, `ultrafast-height`, `ultrafast-fps`, `ultrafast-codec` | the video written |
+| `ultrafast-frames`, `ultrafast-duration`, `ultrafast-width`, `ultrafast-height`, `ultrafast-fps`, `ultrafast-codec`, `ultrafast-format` | the video written |
 | `ultrafast-image-digest`, `ultrafast-version` | the renderer image digest and ultrafast version |
 | `ultrafast-inputs-sha256` | sha256 of the receipt's `inputs` and `fonts` lists (canonical JSON) |
 | `ultrafast-created-at` | when the upload began |
@@ -268,8 +312,12 @@ renderer runs: a few sampled frames are rendered on the GPU and nothing is
 encoded.
 
 ```json
-{ "document": {}, "range": null }
+{ "document": {}, "range": null, "output": { "size": "4k", "quality": "high" } }
 ```
+
+`output` (optional) is a render request's: the estimate counts minutes at
+its size and times frames at its frame rate with its quality level's
+motion blur, so a render request can be sent as it is.
 
 ```json
 { "minutes": 0.2, "usd": 0.006, "gpu_seconds": 2.1, "first_byte_s": 3.0,
@@ -499,3 +547,13 @@ drivers may differ in the last bits.
   ultrafast Cloud's, and `ultrafast serve` answers them with
   `501 cloud_only` (new code, with `feature`). `/v1/me` has
   `webhook_secret` on Cloud only.
+- 2026-11-22: export settings in `output` (additive): `format` (mov, mkv,
+  webm, gif, png and exr sequences as zips, sound alone), `codec` av1, vp9
+  and prores, `quality`, `crf`, `prores_profile`, `alpha`, `size`,
+  `scale`, `fps`, `audio_codec`, `audio_bitrate`, `loops`; `bitrate` may be
+  text (`"8M"`). The receipt's `video` reports the output's size and frame
+  rate and gains `format`, `quality` and `alpha`; its `codec` names the
+  ProRes profile (`prores-hq`). Inline responses and stored objects carry
+  the format's content type; `ultrafast-format` in the object metadata.
+  `minutes` count the size written. `/v1/estimate` reads `output`'s size,
+  frame rate and quality.
