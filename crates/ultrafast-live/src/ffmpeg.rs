@@ -12,8 +12,8 @@ pub enum Pixels {
     Rgba8,
     /// sRGB-encoded half floats (10-bit codecs keep their precision).
     Rgba16fSrgb,
-    /// Linear half floats with straight alpha (EXR: ffmpeg's encoder
-    /// premultiplies, as the format stores it).
+    /// Linear half floats with straight alpha (EXR, which stores alpha
+    /// premultiplied: [`video_args`] premultiplies it).
     Rgba16fLinear,
 }
 
@@ -118,6 +118,12 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
             }
         }
         VideoCodec::Exr => {
+            if v.alpha {
+                // EXR stores alpha premultiplied. ffmpeg before 8.1 writes
+                // what it's given; 8.1 on would premultiply itself, and
+                // skips that after this filter, which marks its output.
+                push(&["-vf", "premultiply=inplace=1"]);
+            }
             push(&[
                 "-c:v",
                 "exr",
@@ -372,6 +378,9 @@ mod tests {
         let t = target(r#"{"alpha": true}"#, "frames/f-{frame:05}.exr");
         let a = joined(&t, "exr");
         assert!(a.contains("gbrapf32le") && !a.contains("bt709"), "{a}");
+        assert!(a.contains("-vf premultiply=inplace=1"), "{a}");
+        let o = joined(&target("{}", "frames/f-{frame:05}.exr"), "exr");
+        assert!(!o.contains("premultiply"), "{o}");
         assert_eq!(Pixels::for_target(&t), Pixels::Rgba16fLinear);
         assert_eq!(mux_args(&t, 30), ["-f", "image2", "-start_number", "30"]);
     }

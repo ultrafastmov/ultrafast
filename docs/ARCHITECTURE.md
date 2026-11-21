@@ -273,8 +273,8 @@ composition is **zero readbacks and zero uploads beyond uniforms**.
   quality capped at the quality level's bits per pixel. Everything else
   (ProRes, AV1, VP9, alpha, GIF, PNG and EXR sequences) is read back and
   piped to `ffmpeg` on every platform: sRGB RGBA8, or half floats for
-  10-bit ProRes (sRGB) and EXR (linear, straight alpha that the EXR
-  encoder premultiplies). Opaque outputs are flattened over black in the
+  10-bit ProRes (sRGB) and EXR (linear, straight alpha that ffmpeg's
+  `premultiply` filter premultiplies, as EXR stores it). Opaque outputs are flattened over black in the
   encode kernel, as the hardware paths do. Sound is mixed to a 32-bit float
   WAV and encoded by ffmpeg; sound alone renders no frames. Another output
   frame rate samples the document's seconds at that rate; simulations and
