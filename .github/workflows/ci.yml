@@ -73,6 +73,8 @@ jobs:
             | tar -xz -C "$RUNNER_TEMP/slang"
           echo "SLANG_DIR=$RUNNER_TEMP/slang" >> "$GITHUB_ENV"
           echo "ULTRAFAST_SLANG_DIR=$RUNNER_TEMP/slang" >> "$GITHUB_ENV"
+      - name: Test footage
+        run: sh examples/assets/make_test_video.sh
       - run: cargo test --release --workspace --no-fail-fast
 
   # Every crate packs for crates.io: nothing it includes lies outside its
@@ -83,6 +85,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo package --workspace --no-verify --locked
+      # What crates.io refuses at upload time and `cargo package` doesn't check.
+      - name: crates.io keyword limits
+        run: |
+          cargo metadata --format-version 1 --no-deps | python3 -c '
+          import json, re, sys
+          bad = [f"{p["name"]}: {p["keywords"]}" for p in json.load(sys.stdin)["packages"]
+                 if len(p["keywords"]) > 5 or any(len(k) >= 20 or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_+-]*", k) for k in p["keywords"])]
+          sys.exit("at most 5 keywords, each under 20 characters, a letter first:\n" + "\n".join(bad) if bad else 0)'
 
   # The skill `npx skills add` finds (skills/ultrafast) and the Claude Code
   # plugin's copy of it stay the same, and the plugin validates.

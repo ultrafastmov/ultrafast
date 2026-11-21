@@ -9,7 +9,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords = ["mcp", "video", "agents", "model-context-protocol"]
+keywords = ["mcp", "video", "agents", "mcp-server"]
 categories = ["multimedia::video", "rendering"]
 
 [lib]
