@@ -54,6 +54,32 @@ pub enum Codec {
     Hevc,
 }
 
+/// How a hardware encoder spends bits and time.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EncodeRate {
+    /// Average bits per second; with `quality`, the most it may use.
+    pub bitrate: u64,
+    /// Constant quality on the codec's quantizer scale (lower is better),
+    /// instead of an average bitrate.
+    pub quality: Option<f64>,
+    /// Speed: 1 (fastest) to 7 (best), NVENC's P1..P7.
+    pub preset: u8,
+    /// A full-resolution first pass.
+    pub multipass: bool,
+}
+
+impl EncodeRate {
+    /// An average bitrate at the default speed.
+    pub fn bitrate(bitrate: u64) -> Self {
+        EncodeRate {
+            bitrate,
+            quality: None,
+            preset: 2,
+            multipass: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VideoInfo {
     /// Display size: upright, after `rotation`.

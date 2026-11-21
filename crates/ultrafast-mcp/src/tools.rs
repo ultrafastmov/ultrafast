@@ -56,6 +56,33 @@ fn object(props: Value, required: &[&str]) -> Value {
     json!({ "type": "object", "properties": props, "required": required })
 }
 
+/// `props` with the export settings every export tool takes (the same names
+/// as `ultrafast export`'s flags and the HTTP API's `output`).
+fn with_export(mut props: Value) -> Value {
+    let settings = json!({
+        "format": { "type": "string", "enum": ["mp4", "mov", "mkv", "webm", "gif", "png", "exr", "wav", "mp3", "m4a", "flac", "opus"], "description": "Container (default: from the output's extension, else mp4). png and exr are image sequences; wav to opus are sound alone." },
+        "codec": { "type": "string", "enum": ["h264", "hevc", "av1", "vp9", "prores"], "description": "Video codec (default h264; vp9 for webm)" },
+        "quality": { "type": "string", "enum": ["draft", "standard", "high", "master"], "description": "draft: a fast preview without motion blur; standard (default); high: more motion-blur samples, a slower better encode; master: the most of both" },
+        "crf": { "type": "number", "description": "Constant quality on the codec's scale (lower is better; H.264/HEVC 0-51, AV1/VP9 0-63), instead of the quality level's" },
+        "bitrate": { "type": ["number", "string"], "description": "Average bits per second (or \"8M\") instead of constant quality" },
+        "prores_profile": { "type": "string", "enum": ["proxy", "light", "standard", "hq", "4444", "4444-xq"], "description": "ProRes flavor (default hq; 4444 with alpha)" },
+        "alpha": { "type": "boolean", "description": "Keep transparency: ProRes 4444 (.mov), VP9 (.webm), GIF, or a PNG or EXR sequence" },
+        "size": { "type": "string", "description": "Output size, sharp at any size: 720p, 1080p, 1440p, 4k (the short side, so vertical stays vertical) or WxH of the document's shape" },
+        "scale": { "type": "number", "description": "Output size as a multiple of the document's (0.5, 2)" },
+        "fps": { "type": "number", "description": "Output frame rate (default the document's; a GIF's at most 30 unless asked)" },
+        "audio": { "type": "boolean", "description": "Mix the document's sound in (default true)" },
+        "audio_codec": { "type": "string", "enum": ["aac", "opus", "mp3", "flac", "pcm", "pcm-24"], "description": "Sound codec (default aac; opus for webm; pcm with ProRes)" },
+        "audio_bitrate": { "type": ["number", "string"], "description": "Sound bits per second (or \"192k\")" },
+        "loops": { "type": "integer", "description": "GIF: times it plays again after the first (0: once; default forever)" }
+    });
+    if let (Some(p), Some(s)) = (props.as_object_mut(), settings.as_object()) {
+        for (k, v) in s {
+            p.insert(k.clone(), v.clone());
+        }
+    }
+    props
+}
+
 const OPS: &str = "The op vocabulary: every op ultrafast knows (generators, footage, type, shapes, 3D, particles, compositing, filters, captions, charts, blocks, looks), its input ports and params with types, defaults and docs. With no arguments it returns all of it as compact Markdown; `ops` returns the full JSON of just those ops. Read it before writing a document, and again when unsure of a param.";
 
 const NEW: &str = "Templates to start from: `vertical` (1080x1920 editorial), `title` (1920x1080 title over a shader world), `square` (1080x1080 risograph), `promo` (1080x1920, 13 s: title, stat, quote and end card blocks joined by transitions), `explainer` (1920x1080 on paper: chapter, key idea with a lower third, stat), `product` (a product reveal).";
@@ -204,14 +231,14 @@ pub fn local() -> Value {
         tool(
             "ultrafast_export",
             "Export video",
-            "Encode the document to a video file (H.264 or HEVC, audio mixed, motion blur as the document's format asks). Replaces `out` if it exists.",
+            "Encode the document to a file: MP4, MOV, MKV or WebM video (H.264, HEVC, AV1, VP9 or ProRes, transparent where the codec can be), a GIF, a PNG or EXR sequence (`out` a folder ending in `/` or a pattern like `frames/{frame:05}.png`), or sound alone (.wav, .mp3, .m4a, .flac, .opus). Any size from the same document, another frame rate, four quality levels. The format follows `out`'s extension. Replaces `out` if it exists.",
             object(
-                json!({
+                with_export(json!({
                     "path": path,
-                    "out": { "type": "string", "description": "Output .mp4 or .mov" },
-                    "codec": { "type": "string", "enum": ["h264", "hevc"] },
-                    "bitrate": { "type": "number", "description": "Bits per second" }
-                }),
+                    "out": { "type": "string", "description": "Output file (its extension picks the format), or a folder for an image sequence" },
+                    "from": { "type": "number", "description": "Start in seconds (default 0)" },
+                    "to": { "type": "number", "description": "End in seconds (default: the whole film)" }
+                })),
                 &["path", "out"]
             ),
             OVERWRITE
@@ -250,12 +277,12 @@ pub fn local() -> Value {
             "Batch render",
             &format!("{BATCH} Writes one video per row (replacing files that exist) and returns their paths."),
             object(
-                json!({
+                with_export(json!({
                     "path": path,
                     "data": { "type": "string", "description": "A data file: .csv (header row, then a row per video), .json (a list of objects) or .jsonl" },
                     "rows": { "type": "array", "items": { "type": "object" }, "description": "The rows inline, instead of `data`" },
-                    "out": { "type": "string", "description": "Output pattern, relative to the document's folder, e.g. \"out/{name}.mp4\" (default \"<document>-{row}.mp4\")" }
-                }),
+                    "out": { "type": "string", "description": "Output pattern, relative to the document's folder, e.g. \"out/{name}.mp4\" (default \"<document>-{row}.mp4\"); its extension picks the format" }
+                })),
                 &["path"]
             ),
             OVERWRITE
@@ -452,9 +479,13 @@ pub fn remote() -> Value {
         tool(
             "ultrafast_export",
             "Export video",
-            "Render the document to an MP4 (H.264 or HEVC, audio mixed, motion blur as its format asks) and store it. Returns a link to download it, the frame count and how long it took. Each call stores a new file; nothing is overwritten.",
+            "Render the document and store it: MP4, MOV, MKV or WebM video (H.264, HEVC, AV1, VP9 or ProRes, transparent where the codec can be), a GIF, a PNG or EXR sequence (as a zip), or sound alone. Any size from the same document, another frame rate, four quality levels. Returns a link to download it, the frame count and how long it took. Each call stores a new file; nothing is overwritten.",
             object(
-                json!({ "document": doc, "codec": { "type": "string", "enum": ["h264", "hevc"] } }),
+                with_export(json!({
+                    "document": doc,
+                    "from": { "type": "number", "description": "Start in seconds (default 0)" },
+                    "to": { "type": "number", "description": "End in seconds (default: the whole film)" }
+                })),
                 &["document"]
             ),
             CREATE
@@ -492,14 +523,13 @@ pub fn remote() -> Value {
             "ultrafast_batch",
             "Batch render",
             &format!(
-                "{BATCH} Renders and stores one MP4 per row (at most 20 rows a call) and returns a download link for each; nothing is overwritten."
+                "{BATCH} Renders and stores one video per row (at most 20 rows a call) and returns a download link for each; nothing is overwritten."
             ),
             object(
-                json!({
+                with_export(json!({
                     "document": doc,
-                    "rows": { "type": "array", "items": { "type": "object" }, "maxItems": 20, "description": "One object per video, e.g. {\"name\": \"ana\", \"title.title\": \"Happy birthday, Ana\"}" },
-                    "codec": { "type": "string", "enum": ["h264", "hevc"] }
-                }),
+                    "rows": { "type": "array", "items": { "type": "object" }, "maxItems": 20, "description": "One object per video, e.g. {\"name\": \"ana\", \"title.title\": \"Happy birthday, Ana\"}" }
+                })),
                 &["document", "rows"]
             ),
             CREATE

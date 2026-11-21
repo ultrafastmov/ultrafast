@@ -95,6 +95,47 @@ pub fn parse_document(v: Option<&Value>) -> Result<Document, String> {
 }
 
 /// The document argument as JSON, checked to parse.
+/// The keys of a tool's arguments that are export settings.
+pub const EXPORT_KEYS: &[&str] = &[
+    "format",
+    "codec",
+    "quality",
+    "crf",
+    "bitrate",
+    "prores_profile",
+    "alpha",
+    "size",
+    "scale",
+    "fps",
+    "audio",
+    "audio_codec",
+    "audio_bitrate",
+    "loops",
+];
+
+/// The export settings in a tool's arguments (the other keys ignored).
+pub fn export_settings(args: &Value) -> Result<ultrafast_live::output::Settings, String> {
+    let picked: serde_json::Map<String, Value> = EXPORT_KEYS
+        .iter()
+        .filter_map(|k| {
+            args.get(*k)
+                .filter(|v| !v.is_null())
+                .map(|v| (k.to_string(), v.clone()))
+        })
+        .collect();
+    ultrafast_live::output::Settings::from_json(&Value::Object(picked))
+}
+
+/// Export options from a tool's arguments: the settings and `from`/`to`.
+pub fn export_options(args: &Value) -> Result<ultrafast_live::export::ExportOptions, String> {
+    Ok(ultrafast_live::export::ExportOptions {
+        settings: export_settings(args)?,
+        start: args.get("from").and_then(Value::as_f64).unwrap_or(0.0),
+        end: args.get("to").and_then(Value::as_f64),
+        deadline: None,
+    })
+}
+
 pub fn document_value(v: Option<&Value>) -> Result<Value, String> {
     let doc = parse_document(v)?;
     serde_json::from_str(&doc.to_json()).map_err(|e| e.to_string())

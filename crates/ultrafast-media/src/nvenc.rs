@@ -12,8 +12,8 @@
 //! Windows) come from the driver and are loaded at runtime, so a build runs
 //! (and falls back) on machines without them.
 
-use crate::Codec;
 use crate::nvenc_sys as sys;
+use crate::{Codec, EncodeRate};
 
 /// Frames the encoder may hold before the oldest is read back.
 pub const DEPTH: usize = 4;
@@ -112,16 +112,19 @@ const PRESETS: [sys::GUID; 7] = [
     ),
 ];
 
-/// Encoder speed knobs: ULTRAFAST_NVENC_PRESET 1..7 (default 2: on an L4 it
-/// encodes 1080x1920 30% faster than P4 for 0.2 dB less PSNR at the same
-/// bitrate), ULTRAFAST_NVENC_TUNING hq | ll | ull (default hq),
-/// ULTRAFAST_NVENC_MULTIPASS 0 | 1 (quarter) | 2 (full) (default: the preset's).
-fn knobs() -> (sys::GUID, sys::NV_ENC_TUNING_INFO, Option<sys::NV_ENC_MULTI_PASS>) {
+/// Encoder speed knobs, over what the export asks: ULTRAFAST_NVENC_PRESET
+/// 1..7 (the standard quality level's 2: on an L4 it encodes 1080x1920 30%
+/// faster than P4 for 0.2 dB less PSNR at the same bitrate),
+/// ULTRAFAST_NVENC_TUNING hq | ll | ull (default hq),
+/// ULTRAFAST_NVENC_MULTIPASS 0 | 1 (quarter) | 2 (full) (default: the
+/// export's, else the preset's).
+fn knobs(rate: &EncodeRate) -> (sys::GUID, sys::NV_ENC_TUNING_INFO, Option<sys::NV_ENC_MULTI_PASS>) {
     let preset = std::env::var("ULTRAFAST_NVENC_PRESET")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .filter(|p| (1..=7).contains(p))
-        .map_or(PRESETS[1], |p| PRESETS[p - 1]);
+        .unwrap_or(rate.preset.clamp(1, 7) as usize);
+    let preset = PRESETS[preset - 1];
     let tuning = match std::env::var("ULTRAFAST_NVENC_TUNING").as_deref() {
         Ok("ll") => sys::NV_ENC_TUNING_INFO_NV_ENC_TUNING_INFO_LOW_LATENCY,
         Ok("ull") => sys::NV_ENC_TUNING_INFO_NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY,
@@ -129,7 +132,10 @@ fn knobs() -> (sys::GUID, sys::NV_ENC_TUNING_INFO, Option<sys::NV_ENC_MULTI_PASS
     };
     let multipass = std::env::var("ULTRAFAST_NVENC_MULTIPASS")
         .ok()
-        .and_then(|v| v.parse().ok());
+        .and_then(|v| v.parse().ok())
+        .or(rate
+            .multipass
+            .then_some(sys::_NV_ENC_MULTI_PASS_NV_ENC_TWO_PASS_FULL_RESOLUTION));
     (preset, tuning, multipass)
 }
 
@@ -481,7 +487,7 @@ impl Encoder {
         height: u32,
         fps: f64,
         codec: Codec,
-        bitrate: u64,
+        rate: EncodeRate,
         slots: usize,
     ) -> Result<Self, String> {
         let driver = driver()?;
@@ -513,7 +519,7 @@ impl Encoder {
                 pitch: width.next_multiple_of(256),
                 frames: 0,
             };
-            enc.open(codec, fps, bitrate)?;
+            enc.open(codec, fps, rate)?;
             for _ in 0..slots {
                 enc.add_slot(device)?;
             }
@@ -549,7 +555,7 @@ impl Encoder {
         r
     }
 
-    unsafe fn open(&mut self, codec: Codec, fps: f64, bitrate: u64) -> Result<(), String> {
+    unsafe fn open(&mut self, codec: Codec, fps: f64, rate: EncodeRate) -> Result<(), String> {
         let api = &*self.api;
         let mut open: sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS = zeroed();
         open.version = OPEN_SESSION_VER;
@@ -566,7 +572,7 @@ impl Encoder {
             Codec::H264 => (CODEC_H264, H264_HIGH),
             Codec::Hevc => (CODEC_HEVC, HEVC_MAIN),
         };
-        let (preset_guid, tuning, multipass) = knobs();
+        let (preset_guid, tuning, multipass) = knobs(&rate);
         let mut preset: sys::NV_ENC_PRESET_CONFIG = zeroed();
         preset.version = PRESET_CONFIG_VER;
         preset.presetCfg.version = CONFIG_VER;
@@ -583,11 +589,28 @@ impl Encoder {
         cfg.gopLength = gop;
         cfg.frameIntervalP = 1;
         cfg.rcParams.rateControlMode = sys::_NV_ENC_PARAMS_RC_MODE_NV_ENC_PARAMS_RC_VBR;
-        cfg.rcParams.averageBitRate = bitrate.min(u32::MAX as u64) as u32;
-        cfg.rcParams.maxBitRate = (bitrate * 2).min(u32::MAX as u64) as u32;
+        let bits = |b: u64| b.min(u32::MAX as u64) as u32;
+        match rate.quality {
+            // Constant quality: VBR with no average target, capped.
+            Some(q) => {
+                let q = q.clamp(1.0, 51.0);
+                cfg.rcParams.averageBitRate = 0;
+                cfg.rcParams.maxBitRate = bits(rate.bitrate);
+                cfg.rcParams.targetQuality = q.floor() as u8;
+                cfg.rcParams.targetQualityLSB = ((q - q.floor()) * 256.0) as u8;
+            }
+            None => {
+                cfg.rcParams.averageBitRate = bits(rate.bitrate);
+                cfg.rcParams.maxBitRate = bits(rate.bitrate * 2);
+            }
+        }
         if let Some(m) = multipass {
             cfg.rcParams.multiPass = m;
         }
+        // One bitstream out per frame in, as `encode` reads them: the slow
+        // presets' lookahead would hold frames back.
+        cfg.rcParams.set_enableLookahead(0);
+        cfg.rcParams.lookaheadDepth = 0;
         let vui = sys::NV_ENC_CONFIG_H264_VUI_PARAMETERS {
             videoSignalTypePresentFlag: 1,
             videoFormat: sys::_NV_ENC_VUI_VIDEO_FORMAT_NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED,

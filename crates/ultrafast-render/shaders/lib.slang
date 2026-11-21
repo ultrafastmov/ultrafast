@@ -682,13 +682,23 @@ void k_prep_video(uint3 gid: SV_DispatchThreadID) {
     OUT.Store(gid.xy, float4(srgb_to_linear(saturate(float3(r, g, b))), 1.0));
 }
 
-// Final pass: working space -> sRGB-encoded straight-alpha RGBA8.
-// Params [4..6]: input origin; [6] 1 = flatten over black (opaque video).
+// Final pass: working space -> sRGB-encoded straight-alpha RGBA (8-bit or
+// half float, whatever OUT is). Params [4..6]: input origin; [6] 0 =
+// straight alpha, 1 = flatten over black (opaque video), 2 = linear with
+// straight alpha (EXR: its encoder premultiplies), 3 = linear over black.
 [shader("compute")]
 [numthreads(16, 16, 1)]
 void k_encode_srgb8(uint3 gid: SV_DispatchThreadID) {
     if (outside_frame(gid.xy)) return;
     float4 c = load_o(T0, gid.xy, 4);
+    if (P[6] > 2.5) {
+        OUT.Store(gid.xy, float4(max(c.rgb, 0.0), 1.0));
+        return;
+    }
+    if (P[6] > 1.5) {
+        OUT.Store(gid.xy, float4(max(unpremul(c), 0.0), saturate(c.a)));
+        return;
+    }
     if (P[6] > 0.5) {
         OUT.Store(gid.xy, float4(linear_to_srgb(saturate(c.rgb)), 1.0));
         return;

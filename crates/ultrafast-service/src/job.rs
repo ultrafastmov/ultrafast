@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 use ultrafast_gpu::Device;
 use ultrafast_graph::{Document, Param};
+use ultrafast_live::output::Target as ExportTarget;
 use ultrafast_render::Renderer;
 
 /// Uploads do not start this close to the deadline.
@@ -87,14 +88,44 @@ fn valid_id(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'-'))
 }
 
-/// A stored render's file name: `film.mp4` unless the request names one.
-fn output_name(name: Option<&str>) -> String {
-    let n = crate::records::clean_filename(name.unwrap_or("film.mp4"));
-    if n.to_ascii_lowercase().ends_with(".mp4") {
-        n
+/// A stored render's file name: `film.<format>` (`frames.zip` for an image
+/// sequence) unless the request names one; a name without the format's
+/// extension gets it.
+fn output_name(name: Option<&str>, container: Container) -> String {
+    let ext = if container.is_sequence() {
+        "zip"
     } else {
-        format!("{n}.mp4")
+        container.name()
+    };
+    let default = if container.is_sequence() { "frames" } else { "film" };
+    let n = crate::records::clean_filename(name.unwrap_or(default));
+    let has = std::path::Path::new(&n).extension().is_some_and(|e| {
+        let e = e.to_string_lossy();
+        e.eq_ignore_ascii_case(ext) || (!container.is_sequence() && Container::from_extension(&e) == Some(container))
+    });
+    if has { n } else { format!("{n}.{ext}") }
+}
+
+/// Zips the files of `dir` (an image sequence and its sound) into `out`,
+/// stored as they are: PNG and EXR are compressed already.
+fn zip_dir(dir: &std::path::Path, out: &std::path::Path) -> std::io::Result<()> {
+    let mut names: Vec<_> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .map(|e| e.file_name())
+        .collect();
+    names.sort();
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(out)?);
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .large_file(true);
+    for n in names {
+        zip.start_file(n.to_string_lossy(), opts)
+            .map_err(std::io::Error::other)?;
+        std::io::copy(&mut std::fs::File::open(dir.join(&n))?, &mut zip)?;
     }
+    zip.finish().map_err(std::io::Error::other)?;
+    Ok(())
 }
 
 /// Removes a request's directory however the request ends.
@@ -235,6 +266,8 @@ impl Engine {
                 attempt_id: "1".into(),
             },
         };
+        let settings = output.settings();
+        let container = settings.container(output.named_path()).map_err(bad)?;
         let target = match (&output.uri, output.inline) {
             (Some(_), true) => return Err(bad("`output` takes `uri` or `inline`, not both")),
             (None, true) => Target::Inline,
@@ -244,7 +277,7 @@ impl Engine {
                 name: self.cfg.storage.name(&format!(
                     "renders/{}/{}",
                     crate::records::clean_filename(&attempt.render_id),
-                    output_name(output.name.as_deref())
+                    output_name(output.name.as_deref(), container)
                 )),
                 stored: true,
             },
@@ -274,9 +307,11 @@ impl Engine {
             }
         };
         let p = self.prepare(&req.document, output.range)?;
+        // What gets written, checked before anything is fetched.
+        let enc = settings.resolve(output.named_path(), &p.doc.format).map_err(bad)?;
         // Every store call ends by the deadline too, not only the export.
         self.stores.set_deadline(Some(deadline));
-        let result = self.render_by(req, &output, grants, ctx, target, Some(attempt), deadline, p);
+        let result = self.render_by(req, &output, enc, grants, ctx, target, Some(attempt), deadline, p);
         self.stores.set_deadline(None);
         // Whatever failed after the deadline failed because of it.
         match result {
@@ -323,6 +358,7 @@ impl Engine {
         &mut self,
         req: RenderRequest,
         output: &Output,
+        enc: ExportTarget,
         grants: &Grants,
         ctx: &mut Ctx,
         target: Target,
@@ -370,17 +406,17 @@ impl Engine {
             Target::Inline => None,
         };
         self.pin_fonts(&resolved)?;
-        // Render.
-        let out = dir.join("out.mp4");
+        // Render (a sequence into a folder, zipped after).
+        let sequence = enc.container.is_sequence();
+        let out = if sequence {
+            dir.join("frames").join("")
+        } else {
+            dir.join(format!("out.{}", enc.container.name()))
+        };
         let opts = ultrafast_live::export::ExportOptions {
-            codec: match output.codec {
-                Codec::H264 => ultrafast_media::Codec::H264,
-                Codec::Hevc => ultrafast_media::Codec::Hevc,
-            },
-            bitrate: output.bitrate,
+            settings: output.settings(),
             start: p.from,
             end: Some(p.to),
-            audio: output.audio,
             deadline: Some(deadline),
         };
         let t_render = Instant::now();
@@ -389,7 +425,7 @@ impl Engine {
         let report = self.guarded(|r| {
             r.set_base_dir(&dir);
             r.prefetch_fonts(&doc);
-            ultrafast_live::export::export_video(r, &doc, &out, opts, |done, total| {
+            ultrafast_live::export::export_target(r, &doc, &out, enc, opts, |done, total| {
                 if done > 0 && first_frame.is_none() {
                     first_frame = Some(t_render.elapsed().as_secs_f64());
                 }
@@ -412,17 +448,46 @@ impl Engine {
         self.renderer.unpin_fonts();
         let report = report?;
         let render_s = t_render.elapsed().as_secs_f64();
+        let out = if sequence {
+            let zipped = dir.join("out.zip");
+            zip_dir(&out, &zipped).map_err(|e| internal(&e))?;
+            zipped
+        } else {
+            out
+        };
+        let content_type = if sequence {
+            "application/zip"
+        } else {
+            enc.container.content_type()
+        };
         let hashes = crate::util::hash_file(&out).map_err(|e| internal(&e))?;
         let fmt = doc.format;
         let video = VideoInfo {
             frames: report.frames,
-            fps: fmt.fps,
-            width: fmt.width,
-            height: fmt.height,
+            fps: enc.fps,
+            width: enc.width,
+            height: enc.height,
             duration: p.to - p.from,
-            codec: output.codec,
-            audio: output.audio,
+            codec: enc.codec_name(),
+            audio: output.audio && (enc.audio.is_some() || sequence),
             range: [p.from, p.to],
+            format: enc.container.name().into(),
+            quality: enc.quality,
+            alpha: enc.video.is_some_and(|v| v.alpha),
+        };
+        // Rendered minutes at the size written (sound alone counts as the
+        // smallest).
+        let billed = match enc.video {
+            Some(_) => ultrafast_graph::Format {
+                width: enc.width,
+                height: enc.height,
+                ..fmt
+            },
+            None => ultrafast_graph::Format {
+                width: 1,
+                height: 1,
+                ..fmt
+            },
         };
         let mut receipt = Receipt {
             receipt_version: 1,
@@ -433,7 +498,7 @@ impl Engine {
             frames: Some(report.frames),
             bytes: Some(hashes.size),
             sha256: Some(hashes.sha256.clone()),
-            minutes: Some(round3(ultrafast_live::estimate::price(&fmt, p.from, p.to).minutes)),
+            minutes: Some(round3(ultrafast_live::estimate::price(&billed, p.from, p.to).minutes)),
             status: "rendered".into(),
             attempt: attempt.clone(),
             object: None,
@@ -476,7 +541,7 @@ impl Engine {
                 }
                 let header = serde_json::to_string(&receipt).unwrap_or_default();
                 Ok(Reply::Bytes {
-                    content_type: "video/mp4",
+                    content_type,
                     body,
                     headers: vec![
                         ("X-Ultrafast-Receipt".into(), header),
@@ -515,10 +580,11 @@ impl Engine {
                 put(&mut meta, "sha256", hashes.sha256.clone());
                 put(&mut meta, "ultrafast-frames", receipt.video.frames.to_string());
                 put(&mut meta, "ultrafast-duration", format!("{}", receipt.video.duration));
-                put(&mut meta, "ultrafast-width", fmt.width.to_string());
-                put(&mut meta, "ultrafast-height", fmt.height.to_string());
-                put(&mut meta, "ultrafast-fps", format!("{}", fmt.fps));
-                put(&mut meta, "ultrafast-codec", output.codec.name().into());
+                put(&mut meta, "ultrafast-width", receipt.video.width.to_string());
+                put(&mut meta, "ultrafast-height", receipt.video.height.to_string());
+                put(&mut meta, "ultrafast-fps", format!("{}", receipt.video.fps));
+                put(&mut meta, "ultrafast-codec", receipt.video.codec.clone());
+                put(&mut meta, "ultrafast-format", receipt.video.format.clone());
                 put(&mut meta, "ultrafast-image-digest", self.cfg.image_digest.clone());
                 put(&mut meta, "ultrafast-version", format!("{VERSION}+{}", git()));
                 put(
@@ -532,7 +598,7 @@ impl Engine {
                 put(&mut meta, "ultrafast-created-at", crate::util::now_rfc3339());
                 let t_up = Instant::now();
                 let created = store
-                    .create(bucket, name, &out, "video/mp4", &meta, &hashes)
+                    .create(bucket, name, &out, content_type, &meta, &hashes)
                     .map_err(|e| store_down(store, &e))?;
                 let obj = match created {
                     Created::Done(o) => o,
@@ -660,13 +726,16 @@ impl Engine {
                         width: num("ultrafast-width") as u32,
                         height: num("ultrafast-height") as u32,
                         duration: num("ultrafast-duration"),
-                        codec: if get("ultrafast-codec") == "hevc" {
-                            Codec::Hevc
-                        } else {
-                            Codec::H264
-                        },
+                        codec: Some(get("ultrafast-codec"))
+                            .filter(|c| !c.is_empty())
+                            .unwrap_or_else(|| "h264".into()),
                         audio: true,
                         range: [0.0, num("ultrafast-duration")],
+                        format: Some(get("ultrafast-format"))
+                            .filter(|c| !c.is_empty())
+                            .unwrap_or_else(|| "mp4".into()),
+                        quality: Quality::Standard,
+                        alpha: false,
                     },
                     renderer: RendererInfo {
                         service: "ultrafast-service".into(),

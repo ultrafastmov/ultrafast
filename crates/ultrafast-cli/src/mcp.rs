@@ -100,8 +100,14 @@ impl Toolbox for Local {
                     .map(String::from)
                     .unwrap_or(format!("{stem}-{{row}}.mp4"));
                 let rows = core::batch_rows(a, Some(&dir))?;
+                let opts = core::export_options(a)?;
                 let s = self.session(&p)?;
                 let jobs = core::batch_jobs(&s.doc, &rows, &pattern)?;
+                for (i, (d, out)) in jobs.iter().enumerate() {
+                    opts.settings
+                        .resolve(Some(Path::new(out)), &d.format)
+                        .map_err(|e| format!("row {}: {e}", i + 1))?;
+                }
                 let mut done = Vec::new();
                 for (i, (d, out)) in jobs.iter().enumerate() {
                     let out = if Path::new(out).is_relative() {
@@ -112,9 +118,8 @@ impl Toolbox for Local {
                     if let Some(parent) = out.parent() {
                         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
                     }
-                    let rep =
-                        ultrafast_live::export::export_video(&mut s.renderer, d, &out, Default::default(), |_, _| {})
-                            .map_err(|e| format!("row {}: {e}", i + 1))?;
+                    let rep = ultrafast_live::export::export_video(&mut s.renderer, d, &out, opts, |_, _| {})
+                        .map_err(|e| format!("row {}: {e}", i + 1))?;
                     done.push(json!({ "row": i + 1, "out": out, "frames": rep.frames, "seconds": rep.seconds }));
                 }
                 Ok(json_text(&json!({ "videos": done })))
@@ -129,25 +134,36 @@ impl Toolbox for Local {
             }
             "ultrafast_export" => {
                 let out = PathBuf::from(arg(a, "out")?);
-                let codec = match a.get("codec").and_then(Value::as_str) {
-                    Some("hevc") | Some("h265") => ultrafast_media::Codec::Hevc,
-                    _ => ultrafast_media::Codec::H264,
-                };
-                let opts = ultrafast_live::export::ExportOptions {
-                    codec,
-                    bitrate: a.get("bitrate").and_then(Value::as_f64).map(|b| b as u64),
-                    ..Default::default()
-                };
+                let opts = core::export_options(a)?;
                 let s = self.session(&path(a)?)?;
                 let doc = s.doc.clone();
-                let rep = ultrafast_live::export::export_video(&mut s.renderer, &doc, &out, opts, |_, _| {})?;
-                Ok(text(format!(
-                    "exported {} frames in {:.2} s ({:.0} fps) -> {}",
-                    rep.frames,
-                    rep.seconds,
-                    rep.fps,
-                    out.display()
-                )))
+                // Every combination is checked before anything renders.
+                let target = opts.settings.resolve(Some(&out), &doc.format)?;
+                if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
+                    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+                }
+                let rep = ultrafast_live::export::export_target(&mut s.renderer, &doc, &out, target, opts, |_, _| {})?;
+                let t = rep.target;
+                Ok(text(if t.video.is_none() {
+                    format!(
+                        "exported {} sound in {:.2} s -> {}",
+                        t.label(),
+                        rep.seconds,
+                        out.display()
+                    )
+                } else {
+                    format!(
+                        "exported {} frames ({}x{} @ {} fps, {}) in {:.2} s ({:.0} fps) -> {}",
+                        rep.frames,
+                        t.width,
+                        t.height,
+                        (t.fps * 1000.0).round() / 1000.0,
+                        t.label(),
+                        rep.seconds,
+                        rep.fps,
+                        out.display()
+                    )
+                }))
             }
             "ultrafast_decompose" => {
                 let video = PathBuf::from(arg(a, "video")?);

@@ -182,6 +182,7 @@ fn main() -> Result<()> {
             "--live-edits",
             "--no-log",
             "--no-audio",
+            "--alpha",
             "--json",
             "--cloud",
         ];
@@ -625,19 +626,20 @@ fn main() -> Result<()> {
                     .or_else(|| pos.get(2).cloned())
                     .context("missing output path")?,
             );
-            let codec = match flag("--codec").as_deref() {
-                None | Some("h264") => ultrafast_media::Codec::H264,
-                Some("hevc") | Some("h265") => ultrafast_media::Codec::Hevc,
-                Some(c) => bail!("unknown codec `{c}` (h264 | hevc)"),
-            };
             let opts = ultrafast_live::export::ExportOptions {
-                codec,
-                bitrate: flag("--bitrate").map(|s| s.parse()).transpose()?,
+                settings: export_settings(&flag, &has)?,
                 start: flag("--from").map(|s| s.parse()).transpose()?.unwrap_or(0.0),
                 end: flag("--to").map(|s| s.parse()).transpose()?,
-                audio: !has("--no-audio"),
                 deadline: None,
             };
+            // Every combination is checked before anything renders.
+            let target = opts
+                .settings
+                .resolve(Some(&out), &doc.format)
+                .map_err(anyhow::Error::msg)?;
+            if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
+                std::fs::create_dir_all(dir)?;
+            }
             let workers: usize = flag("--workers").map(|s| s.parse()).transpose()?.unwrap_or(1);
             let mut last = Instant::now();
             let mut tick = |done: u64, total: u64| {
@@ -651,13 +653,8 @@ fn main() -> Result<()> {
                 let rep = ultrafast_live::export::export_parallel(&device, &path, &doc, &out, opts, workers, tick)
                     .map_err(anyhow::Error::msg)?;
                 println!(
-                    "exported {} frames ({}x{} @ {} fps) in {:.2} s = {:.0} fps with {workers} workers, {} readbacks -> {}",
-                    rep.frames,
-                    doc.format.width,
-                    doc.format.height,
-                    doc.format.fps,
-                    rep.seconds,
-                    rep.fps,
+                    "exported {} with {workers} workers, {} readbacks -> {}",
+                    export_summary(&rep),
                     rep.readbacks,
                     out.display()
                 );
@@ -666,20 +663,17 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             let mut r = renderer(&path)?;
-            let rep = ultrafast_live::export::export_video(&mut r, &doc, &out, opts, &mut tick)
+            let rep = ultrafast_live::export::export_target(&mut r, &doc, &out, target, opts, &mut tick)
                 .map_err(anyhow::Error::msg)?;
             println!(
-                "exported {} frames ({}x{} @ {} fps) in {:.2} s = {:.0} fps, {} readbacks -> {}",
-                rep.frames,
-                doc.format.width,
-                doc.format.height,
-                doc.format.fps,
-                rep.seconds,
-                rep.fps,
+                "exported {}, {} readbacks -> {}",
+                export_summary(&rep),
                 rep.readbacks,
                 out.display()
             );
-            println!("  {}", rep.timing.summary(rep.frames));
+            if rep.frames > 0 {
+                println!("  {}", rep.timing.summary(rep.frames));
+            }
             report_diagnostics(&r);
             print_pipelines(r.device());
         }
@@ -701,6 +695,7 @@ fn main() -> Result<()> {
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "film".into());
             let pattern = flag("--out").unwrap_or_else(|| format!("{stem}-{{row}}.mp4"));
+            let settings = export_settings(&flag, &has)?;
             // Every row's document first: a mistake in row 40 shows before
             // anything renders.
             let mut jobs = Vec::new();
@@ -715,6 +710,9 @@ fn main() -> Result<()> {
                     bail!("row {}: {}", i + 1, issues.join("; "));
                 }
                 let out = PathBuf::from(batch::output_name(&pattern, row, i));
+                settings
+                    .resolve(Some(&out), &d.format)
+                    .map_err(|e| anyhow::anyhow!("row {}: {e}", i + 1))?;
                 if jobs.iter().any(|(_, o): &(Document, PathBuf)| *o == out) {
                     bail!(
                         "row {}: writes {} again (put {{row}} or a column in --out)",
@@ -747,10 +745,7 @@ fn main() -> Result<()> {
                     std::fs::create_dir_all(dir)?;
                 }
                 let t1 = Instant::now();
-                let opts = ultrafast_live::export::ExportOptions {
-                    audio: !has("--no-audio"),
-                    ..Default::default()
-                };
+                let opts = ultrafast_live::export::ExportOptions::with(settings);
                 let rep = serve::guarded(&mut r, |r| {
                     ultrafast_live::export::export_video(r, d, out, opts, |_, _| {}).map_err(anyhow::Error::msg)
                 })
@@ -1294,6 +1289,34 @@ fn print_pipelines(device: &Device) {
     if loaded + compiled > 0 {
         println!("  pipelines: {loaded} from cache, {compiled} compiled ({secs:.1} s)");
     }
+}
+
+/// The export flags (`--format`, `--codec`, `--quality`, `--size`, ...)
+/// as settings.
+fn export_settings(
+    flag: &dyn Fn(&str) -> Option<String>,
+    has: &dyn Fn(&str) -> bool,
+) -> Result<ultrafast_live::output::Settings> {
+    ultrafast_live::output::Settings::from_flags(flag, has).map_err(anyhow::Error::msg)
+}
+
+/// What an export wrote, in one phrase: `348 frames (1080x1920 @ 30 fps,
+/// mp4 h264, standard) in 2.10 s = 166 fps`.
+fn export_summary(rep: &ultrafast_live::export::ExportReport) -> String {
+    let t = &rep.target;
+    if t.video.is_none() {
+        return format!("{} sound in {:.2} s", t.label(), rep.seconds);
+    }
+    format!(
+        "{} frames ({}x{} @ {} fps, {}) in {:.2} s = {:.0} fps",
+        rep.frames,
+        t.width,
+        t.height,
+        (t.fps * 1000.0).round() / 1000.0,
+        t.label(),
+        rep.seconds,
+        rep.fps
+    )
 }
 
 fn report_diagnostics(r: &Renderer) {

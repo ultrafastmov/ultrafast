@@ -91,9 +91,15 @@ impl ultrafast_mcp::http::Backend for Backend<'_> {
         self.svc.with_renderer(caller, doc, f).map_err(|e| e.message)
     }
 
-    fn render(&self, caller: &str, doc: serde_json::Value, codec: Option<&str>) -> Result<serde_json::Value, String> {
+    fn render(
+        &self,
+        caller: &str,
+        doc: serde_json::Value,
+        settings: ultrafast_live::output::Settings,
+        range: Option<[f64; 2]>,
+    ) -> Result<serde_json::Value, String> {
         self.svc
-            .render(caller, doc, codec, &self.base)
+            .render(caller, doc, settings, range, &self.base)
             .map(|r| serde_json::to_value(r).unwrap_or_default())
             .map_err(|e| e.message)
     }

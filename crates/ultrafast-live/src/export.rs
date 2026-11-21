@@ -1,48 +1,51 @@
-//! Video export.
+//! Export: a document to a video, an animated GIF, an image sequence or
+//! sound alone, in the container, codecs, quality level, size and frame
+//! rate its [`Settings`] ask for (see [`crate::output`]).
 //!
-//! - macOS / Metal: every frame is rendered on the GPU straight into the
-//!   hardware encoder's pixel buffers (no readback), a few frames in flight.
-//! - Linux / NVIDIA: every frame is rendered on the GPU straight into NV12
-//!   buffers shared with CUDA that NVENC encodes (no readback); `ffmpeg`
-//!   only muxes the compressed stream and the audio.
-//! - Elsewhere, or without NVENC: frames are read back and piped to
-//!   `ffmpeg` (using `h264_nvenc` / `hevc_nvenc` when ffmpeg has them).
-//!   Every readback is counted in the transfer stats.
+//! - H.264 and HEVC without alpha go through the hardware encoder with no
+//!   readback. On macOS / Metal every frame is rendered on the GPU straight
+//!   into the encoder's pixel buffers, a few frames in flight. On Linux and
+//!   Windows with NVIDIA every frame is rendered straight into NV12 buffers
+//!   shared with CUDA that NVENC encodes; `ffmpeg` only muxes the
+//!   compressed stream and the sound.
+//! - Everything else (ProRes, AV1, VP9, transparency, GIF, PNG and EXR
+//!   sequences), and H.264 / HEVC without those encoders, is read back and
+//!   piped to `ffmpeg`, which uses NVENC where it opens. Every readback is
+//!   counted in the transfer stats.
+//! - Sound alone is mixed and encoded without rendering a frame.
 
 #[cfg(any(all(target_os = "macos", not(feature = "vulkan")), target_os = "linux", windows))]
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use ultrafast_graph::Document;
-use ultrafast_media::Codec;
 #[cfg(all(target_os = "macos", not(feature = "vulkan")))]
 use ultrafast_media::Writer;
-use ultrafast_render::{Mode, Renderer};
+use ultrafast_render::{Mode, Readback, Renderer};
 
-#[derive(Debug, Clone, Copy)]
+use crate::ffmpeg::{self, Pixels};
+#[cfg(any(all(target_os = "macos", not(feature = "vulkan")), target_os = "linux", windows))]
+use crate::output::Rate;
+use crate::output::{Container, Quality, Settings, Target, VideoCodec};
+
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ExportOptions {
-    pub codec: Codec,
-    /// Bits per second; None picks a high-quality default for the format.
-    pub bitrate: Option<u64>,
+    /// What to write: format, codecs, quality, size, frame rate, sound.
+    pub settings: Settings,
     /// Range to export in seconds (default: the whole document).
     pub start: f64,
     pub end: Option<f64>,
-    /// Include the document's soundtrack.
-    pub audio: bool,
     /// Give up with [`DEADLINE_PASSED`] once this passes (a caller that
     /// stops waiting); checked before every frame.
     pub deadline: Option<Instant>,
 }
 
-impl Default for ExportOptions {
-    fn default() -> Self {
-        Self {
-            codec: Codec::H264,
-            bitrate: None,
-            start: 0.0,
-            end: None,
-            audio: true,
-            deadline: None,
+impl ExportOptions {
+    /// Default options with these settings.
+    pub fn with(settings: Settings) -> Self {
+        ExportOptions {
+            settings,
+            ..Default::default()
         }
     }
 }
@@ -61,11 +64,15 @@ impl ExportOptions {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ExportReport {
+    /// Frames written (none for sound alone).
     pub frames: u64,
     pub seconds: f64,
+    /// Frames rendered per second of wall time.
     pub fps: f64,
     pub readbacks: u64,
     pub timing: ExportTiming,
+    /// What was written: container, codecs, size and frame rate.
+    pub target: Target,
 }
 
 /// Where an export's wall time went, in seconds (summed over frames).
@@ -108,6 +115,49 @@ impl ExportTiming {
             self.upload_bytes as f64 / 1e6 / frames.max(1) as f64
         )
     }
+
+    fn add(&mut self, o: &ExportTiming) {
+        self.render_cpu += o.render_cpu;
+        self.gpu += o.gpu;
+        self.gpu_wait += o.gpu_wait;
+        self.encode += o.encode;
+        self.encode_wait += o.encode_wait;
+        self.media_wait += o.media_wait;
+        self.image_wait += o.image_wait;
+        self.upload_bytes += o.upload_bytes;
+    }
+}
+
+/// The output's frames: `total` of them at `fps`, the first at frame
+/// `first` of the output's own clock. Times are seconds of the document,
+/// so another frame rate plays the film at the same speed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Clock {
+    pub fps: f64,
+    pub first: u64,
+    pub total: u64,
+}
+
+impl Clock {
+    pub fn new(fps: f64, start: f64, end: f64) -> Clock {
+        let first = (start.max(0.0) * fps).round() as u64;
+        let last = (end * fps).round() as u64;
+        Clock {
+            fps,
+            first,
+            total: last.saturating_sub(first),
+        }
+    }
+
+    /// The document time of output frame `i`.
+    pub fn time(&self, i: u64) -> f64 {
+        (self.first + i) as f64 / self.fps
+    }
+
+    /// Where the frames start and end, in seconds.
+    pub fn span(&self) -> (f64, f64) {
+        (self.time(0), self.time(self.total))
+    }
 }
 
 /// The mp4 video clock for a frame rate: (timescale, ticks per frame).
@@ -122,182 +172,68 @@ fn mp4_clock(fps: f64) -> (u32, u32) {
     }
 }
 
-/// Frames encoded on the GPU before the CPU waits for the oldest.
-#[cfg(all(target_os = "macos", not(feature = "vulkan")))]
-const IN_FLIGHT: usize = 3;
+/// A frame rate as ffmpeg takes it: `30000/1001` for NTSC rates.
+fn rate_arg(fps: f64) -> String {
+    let (scale, ticks) = mp4_clock(fps);
+    if ticks == 1001 {
+        format!("{scale}/1001")
+    } else {
+        format!("{fps}")
+    }
+}
 
-/// Video frames of audio the writer is fed ahead of the video.
-#[cfg(all(target_os = "macos", not(feature = "vulkan")))]
-const AUDIO_LEAD: u64 = 12;
-
-#[cfg(all(target_os = "macos", not(feature = "vulkan")))]
+/// Exports `doc` to `path` as `opts.settings` ask (the format from the
+/// extension unless they name one).
 pub fn export_video(
     renderer: &mut Renderer,
     doc: &Document,
     path: &Path,
+    opts: ExportOptions,
+    progress: impl FnMut(u64, u64),
+) -> Result<ExportReport, String> {
+    let target = opts.settings.resolve(Some(path), &doc.format)?;
+    export_target(renderer, doc, path, target, opts, progress)
+}
+
+/// Exports `doc` to `path` as an already resolved `target`.
+pub fn export_target(
+    renderer: &mut Renderer,
+    doc: &Document,
+    path: &Path,
+    target: Target,
     opts: ExportOptions,
     mut progress: impl FnMut(u64, u64),
 ) -> Result<ExportReport, String> {
     let fmt = doc.format;
     let end = opts.end.unwrap_or(fmt.duration).min(fmt.duration);
-    let first = (opts.start * fmt.fps).round() as u64;
-    let last = (end * fmt.fps).round() as u64;
-    let total = last.saturating_sub(first);
-    let prev_mode = renderer.mode();
-    renderer.set_mode(Mode::Exact);
-    renderer.set_sequential(true);
-    let before = renderer.device().stats();
-    let media0 = renderer.media_wait();
-    let image0 = renderer.image_wait();
-    let start = Instant::now();
-    let mix = if opts.audio {
-        // Only what these frames play of each source gets decoded.
-        let r = ultrafast_media::audio::RATE as f64;
-        let span = (
-            (fmt.time_of(first) * r).round() as usize,
-            (fmt.time_of(last) * r).round() as usize,
-        );
-        crate::audio_mix::AudioMix::from_doc_range(doc, renderer.base_dir(), Some(span))?
+    let clock = Clock::new(target.fps, opts.start, end);
+    // The quality level's motion blur, on a copy of the document.
+    let tuned;
+    let mb = target.quality.motion_blur(fmt.motion_blur);
+    let doc = if mb != fmt.motion_blur.filter(|m| m.samples > 1) {
+        let mut d = doc.fork();
+        d.format.motion_blur = mb;
+        tuned = d;
+        &tuned
     } else {
-        None
+        doc
     };
-    let mut writer = Writer::create(
-        renderer.device(),
-        path,
-        fmt.width,
-        fmt.height,
-        fmt.fps,
-        opts.codec,
-        opts.bitrate,
-        mix.is_some(),
-    )
-    .map_err(|e| e.to_string())?;
-    // Audio for video frame `i`, appended right after it so the writer can
-    // interleave.
-    let rate = ultrafast_media::audio::RATE as f64;
-    let audio_for = |i: u64| -> Option<Vec<f32>> {
-        let mix = mix.as_ref()?;
-        let a = (fmt.time_of(first + i) * rate).round() as usize;
-        let b = (fmt.time_of(first + i + 1) * rate).round() as usize;
-        Some(mix.render(a, b - a))
-    };
-    let mut inflight = VecDeque::new();
-    let mut timing = ExportTiming::default();
-    // The writer interleaves audio and video and stops taking one while the
-    // other lags, so audio is kept a little ahead of the video frames.
-    let mut audio_next = 0u64;
-    let push = |writer: &mut Writer,
-                frame: &ultrafast_media::macos::MappedFrame,
-                idx: u64,
-                audio_next: &mut u64|
-     -> Result<(), String> {
-        let waited = Instant::now();
-        loop {
-            // If video has been refused a while, let audio run further ahead.
-            let lead = if waited.elapsed().as_millis() > 100 {
-                total
-            } else {
-                AUDIO_LEAD
-            };
-            while mix.is_some() && *audio_next < total && *audio_next <= idx + lead && writer.audio_ready() {
-                if let Some(pcm) = audio_for(*audio_next) {
-                    writer.append_audio(&pcm).map_err(|e| e.to_string())?;
-                }
-                *audio_next += 1;
-                if *audio_next == total {
-                    writer.finish_audio();
-                }
-            }
-            if writer.video_ready() || mix.is_none() {
-                return writer.append(frame, idx).map_err(|e| e.to_string());
-            }
-            if waited.elapsed().as_secs() > 20 {
-                return Err(format!(
-                    "the encoder stopped taking frames (video frame {idx}, audio frame {audio_next}, audio ready {}): {}",
-                    writer.audio_ready(),
-                    writer.failure().unwrap_or_default()
-                ));
-            }
-            std::thread::sleep(std::time::Duration::from_micros(200));
-        }
-    };
-    let result = (|| -> Result<(), String> {
-        for i in 0..total {
-            opts.check_deadline()?;
-            let frame = writer.frame().map_err(|e| e.to_string())?;
-            let t = fmt.time_of(first + i);
-            let c0 = Instant::now();
-            let (sub, _) = renderer
-                .submit_frame_with(doc, t, |o| {
-                    let mut p = o.header.to_vec();
-                    p.extend(o.origin);
-                    // Opaque output: flatten over black.
-                    p.push(1.0);
-                    o.list
-                        .dispatch(&o.kernels.utility("k_encode_srgb8"), &frame.texture, &[o.texture], &p);
-                })
-                .map_err(|e| e.to_string())?;
-            timing.render_cpu += c0.elapsed().as_secs_f64();
-            inflight.push_back((sub, frame, i));
-            while inflight.len() >= IN_FLIGHT {
-                let (sub, frame, idx) = inflight.pop_front().unwrap();
-                let w0 = Instant::now();
-                timing.gpu += sub.wait().map_err(|e| e.to_string())?.gpu_ms / 1000.0;
-                timing.gpu_wait += w0.elapsed().as_secs_f64();
-                let e0 = Instant::now();
-                push(&mut writer, &frame, idx, &mut audio_next)?;
-                timing.encode += e0.elapsed().as_secs_f64();
-                progress(idx + 1, total);
-            }
-        }
-        while let Some((sub, frame, idx)) = inflight.pop_front() {
-            let w0 = Instant::now();
-            timing.gpu += sub.wait().map_err(|e| e.to_string())?.gpu_ms / 1000.0;
-            timing.gpu_wait += w0.elapsed().as_secs_f64();
-            let e0 = Instant::now();
-            push(&mut writer, &frame, idx, &mut audio_next)?;
-            timing.encode += e0.elapsed().as_secs_f64();
-            progress(idx + 1, total);
-        }
-        // The rest of the audio.
-        while mix.is_some() && audio_next < total {
-            if let Some(pcm) = audio_for(audio_next) {
-                writer.append_audio(&pcm).map_err(|e| e.to_string())?;
-            }
-            audio_next += 1;
-        }
-        Ok(())
-    })();
-    renderer.set_mode(prev_mode);
-    renderer.set_sequential(false);
-    result?;
-    writer.finish().map_err(|e| e.to_string())?;
-    let seconds = start.elapsed().as_secs_f64();
-    let stats = renderer.device().stats() - before;
-    timing.media_wait = renderer.media_wait() - media0;
-    timing.image_wait = renderer.image_wait() - image0;
-    timing.upload_bytes = stats.upload_bytes;
-    Ok(ExportReport {
-        frames: total,
-        seconds,
-        fps: total as f64 / seconds.max(1e-9),
-        readbacks: stats.readbacks,
-        timing,
-    })
-}
-
-#[cfg(not(all(target_os = "macos", not(feature = "vulkan"))))]
-#[cfg_attr(not(any(target_os = "linux", windows)), allow(unused_mut))]
-pub fn export_video(
-    renderer: &mut Renderer,
-    doc: &Document,
-    path: &Path,
-    opts: ExportOptions,
-    mut progress: impl FnMut(u64, u64),
-) -> Result<ExportReport, String> {
+    if !target.native_size(&fmt) {
+        return Err(format!(
+            "exporting at {}x{} (the document is {}x{}) needs a renderer that draws at other densities; not yet",
+            target.width, target.height, fmt.width, fmt.height
+        ));
+    }
+    if target.video.is_none() {
+        return export_audio(renderer.base_dir(), doc, path, target, clock);
+    }
+    #[cfg(all(target_os = "macos", not(feature = "vulkan")))]
+    if metal::takes(&target, &opts.settings) {
+        return metal::export(renderer, doc, path, target, clock, opts, progress);
+    }
     #[cfg(any(target_os = "linux", windows))]
-    if std::env::var_os("ULTRAFAST_NVENC").is_none_or(|v| v != "0") {
-        match nvenc::export(renderer, doc, path, opts, &mut progress) {
+    if nvenc::takes(&target) && std::env::var_os("ULTRAFAST_NVENC").is_none_or(|v| v != "0") {
+        match nvenc::export(renderer, doc, path, target, clock, opts, &mut progress) {
             Ok(r) => return Ok(r),
             Err(nvenc::Error::Unavailable(e)) => {
                 eprintln!("ultrafast: NVENC unavailable ({e}); exporting through ffmpeg with readbacks")
@@ -305,94 +241,185 @@ pub fn export_video(
             Err(nvenc::Error::Failed(e)) => return Err(e),
         }
     }
-    export_ffmpeg(renderer, doc, path, opts, progress)
+    export_ffmpeg(renderer, doc, path, target, clock, opts, &mut progress)
 }
 
-/// The document's sound for frames `first..end` as a temporary WAV file
-/// (None without audio).
-fn audio_wav_in(base: &Path, doc: &Document, first: u64, end: f64) -> Result<Option<std::path::PathBuf>, String> {
+/// The bitrate a hardware encoder without constant quality is given: about
+/// 0.12 bits a pixel a frame for H.264 at standard quality, less for HEVC,
+/// scaled by the quality level.
+#[cfg_attr(
+    not(any(all(target_os = "macos", not(feature = "vulkan")), target_os = "linux", windows)),
+    allow(dead_code)
+)]
+fn hardware_bitrate(t: &Target) -> u64 {
+    let bpp = match t.codec() {
+        Some(VideoCodec::Hevc) => 0.08,
+        _ => 0.12,
+    };
+    let scale = match t.quality {
+        Quality::Draft => 0.4,
+        Quality::Standard => 1.0,
+        Quality::High => 1.6,
+        Quality::Master => 2.5,
+    };
+    (t.width as f64 * t.height as f64 * t.fps * bpp * scale) as u64
+}
+
+/// The document's sound over `from..to` seconds as a temporary 32-bit
+/// float WAV (None when it has none).
+fn audio_wav(base: &Path, doc: &Document, (from, to): (f64, f64)) -> Result<Option<PathBuf>, String> {
     let rate = ultrafast_media::audio::RATE as f64;
-    let a = (doc.format.time_of(first) * rate).round() as usize;
-    let b = (end * rate).round() as usize;
+    let a = (from * rate).round() as usize;
+    let b = (to * rate).round() as usize;
     // Only what these frames play of each source gets decoded.
     let Some(mix) = crate::audio_mix::AudioMix::from_doc_range(doc, base, Some((a, b)))? else {
         return Ok(None);
     };
-    let wav = std::env::temp_dir().join(format!("ultrafast-export-{}.wav", std::process::id()));
-    let pcm = ultrafast_media::audio::Pcm {
-        samples: mix.render(a, b.saturating_sub(a)),
-    };
-    ultrafast_media::audio::write_wav(&wav, &pcm).map_err(|e| e.to_string())?;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let wav = std::env::temp_dir().join(format!(
+        "ultrafast-export-{}-{}.wav",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    write_wav_f32(&wav, &mix.render(a, b.saturating_sub(a))).map_err(|e| e.to_string())?;
     Ok(Some(wav))
 }
 
-#[cfg(not(all(target_os = "macos", not(feature = "vulkan"))))]
-fn audio_wav(renderer: &Renderer, doc: &Document, first: u64, end: f64) -> Result<Option<std::path::PathBuf>, String> {
-    audio_wav_in(renderer.base_dir(), doc, first, end)
-}
-
-/// Whether ffmpeg can open `encoder` here (one tiny frame, checked once per
-/// encoder per process).
-#[cfg(not(all(target_os = "macos", not(feature = "vulkan"))))]
-fn ffmpeg_encoder_opens(encoder: &str) -> bool {
-    use std::collections::BTreeMap;
-    use std::sync::{Mutex, OnceLock};
-    static SEEN: OnceLock<Mutex<BTreeMap<String, bool>>> = OnceLock::new();
-    let seen = SEEN.get_or_init(Default::default);
-    if let Some(&ok) = seen.lock().unwrap().get(encoder) {
-        return ok;
+/// Interleaved float samples as a WAV (IEEE float, the mix's rate and
+/// channels): what every encoder reads without losing bits.
+fn write_wav_f32(path: &Path, samples: &[f32]) -> std::io::Result<()> {
+    let ch = ultrafast_media::audio::CHANNELS as u16;
+    let rate = ultrafast_media::audio::RATE;
+    let data = (samples.len() * 4) as u32;
+    let mut f = Vec::with_capacity(44 + data as usize);
+    f.extend(b"RIFF");
+    f.extend((36 + data).to_le_bytes());
+    f.extend(b"WAVEfmt ");
+    f.extend(16u32.to_le_bytes());
+    f.extend(3u16.to_le_bytes());
+    f.extend(ch.to_le_bytes());
+    f.extend(rate.to_le_bytes());
+    f.extend((rate * ch as u32 * 4).to_le_bytes());
+    f.extend((ch * 4).to_le_bytes());
+    f.extend(32u16.to_le_bytes());
+    f.extend(b"data");
+    f.extend(data.to_le_bytes());
+    for s in samples {
+        f.extend(s.to_le_bytes());
     }
-    let ok = std::process::Command::new("ffmpeg")
-        .args(["-hide_banner", "-loglevel", "quiet", "-nostdin", "-f", "lavfi", "-i"])
-        .args([
-            "color=size=256x256:duration=0.04",
-            "-frames:v",
-            "1",
-            "-c:v",
-            encoder,
-            "-f",
-            "null",
-            "-",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    seen.lock().unwrap().insert(encoder.to_string(), ok);
-    ok
+    std::fs::write(path, f)
 }
 
-#[cfg(not(all(target_os = "macos", not(feature = "vulkan"))))]
+/// Runs ffmpeg with `args`, naming it in the error.
+fn run_ffmpeg(args: &[String], what: &str) -> Result<(), String> {
+    let status = std::process::Command::new("ffmpeg")
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .status()
+        .map_err(|e| format!("ffmpeg is required to {what}: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("ffmpeg ({what}) failed ({status})"))
+    }
+}
+
+/// Where a sequence's sound goes: `audio.wav` in its folder.
+fn sidecar_path(path: &Path, t: &Target) -> PathBuf {
+    let pattern = crate::output::sequence_pattern(path, t.container);
+    Path::new(&pattern).parent().unwrap_or(Path::new(".")).join("audio.wav")
+}
+
+/// Writes the document's sound beside an image sequence (as editors take
+/// it), when it has some and sound wasn't turned off.
+fn write_sidecar(
+    base: &Path,
+    doc: &Document,
+    path: &Path,
+    t: &Target,
+    clock: Clock,
+    s: &Settings,
+) -> Result<(), String> {
+    if s.audio == Some(false) {
+        return Ok(());
+    }
+    let Some(wav) = audio_wav(base, doc, clock.span())? else {
+        return Ok(());
+    };
+    let out = sidecar_path(path, t);
+    let args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y", "-i"]
+        .map(String::from)
+        .into_iter()
+        .chain([wav.to_string_lossy().into_owned()])
+        .chain(["-c:a", "pcm_s24le"].map(String::from))
+        .chain([out.to_string_lossy().into_owned()])
+        .collect();
+    let r = run_ffmpeg(&args, "write the sequence's sound");
+    let _ = std::fs::remove_file(&wav);
+    r
+}
+
+/// Sound alone: the mix, encoded; nothing rendered.
+fn export_audio(base: &Path, doc: &Document, path: &Path, t: Target, clock: Clock) -> Result<ExportReport, String> {
+    let start = Instant::now();
+    let wav = audio_wav(base, doc, clock.span())?.ok_or("the document has no sound to export")?;
+    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y", "-i"]
+        .map(String::from)
+        .to_vec();
+    args.push(wav.to_string_lossy().into_owned());
+    args.extend(ffmpeg::audio_args(&t));
+    args.extend(ffmpeg::mux_args(&t, 0));
+    args.push(path.to_string_lossy().into_owned());
+    let r = run_ffmpeg(&args, "encode the sound");
+    let _ = std::fs::remove_file(&wav);
+    r?;
+    Ok(ExportReport {
+        frames: 0,
+        seconds: start.elapsed().as_secs_f64(),
+        fps: 0.0,
+        readbacks: 0,
+        timing: ExportTiming::default(),
+        target: t,
+    })
+}
+
+/// Frames read back and piped to ffmpeg: every codec, any platform.
 fn export_ffmpeg(
     renderer: &mut Renderer,
     doc: &Document,
     path: &Path,
+    t: Target,
+    clock: Clock,
     opts: ExportOptions,
-    mut progress: impl FnMut(u64, u64),
+    progress: &mut dyn FnMut(u64, u64),
 ) -> Result<ExportReport, String> {
     use std::io::Write;
-    let fmt = doc.format;
-    let end = opts.end.unwrap_or(fmt.duration).min(fmt.duration);
-    let first = (opts.start * fmt.fps).round() as u64;
-    let total = ((end * fmt.fps).round() as u64).saturating_sub(first);
-    let encoders = std::process::Command::new("ffmpeg")
-        .args(["-hide_banner", "-encoders"])
+    let v = t.video.expect("a picture");
+    let pixels = Pixels::for_target(&t);
+    let readback = match pixels {
+        Pixels::Rgba8 => Readback::Srgb8,
+        Pixels::Rgba16fSrgb => Readback::SrgbHalf,
+        Pixels::Rgba16fLinear => Readback::LinearHalf,
+    };
+    std::process::Command::new("ffmpeg")
+        .arg("-version")
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .map_err(|e| format!("ffmpeg is required for export on this backend: {e}"))?;
-    let (hw, sw) = match opts.codec {
-        Codec::H264 => ("h264_nvenc", "libx264"),
-        Codec::Hevc => ("hevc_nvenc", "libx265"),
-    };
-    // Distro ffmpeg builds list NVENC even without an NVIDIA driver, so it
-    // is used only once a one-frame encode shows it opens.
-    let codec = if encoders.contains(hw) && ffmpeg_encoder_opens(hw) {
-        hw
+        .map_err(|e| format!("ffmpeg is required to export {}: {e}", t.codec_name()))?;
+    let encoder = ffmpeg::video_encoder(v.codec, &ffmpeg::encoder_opens);
+    let out = if t.container.is_sequence() {
+        let pattern = crate::output::sequence_pattern(path, t.container);
+        if let Some(dir) = Path::new(&pattern).parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        }
+        pattern
     } else {
-        sw
+        path.to_string_lossy().into_owned()
     };
-    let size = format!("{}x{}", fmt.width, fmt.height);
-    let rate = format!("{}", fmt.fps);
+    let wav = match t.audio {
+        Some(_) => audio_wav(renderer.base_dir(), doc, clock.span())?,
+        None => None,
+    };
     let mut args: Vec<String> = [
         "-hide_banner",
         "-loglevel",
@@ -401,52 +428,27 @@ fn export_ffmpeg(
         "-f",
         "rawvideo",
         "-pix_fmt",
-        "rgba",
+        pixels.ffmpeg_name(),
         "-s",
-        &size,
+        &format!("{}x{}", t.width, t.height),
         "-r",
-        &rate,
+        &rate_arg(t.fps),
         "-i",
         "-",
-        "-c:v",
-        codec,
-        "-pix_fmt",
-        "yuv420p",
-        "-colorspace",
-        "bt709",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
-    if let Some(b) = opts.bitrate {
-        args.extend(["-b:v".to_string(), b.to_string()]);
-    }
-    // Sound: the document's audio mixed to a temporary WAV, muxed as AAC.
-    let wav = if opts.audio {
-        audio_wav(renderer, doc, first, end)?
-    } else {
-        None
-    };
     if let Some(wav) = &wav {
-        let at = args.iter().position(|a| a == "-c:v").unwrap();
-        args.splice(
-            at..at,
-            [
-                "-i".to_string(),
-                wav.to_string_lossy().into_owned(),
-                "-map".into(),
-                "0:v".into(),
-                "-map".into(),
-                "1:a".into(),
-            ],
-        );
-        args.extend(["-c:a", "aac", "-b:a", "192k", "-shortest"].map(String::from));
+        args.extend(["-i".to_string(), wav.to_string_lossy().into_owned()]);
+        args.extend(["-map", "0:v", "-map", "1:a"].map(String::from));
     }
-    args.push(path.to_string_lossy().into_owned());
+    args.extend(ffmpeg::video_args(&t, encoder));
+    if wav.is_some() {
+        args.extend(ffmpeg::audio_args(&t));
+    }
+    args.extend(ffmpeg::mux_args(&t, clock.first));
+    args.push(out);
     let mut child = std::process::Command::new("ffmpeg")
         .args(&args)
         .stdin(std::process::Stdio::piped())
@@ -462,17 +464,17 @@ fn export_ffmpeg(
     let mut stdin = child.stdin.take().unwrap();
     let mut timing = ExportTiming::default();
     let result = (|| -> Result<(), String> {
-        for i in 0..total {
+        for i in 0..clock.total {
             opts.check_deadline()?;
             let c0 = Instant::now();
             let (px, _) = renderer
-                .render_rgba8(doc, fmt.time_of(first + i))
+                .render_readback(doc, clock.time(i), readback, !v.alpha)
                 .map_err(|e| e.to_string())?;
             timing.render_cpu += c0.elapsed().as_secs_f64();
             let e0 = Instant::now();
             stdin.write_all(&px).map_err(|e| e.to_string())?;
             timing.encode += e0.elapsed().as_secs_f64();
-            progress(i + 1, total);
+            progress(i + 1, clock.total);
         }
         Ok(())
     })();
@@ -486,9 +488,12 @@ fn export_ffmpeg(
     // A dead ffmpeg shows up first as a broken pipe: name ffmpeg instead.
     match (result, status.success()) {
         (Err(e), true) => return Err(e),
-        (Err(e), false) => return Err(format!("ffmpeg failed ({status}): {e}")),
-        (Ok(()), false) => return Err(format!("ffmpeg failed ({status})")),
+        (Err(e), false) => return Err(format!("ffmpeg ({encoder}) failed ({status}): {e}")),
+        (Ok(()), false) => return Err(format!("ffmpeg ({encoder}) failed ({status})")),
         (Ok(()), true) => {}
+    }
+    if t.container.is_sequence() {
+        write_sidecar(renderer.base_dir(), doc, path, &t, clock, &opts.settings)?;
     }
     let seconds = start.elapsed().as_secs_f64();
     let stats = renderer.device().stats() - before;
@@ -496,12 +501,199 @@ fn export_ffmpeg(
     timing.image_wait = renderer.image_wait() - image0;
     timing.upload_bytes = stats.upload_bytes;
     Ok(ExportReport {
-        frames: total,
+        frames: clock.total,
         seconds,
-        fps: total as f64 / seconds.max(1e-9),
+        fps: clock.total as f64 / seconds.max(1e-9),
         readbacks: stats.readbacks,
         timing,
+        target: t,
     })
+}
+
+/// Zero-readback export through AVFoundation (macOS, Metal).
+#[cfg(all(target_os = "macos", not(feature = "vulkan")))]
+mod metal {
+    use super::*;
+
+    /// Frames encoded on the GPU before the CPU waits for the oldest.
+    const IN_FLIGHT: usize = 3;
+
+    /// Video frames of audio the writer is fed ahead of the video.
+    const AUDIO_LEAD: u64 = 12;
+
+    /// What the hardware writer makes: H.264 or HEVC without alpha in MP4
+    /// or MOV, with AAC sound. An explicit CRF goes to ffmpeg (the writer
+    /// takes a bitrate).
+    pub fn takes(t: &Target, s: &Settings) -> bool {
+        let Some(v) = t.video else { return false };
+        matches!(v.codec, VideoCodec::H264 | VideoCodec::Hevc)
+            && !v.alpha
+            && matches!(t.container, Container::Mp4 | Container::Mov)
+            && s.crf.is_none()
+            && t.audio.is_none_or(|a| a.codec == crate::output::AudioCodec::Aac)
+    }
+
+    pub fn export(
+        renderer: &mut Renderer,
+        doc: &Document,
+        path: &Path,
+        t: Target,
+        clock: Clock,
+        opts: ExportOptions,
+        mut progress: impl FnMut(u64, u64),
+    ) -> Result<ExportReport, String> {
+        let v = t.video.expect("a picture");
+        let codec = match v.codec {
+            VideoCodec::Hevc => ultrafast_media::Codec::Hevc,
+            _ => ultrafast_media::Codec::H264,
+        };
+        let bitrate = match v.rate {
+            Some(Rate::Bitrate(b)) => b,
+            _ => hardware_bitrate(&t),
+        };
+        let total = clock.total;
+        let prev_mode = renderer.mode();
+        renderer.set_mode(Mode::Exact);
+        renderer.set_sequential(true);
+        let before = renderer.device().stats();
+        let media0 = renderer.media_wait();
+        let image0 = renderer.image_wait();
+        let start = Instant::now();
+        let mix = if t.audio.is_some() {
+            // Only what these frames play of each source gets decoded.
+            let r = ultrafast_media::audio::RATE as f64;
+            let (a, b) = clock.span();
+            let span = ((a * r).round() as usize, (b * r).round() as usize);
+            crate::audio_mix::AudioMix::from_doc_range(doc, renderer.base_dir(), Some(span))?
+        } else {
+            None
+        };
+        let audio_bits = t.audio.and_then(|a| a.bitrate).unwrap_or(192_000) as u32;
+        let mut writer = Writer::create(
+            renderer.device(),
+            path,
+            t.width,
+            t.height,
+            t.fps,
+            codec,
+            Some(bitrate),
+            mix.is_some().then_some(audio_bits),
+        )
+        .map_err(|e| e.to_string())?;
+        // Audio for video frame `i`, appended right after it so the writer
+        // can interleave.
+        let rate = ultrafast_media::audio::RATE as f64;
+        let audio_for = |i: u64| -> Option<Vec<f32>> {
+            let mix = mix.as_ref()?;
+            let a = (clock.time(i) * rate).round() as usize;
+            let b = (clock.time(i + 1) * rate).round() as usize;
+            Some(mix.render(a, b - a))
+        };
+        let mut inflight = VecDeque::new();
+        let mut timing = ExportTiming::default();
+        // The writer interleaves audio and video and stops taking one while
+        // the other lags, so audio is kept a little ahead of the video.
+        let mut audio_next = 0u64;
+        let push = |writer: &mut Writer,
+                    frame: &ultrafast_media::macos::MappedFrame,
+                    idx: u64,
+                    audio_next: &mut u64|
+         -> Result<(), String> {
+            let waited = Instant::now();
+            loop {
+                // If video has been refused a while, let audio run further
+                // ahead.
+                let lead = if waited.elapsed().as_millis() > 100 {
+                    total
+                } else {
+                    AUDIO_LEAD
+                };
+                while mix.is_some() && *audio_next < total && *audio_next <= idx + lead && writer.audio_ready() {
+                    if let Some(pcm) = audio_for(*audio_next) {
+                        writer.append_audio(&pcm).map_err(|e| e.to_string())?;
+                    }
+                    *audio_next += 1;
+                    if *audio_next == total {
+                        writer.finish_audio();
+                    }
+                }
+                if writer.video_ready() || mix.is_none() {
+                    return writer.append(frame, idx).map_err(|e| e.to_string());
+                }
+                if waited.elapsed().as_secs() > 20 {
+                    return Err(format!(
+                        "the encoder stopped taking frames (video frame {idx}, audio frame {audio_next}, audio ready {}): {}",
+                        writer.audio_ready(),
+                        writer.failure().unwrap_or_default()
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_micros(200));
+            }
+        };
+        let result = (|| -> Result<(), String> {
+            for i in 0..total {
+                opts.check_deadline()?;
+                let frame = writer.frame().map_err(|e| e.to_string())?;
+                let c0 = Instant::now();
+                let (sub, _) = renderer
+                    .submit_frame_with(doc, clock.time(i), |o| {
+                        let mut p = o.header.to_vec();
+                        p.extend(o.origin);
+                        // Opaque output: flatten over black.
+                        p.push(1.0);
+                        o.list
+                            .dispatch(&o.kernels.utility("k_encode_srgb8"), &frame.texture, &[o.texture], &p);
+                    })
+                    .map_err(|e| e.to_string())?;
+                timing.render_cpu += c0.elapsed().as_secs_f64();
+                inflight.push_back((sub, frame, i));
+                while inflight.len() >= IN_FLIGHT {
+                    let (sub, frame, idx) = inflight.pop_front().unwrap();
+                    let w0 = Instant::now();
+                    timing.gpu += sub.wait().map_err(|e| e.to_string())?.gpu_ms / 1000.0;
+                    timing.gpu_wait += w0.elapsed().as_secs_f64();
+                    let e0 = Instant::now();
+                    push(&mut writer, &frame, idx, &mut audio_next)?;
+                    timing.encode += e0.elapsed().as_secs_f64();
+                    progress(idx + 1, total);
+                }
+            }
+            while let Some((sub, frame, idx)) = inflight.pop_front() {
+                let w0 = Instant::now();
+                timing.gpu += sub.wait().map_err(|e| e.to_string())?.gpu_ms / 1000.0;
+                timing.gpu_wait += w0.elapsed().as_secs_f64();
+                let e0 = Instant::now();
+                push(&mut writer, &frame, idx, &mut audio_next)?;
+                timing.encode += e0.elapsed().as_secs_f64();
+                progress(idx + 1, total);
+            }
+            // The rest of the audio.
+            while mix.is_some() && audio_next < total {
+                if let Some(pcm) = audio_for(audio_next) {
+                    writer.append_audio(&pcm).map_err(|e| e.to_string())?;
+                }
+                audio_next += 1;
+            }
+            Ok(())
+        })();
+        renderer.set_mode(prev_mode);
+        renderer.set_sequential(false);
+        result?;
+        writer.finish().map_err(|e| e.to_string())?;
+        let seconds = start.elapsed().as_secs_f64();
+        let stats = renderer.device().stats() - before;
+        timing.media_wait = renderer.media_wait() - media0;
+        timing.image_wait = renderer.image_wait() - image0;
+        timing.upload_bytes = stats.upload_bytes;
+        Ok(ExportReport {
+            frames: total,
+            seconds,
+            fps: total as f64 / seconds.max(1e-9),
+            readbacks: stats.readbacks,
+            timing,
+            target: t,
+        })
+    }
 }
 
 /// Zero-readback export through NVENC (Linux and Windows, NVIDIA).
@@ -510,6 +702,7 @@ mod nvenc {
     use super::*;
     use std::io::Write;
     use ultrafast_gpu::{Bindings, BufferBinding};
+    use ultrafast_media::EncodeRate;
     use ultrafast_media::nvenc::Encoder;
 
     pub enum Error {
@@ -517,6 +710,15 @@ mod nvenc {
         /// external memory): the caller falls back.
         Unavailable(String),
         Failed(String),
+    }
+
+    /// What NVENC makes here: H.264 or HEVC without alpha, in MP4, MOV or
+    /// Matroska.
+    pub fn takes(t: &Target) -> bool {
+        let Some(v) = t.video else { return false };
+        matches!(v.codec, VideoCodec::H264 | VideoCodec::Hevc)
+            && !v.alpha
+            && matches!(t.container, Container::Mp4 | Container::Mov | Container::Mkv)
     }
 
     /// Frames rendered ahead of the encoder (one NV12 buffer each);
@@ -531,64 +733,72 @@ mod nvenc {
     /// Finished frames queued for the encoder thread.
     const QUEUED: usize = 2;
 
+    /// The quality level as NVENC's rate control: constant quality, capped
+    /// at the level's bits per pixel (standard's is the 0.12 a frame
+    /// exports always had, so a file is never larger than before and simple
+    /// motion graphics come out smaller), or the asked bitrate; P1, P2, P5
+    /// or P7; a full-resolution first pass for masters.
+    fn rate(t: &Target) -> EncodeRate {
+        let (bitrate, quality) = match t.video.and_then(|v| v.rate) {
+            Some(Rate::Bitrate(b)) => (b, None),
+            Some(Rate::Crf(c)) => (hardware_bitrate(t), Some(c)),
+            None => (hardware_bitrate(t), None),
+        };
+        EncodeRate {
+            bitrate,
+            quality,
+            preset: [1, 2, 5, 7][t.quality as usize],
+            multipass: t.quality == Quality::Master,
+        }
+    }
+
     pub fn export(
         renderer: &mut Renderer,
         doc: &Document,
         path: &Path,
+        t: Target,
+        clock: Clock,
         opts: ExportOptions,
         progress: &mut dyn FnMut(u64, u64),
     ) -> Result<ExportReport, Error> {
-        let fmt = doc.format;
-        let end = opts.end.unwrap_or(fmt.duration).min(fmt.duration);
-        let first = (opts.start * fmt.fps).round() as u64;
-        let total = ((end * fmt.fps).round() as u64).saturating_sub(first);
-        let bitrate = opts.bitrate.unwrap_or_else(|| {
-            let bpp = match opts.codec {
-                Codec::H264 => 0.12,
-                Codec::Hevc => 0.08,
-            };
-            (fmt.width as f64 * fmt.height as f64 * fmt.fps * bpp) as u64
-        });
+        let total = clock.total;
+        let codec = match t.codec() {
+            Some(VideoCodec::Hevc) => ultrafast_media::Codec::Hevc,
+            _ => ultrafast_media::Codec::H264,
+        };
         let in_flight = in_flight();
         // Input buffers: frames on the GPU, queued, being handed over, and
         // held by the encoder until their bitstream is read.
         let slots = in_flight + QUEUED + 1 + ultrafast_media::nvenc::DEPTH;
-        let mut enc = Encoder::new(
-            renderer.device(),
-            fmt.width,
-            fmt.height,
-            fmt.fps,
-            opts.codec,
-            bitrate,
-            slots,
-        )
-        .map_err(Error::Unavailable)?;
+        let mut enc = Encoder::new(renderer.device(), t.width, t.height, t.fps, codec, rate(&t), slots)
+            .map_err(Error::Unavailable)?;
         let failed = |e: String| Error::Failed(e);
         // ffmpeg only muxes: the video stream is copied as NVENC wrote it.
-        let wav = if opts.audio {
-            audio_wav(renderer, doc, first, end).map_err(failed)?
+        let wav = if t.audio.is_some() {
+            audio_wav(renderer.base_dir(), doc, clock.span()).map_err(failed)?
         } else {
             None
         };
         let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y", "-f"]
             .map(String::from)
             .to_vec();
-        args.push(match opts.codec {
-            Codec::H264 => "h264".into(),
-            Codec::Hevc => "hevc".into(),
+        args.push(match codec {
+            ultrafast_media::Codec::H264 => "h264".into(),
+            ultrafast_media::Codec::Hevc => "hevc".into(),
         });
-        args.extend(["-framerate".into(), format!("{}", fmt.fps), "-i".into(), "-".into()]);
+        args.extend(["-framerate".into(), rate_arg(t.fps), "-i".into(), "-".into()]);
         if let Some(wav) = &wav {
             args.extend(["-i".into(), wav.to_string_lossy().into_owned()]);
-            // The mix is exactly as long as the frames (no -shortest: with a
-            // raw stream copied in, it cut the audio short).
-            args.extend(["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "192k"].map(String::from));
+            // The mix is exactly as long as the frames (no -shortest: with
+            // a raw stream copied in, it cut the audio short).
+            args.extend(["-map", "0:v", "-map", "1:a"].map(String::from));
+            args.extend(ffmpeg::audio_args(&t));
         }
         // Exact frame timestamps on a 1/30000-style clock (what editors and
-        // stream joins expect): the raw stream's own
-        // 1.2 MHz guesses left the average rate a hair off 30/1. NVENC writes
-        // no B-frames, so decode order is display order.
-        let (timescale, ticks) = mp4_clock(fmt.fps);
+        // stream joins expect): the raw stream's own 1.2 MHz guesses left
+        // the average rate a hair off 30/1. NVENC writes no B-frames, so
+        // decode order is display order.
+        let (timescale, ticks) = mp4_clock(t.fps);
         args.extend([
             "-c:v".into(),
             "copy".into(),
@@ -597,12 +807,12 @@ mod nvenc {
             // ffmpeg 8.1 no longer applies setts' time_base option, which
             // left 60 fps files playing at 1200.
             format!("setts=ts=N*{ticks}/({timescale}*TB):duration={ticks}/({timescale}*TB)"),
-            "-video_track_timescale".into(),
-            timescale.to_string(),
-            "-movflags".into(),
-            "+faststart".into(),
         ]);
-        if opts.codec == Codec::Hevc {
+        if t.container != Container::Mkv {
+            args.extend(["-video_track_timescale".into(), timescale.to_string()]);
+        }
+        args.extend(ffmpeg::mux_args(&t, clock.first));
+        if codec == ultrafast_media::Codec::Hevc && t.container != Container::Mkv {
             args.extend(["-tag:v", "hvc1"].map(String::from));
         }
         args.push(path.to_string_lossy().into_owned());
@@ -670,7 +880,7 @@ mod nvenc {
                     let buf = &bufs[slot];
                     let c0 = Instant::now();
                     let (sub, _) = renderer
-                        .submit_frame_with(doc, fmt.time_of(first + i), |o| {
+                        .submit_frame_with(doc, clock.time(i), |o| {
                             let mut p = o.header.to_vec();
                             p.extend(o.origin);
                             p.extend([1.0, pitch as f32, rows as f32]);
@@ -729,17 +939,20 @@ mod nvenc {
             fps: total as f64 / seconds.max(1e-9),
             readbacks: stats.readbacks,
             timing,
+            target: t,
         })
     }
 }
 
 /// Exports with `workers` renderers on as many threads, each with its own
 /// GPU queue on the same device, each rendering a contiguous run of frames
-/// as its own stream (starting on a key frame); then joins the runs without
-/// re-encoding and adds the soundtrack. Encoding a frame on the CPU is
+/// (a video's runs as streams of their own, starting on a key frame, then
+/// joined without re-encoding and given the soundtrack; a sequence's
+/// straight into its folder). Encoding a frame on the CPU is
 /// single-threaded, so one renderer leaves the GPU idle between frames;
 /// several fill it, without the context switches separate processes cost.
-/// Simulations replay up to each run's first frame.
+/// Simulations replay up to each run's first frame. A GIF (one palette
+/// for the whole film) and sound alone use one renderer.
 pub fn export_parallel(
     device: &ultrafast_gpu::Device,
     doc_path: &Path,
@@ -751,111 +964,149 @@ pub fn export_parallel(
 ) -> Result<ExportReport, String> {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
+    let target = opts.settings.resolve(Some(path), &doc.format)?;
     let fmt = doc.format;
     let end = opts.end.unwrap_or(fmt.duration).min(fmt.duration);
-    let first = (opts.start * fmt.fps).round() as u64;
-    let last = (end * fmt.fps).round() as u64;
-    let total = last.saturating_sub(first);
-    let workers = (workers as u64).clamp(1, total.max(1));
-    let parts_dir = path.with_extension("parts");
-    std::fs::create_dir_all(&parts_dir).map_err(|e| e.to_string())?;
+    let clock = Clock::new(target.fps, opts.start, end);
     let base = doc_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let workers = (workers as u64).clamp(1, clock.total.max(1));
+    if workers == 1 || target.video.is_none() || target.container == Container::Gif {
+        let mut r = Renderer::new(device.fork().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        r.set_base_dir(&base);
+        return export_target(&mut r, doc, path, target, opts, progress);
+    }
+    let sequence = target.container.is_sequence();
+    let parts_dir = path.with_extension("parts");
+    if !sequence {
+        std::fs::create_dir_all(&parts_dir).map_err(|e| e.to_string())?;
+    }
     let budget = device.memory_bytes() / 3 / workers;
+    // Forks share the device's counters: one delta counts every worker.
+    let before = device.stats();
     let start = Instant::now();
     let done: Vec<Arc<AtomicU64>> = (0..workers).map(|_| Arc::new(AtomicU64::new(0))).collect();
     let mut threads = Vec::new();
     let mut parts = Vec::new();
     for w in 0..workers {
-        let a = first + total * w / workers;
-        let b = first + total * (w + 1) / workers;
-        let part = parts_dir.join(format!("part{w:02}.mp4"));
+        let a = clock.first + clock.total * w / workers;
+        let b = clock.first + clock.total * (w + 1) / workers;
+        let part = if sequence {
+            path.to_path_buf()
+        } else {
+            parts_dir.join(format!("part{w:02}.{}", target.container.name()))
+        };
         parts.push(part.clone());
         let dev = device.fork().map_err(|e| e.to_string())?;
         let doc = doc.clone();
         let base = base.clone();
         let counter = done[w as usize].clone();
+        let mut t = target;
+        t.audio = None;
         let o = ExportOptions {
-            start: a as f64 / fmt.fps,
-            end: Some(b as f64 / fmt.fps),
-            audio: false,
+            start: a as f64 / clock.fps,
+            end: Some(b as f64 / clock.fps),
+            settings: Settings {
+                audio: Some(false),
+                ..opts.settings
+            },
             ..opts
         };
         threads.push(std::thread::spawn(move || -> Result<ExportReport, String> {
             let mut r = Renderer::new(dev).map_err(|e| e.to_string())?;
             r.set_base_dir(&base);
             r.set_slot_budget(budget);
-            export_video(&mut r, &doc, &part, o, |d, _| counter.store(d, Ordering::Relaxed))
+            export_target(&mut r, &doc, &part, t, o, |d, _| counter.store(d, Ordering::Relaxed))
         }));
     }
     while threads.iter().any(|t| !t.is_finished()) {
         std::thread::sleep(std::time::Duration::from_millis(250));
-        progress(done.iter().map(|d| d.load(Ordering::Relaxed)).sum(), total);
+        progress(done.iter().map(|d| d.load(Ordering::Relaxed)).sum(), clock.total);
     }
     let mut timing = ExportTiming::default();
-    let mut readbacks = 0;
     for (w, t) in threads.into_iter().enumerate() {
         let rep = t
             .join()
             .map_err(|_| format!("worker {w} panicked"))?
             .map_err(|e| format!("worker {w}: {e}"))?;
-        readbacks += rep.readbacks;
-        timing.render_cpu += rep.timing.render_cpu;
-        timing.gpu += rep.timing.gpu;
-        timing.gpu_wait += rep.timing.gpu_wait;
-        timing.encode += rep.timing.encode;
-        timing.encode_wait += rep.timing.encode_wait;
-        timing.media_wait += rep.timing.media_wait;
-        timing.image_wait += rep.timing.image_wait;
-        timing.upload_bytes += rep.timing.upload_bytes;
+        timing.add(&rep.timing);
     }
-    progress(total, total);
-    // Join the runs as they are and add the soundtrack.
-    let list = parts_dir.join("parts.txt");
-    let entries: String = parts
-        .iter()
-        .map(|p| format!("file '{}'\n", p.file_name().unwrap().to_string_lossy()))
-        .collect();
-    std::fs::write(&list, entries).map_err(|e| e.to_string())?;
-    let wav = if opts.audio {
-        audio_wav_in(&base, doc, first, end)?
+    let stats = device.stats() - before;
+    let readbacks = stats.readbacks;
+    timing.upload_bytes = stats.upload_bytes;
+    progress(clock.total, clock.total);
+    if sequence {
+        write_sidecar(&base, doc, path, &target, clock, &opts.settings)?;
     } else {
-        None
-    };
-    let mut cmd = std::process::Command::new("ffmpeg");
-    cmd.args([
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-    ])
-    .arg(&list);
-    if let Some(wav) = &wav {
-        cmd.arg("-i").arg(wav);
-        cmd.args(["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "192k"]);
+        // Join the runs as they are and add the soundtrack.
+        let list = parts_dir.join("parts.txt");
+        let entries: String = parts
+            .iter()
+            .map(|p| format!("file '{}'\n", p.file_name().unwrap().to_string_lossy()))
+            .collect();
+        std::fs::write(&list, entries).map_err(|e| e.to_string())?;
+        let wav = if target.audio.is_some() {
+            audio_wav(&base, doc, clock.span())?
+        } else {
+            None
+        };
+        let mut args: Vec<String> = [
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+        ]
+        .map(String::from)
+        .to_vec();
+        args.push(list.to_string_lossy().into_owned());
+        if let Some(wav) = &wav {
+            args.extend(["-i".to_string(), wav.to_string_lossy().into_owned()]);
+            args.extend(["-map", "0:v", "-map", "1:a"].map(String::from));
+            args.extend(ffmpeg::audio_args(&target));
+        }
+        args.extend(["-c:v", "copy"].map(String::from));
+        if matches!(target.container, Container::Mp4 | Container::Mov) {
+            args.extend(["-video_track_timescale".to_string(), mp4_clock(clock.fps).0.to_string()]);
+        }
+        args.extend(ffmpeg::mux_args(&target, clock.first));
+        args.push(path.to_string_lossy().into_owned());
+        let r = run_ffmpeg(&args, "join the runs");
+        if let Some(wav) = &wav {
+            let _ = std::fs::remove_file(wav);
+        }
+        r?;
+        let _ = std::fs::remove_dir_all(&parts_dir);
     }
-    cmd.args(["-c:v", "copy", "-video_track_timescale"])
-        .arg(mp4_clock(fmt.fps).0.to_string())
-        .args(["-movflags", "+faststart"])
-        .arg(path);
-    let status = cmd.status().map_err(|e| format!("cannot start ffmpeg to join: {e}"))?;
-    if let Some(wav) = &wav {
-        let _ = std::fs::remove_file(wav);
-    }
-    if !status.success() {
-        return Err(format!("ffmpeg (join) failed ({status})"));
-    }
-    let _ = std::fs::remove_dir_all(&parts_dir);
     let seconds = start.elapsed().as_secs_f64();
     Ok(ExportReport {
-        frames: total,
+        frames: clock.total,
         seconds,
-        fps: total as f64 / seconds.max(1e-9),
+        fps: clock.total as f64 / seconds.max(1e-9),
         readbacks,
         timing,
+        target,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clocks() {
+        let c = Clock::new(30.0, 0.0, 2.0);
+        assert_eq!((c.first, c.total), (0, 60));
+        assert_eq!(c.span(), (0.0, 2.0));
+        // Another rate plays the same seconds.
+        let c = Clock::new(60.0, 0.5, 2.0);
+        assert_eq!((c.first, c.total), (30, 90));
+        assert_eq!(c.time(0), 0.5);
+        assert_eq!(rate_arg(30.0), "30");
+        assert_eq!(rate_arg(30000.0 / 1001.0), "30000/1001");
+        assert_eq!(rate_arg(24000.0 / 1001.0), "24000/1001");
+    }
 }

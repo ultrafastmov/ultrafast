@@ -7,6 +7,7 @@ use crate::rpc::{Toolbox, json_text, text};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use ultrafast_graph::Document;
+use ultrafast_live::output::Settings;
 use ultrafast_render::Renderer;
 
 /// Work given to the GPU: runs with the service's renderer and the
@@ -26,9 +27,9 @@ pub trait Backend: Send + Sync {
     /// Runs `f` on the GPU with the renderer, after resolving the document's
     /// inputs (asset ids, https URLs, fonts) the way `/v1/frame` does.
     fn with_renderer(&self, caller: &str, doc: Value, f: RenderFn) -> Result<Value, String>;
-    /// Renders and stores a video; returns the service's receipt, with the
-    /// signed download `url`.
-    fn render(&self, caller: &str, doc: Value, codec: Option<&str>) -> Result<Value, String>;
+    /// Renders and stores a video as `settings` ask (over `range` seconds);
+    /// returns the service's receipt, with the signed download `url`.
+    fn render(&self, caller: &str, doc: Value, settings: Settings, range: Option<[f64; 2]>) -> Result<Value, String>;
     /// A local file for an uploaded asset id or an allowed https URL.
     fn asset_path(&self, caller: &str, id: &str) -> Result<PathBuf, String> {
         let _ = (caller, id);
@@ -103,9 +104,18 @@ impl Toolbox for Remote<'_> {
             }
             "ultrafast_export" => {
                 let doc = core::document_value(args.get("document"))?;
-                let receipt = self
-                    .backend
-                    .render(&self.caller, doc, args.get("codec").and_then(Value::as_str))?;
+                let settings = core::export_settings(args)?;
+                let range = match (
+                    args.get("from").and_then(Value::as_f64),
+                    args.get("to").and_then(Value::as_f64),
+                ) {
+                    (None, None) => None,
+                    (a, b) => Some([
+                        a.unwrap_or(0.0),
+                        b.or(doc["format"]["duration"].as_f64()).unwrap_or(f64::MAX),
+                    ]),
+                };
+                let receipt = self.backend.render(&self.caller, doc, settings, range)?;
                 let url = receipt.get("url").and_then(Value::as_str).unwrap_or("");
                 let mut out = json_text(&receipt);
                 if !url.is_empty() {
@@ -124,11 +134,11 @@ impl Toolbox for Remote<'_> {
                     return Err(format!("{} rows; send at most 20 a call", rows.len()));
                 }
                 let jobs = core::batch_jobs(&doc, &rows, "{row}")?;
-                let codec = args.get("codec").and_then(Value::as_str);
+                let settings = core::export_settings(args)?;
                 let mut done = Vec::new();
                 for (i, (d, _)) in jobs.into_iter().enumerate() {
                     let value: Value = serde_json::from_str(&d.to_json()).map_err(|e| e.to_string())?;
-                    match self.backend.render(&self.caller, value, codec) {
+                    match self.backend.render(&self.caller, value, settings, None) {
                         Ok(receipt) => done.push(json!({ "row": i + 1, "name": rows[i].get("name"), "url": receipt.get("url"), "receipt": receipt })),
                         Err(e) => done.push(json!({ "row": i + 1, "name": rows[i].get("name"), "error": e })),
                     }

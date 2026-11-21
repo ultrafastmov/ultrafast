@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+pub use ultrafast_live::output::{AudioCodec, Bitrate, Container, ProresProfile, Quality, Settings, Size, VideoCodec};
 
 /// `POST /v1/render`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,6 +22,9 @@ pub struct RenderRequest {
     pub deadline: Option<String>,
 }
 
+/// Where the render goes and what it is. The encode settings are
+/// `ultrafast export`'s (see `ultrafast_live::output::Settings`); every one
+/// is optional, and the format follows `name`'s extension when it has one.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Output {
@@ -28,18 +32,49 @@ pub struct Output {
     /// Cloud's (this server answers `501 cloud_only`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
-    /// The stored file's name (default `film.mp4`).
+    /// The stored file's name (default `film.<format>`, or `frames.zip`
+    /// for an image sequence).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// The mp4 in the response body instead (small previews).
+    /// The file in the response body instead (small previews).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub inline: bool,
+    /// `mp4` (default), `mov`, `mkv`, `webm`, `gif`, `png` or `exr` (image
+    /// sequences, as a zip), or sound alone: `wav`, `mp3`, `m4a`, `flac`,
+    /// `opus`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<Container>,
+    /// `h264` (default), `hevc`, `av1`, `vp9` or `prores`.
     #[serde(default)]
-    pub codec: Codec,
+    pub codec: Option<VideoCodec>,
+    /// `draft`, `standard` (default), `high` or `master`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<Quality>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crf: Option<f64>,
+    /// Bits per second (or `"8M"`), or null for the quality level's.
     #[serde(default)]
-    pub bitrate: Option<u64>,
+    pub bitrate: Option<Bitrate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prores_profile: Option<ProresProfile>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alpha: bool,
+    /// `720p`, `1080p`, `4k`, `WxH` or `[w, h]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<Size>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fps: Option<f64>,
     #[serde(default = "yes")]
     pub audio: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_codec: Option<AudioCodec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_bitrate: Option<Bitrate>,
+    /// GIF repeats after the first play (0: once; default forever).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loops: Option<u32>,
     /// `[from, to]` seconds of the document.
     #[serde(default)]
     pub range: Option<[f64; 2]>,
@@ -55,28 +90,74 @@ impl Default for Output {
             uri: None,
             name: None,
             inline: false,
-            codec: Codec::H264,
+            format: None,
+            codec: None,
+            quality: None,
+            crf: None,
             bitrate: None,
+            prores_profile: None,
+            alpha: false,
+            size: None,
+            scale: None,
+            fps: None,
             audio: true,
+            audio_codec: None,
+            audio_bitrate: None,
+            loops: None,
             range: None,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Codec {
-    #[default]
-    H264,
-    Hevc,
-}
-
-impl Codec {
-    pub fn name(self) -> &'static str {
-        match self {
-            Codec::H264 => "h264",
-            Codec::Hevc => "hevc",
+impl Output {
+    /// The encode settings.
+    pub fn settings(&self) -> Settings {
+        Settings {
+            format: self.format,
+            codec: self.codec,
+            quality: self.quality,
+            crf: self.crf,
+            bitrate: self.bitrate,
+            prores_profile: self.prores_profile,
+            alpha: self.alpha.then_some(true),
+            size: self.size,
+            scale: self.scale,
+            fps: self.fps,
+            audio: (!self.audio).then_some(false),
+            audio_codec: self.audio_codec,
+            audio_bitrate: self.audio_bitrate,
+            loops: self.loops,
         }
+    }
+
+    /// An output with these encode settings.
+    pub fn with(s: Settings) -> Self {
+        Output {
+            format: s.format,
+            codec: s.codec,
+            quality: s.quality,
+            crf: s.crf,
+            bitrate: s.bitrate,
+            prores_profile: s.prores_profile,
+            alpha: s.alpha.unwrap_or(false),
+            size: s.size,
+            scale: s.scale,
+            fps: s.fps,
+            audio: s.audio.unwrap_or(true),
+            audio_codec: s.audio_codec,
+            audio_bitrate: s.audio_bitrate,
+            loops: s.loops,
+            ..Output::default()
+        }
+    }
+
+    /// The name the stored file goes by, when it gives one the settings
+    /// can read a format from (a sequence's `.zip` gives none).
+    pub fn named_path(&self) -> Option<&std::path::Path> {
+        self.name
+            .as_deref()
+            .filter(|n| !n.to_ascii_lowercase().ends_with(".zip"))
+            .map(std::path::Path::new)
     }
 }
 
@@ -227,13 +308,27 @@ pub struct ManifestRef {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VideoInfo {
     pub frames: u64,
+    /// The output's frame rate and size.
     pub fps: f64,
     pub width: u32,
     pub height: u32,
     pub duration: f64,
-    pub codec: Codec,
+    /// `h264`, `hevc`, `av1`, `vp9`, `prores-<profile>`, `gif`, `png`,
+    /// `exr`, or for sound alone its codec.
+    pub codec: String,
     pub audio: bool,
     pub range: [f64; 2],
+    /// The container (`mp4`, ..., `png` for a zipped sequence).
+    #[serde(default = "mp4")]
+    pub format: String,
+    #[serde(default)]
+    pub quality: Quality,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alpha: bool,
+}
+
+fn mp4() -> String {
+    "mp4".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -415,7 +510,7 @@ mod tests {
     fn requests_parse() {
         let r: RenderRequest = round_trip("render-request.json");
         let o = r.output.as_ref().unwrap();
-        assert_eq!(o.codec, Codec::H264);
+        assert_eq!(o.codec, Some(VideoCodec::H264));
         assert!(o.uri.as_deref().unwrap().starts_with("gs://"));
         assert!(r.attempt.is_some() && r.deadline.is_some());
         let r: RenderRequest = round_trip("render-request-inline.json");

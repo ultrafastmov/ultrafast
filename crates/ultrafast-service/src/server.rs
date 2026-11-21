@@ -653,16 +653,21 @@ impl Handle {
         })?
     }
 
-    /// Renders `doc` to the server's storage and returns the receipt.
-    pub fn render(&self, caller: &str, doc: Value, codec: Option<&str>, base_url: &str) -> Result<Receipt, ApiError> {
+    /// Renders `doc` to the server's storage as `settings` ask and returns
+    /// the receipt.
+    pub fn render(
+        &self,
+        caller: &str,
+        doc: Value,
+        settings: Settings,
+        range: Option<[f64; 2]>,
+        base_url: &str,
+    ) -> Result<Receipt, ApiError> {
         let s = self.shared();
         let who = s.auth.by_id(&s.cfg, caller);
         let output = Output {
-            codec: match codec {
-                Some("hevc" | "h265") => Codec::Hevc,
-                _ => Codec::H264,
-            },
-            ..Output::default()
+            range,
+            ..Output::with(settings)
         };
         let req = RenderRequest {
             document: doc,
@@ -852,17 +857,21 @@ impl Handle {
                             (None, None) => None,
                             (a, b) => Some([a.unwrap_or(0.0), b.unwrap_or(f64::MAX)]),
                         };
+                        // Export settings as query parameters too (`codec`,
+                        // `format`, `quality`, `size`, `fps`, ...).
+                        let flag = |k: &str| query_param(query, k.trim_start_matches("--").replace('-', "_").as_str());
+                        let has = |k: &str| match k {
+                            "--alpha" => query_param(query, "alpha").is_some_and(|v| v != "false" && v != "0"),
+                            "--no-audio" => query_param(query, "audio").is_some_and(|v| v == "false" || v == "0"),
+                            _ => false,
+                        };
+                        let settings = Settings::from_flags(flag, has).map_err(bad)?;
                         RenderRequest {
                             document: doc,
                             output: Some(Output {
                                 inline: true,
-                                codec: if query_param(query, "codec").as_deref() == Some("hevc") {
-                                    Codec::Hevc
-                                } else {
-                                    Codec::H264
-                                },
                                 range,
-                                ..Output::default()
+                                ..Output::with(settings)
                             }),
                             attempt: None,
                             deadline: None,

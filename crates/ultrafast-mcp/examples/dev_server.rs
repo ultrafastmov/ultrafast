@@ -76,26 +76,31 @@ impl Backend for Dev {
         self.run(doc, f)
     }
 
-    fn render(&self, _caller: &str, doc: Value, codec: Option<&str>) -> Result<Value, String> {
+    fn render(
+        &self,
+        _caller: &str,
+        doc: Value,
+        settings: ultrafast_live::output::Settings,
+        range: Option<[f64; 2]>,
+    ) -> Result<Value, String> {
+        let container = settings.container(None)?;
         let name = format!(
-            "{}.mp4",
+            "{}.{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_millis()
+                .as_millis(),
+            container.name()
         );
         let path = self.out.join(&name);
-        let codec = match codec {
-            Some("hevc") => ultrafast_media::Codec::Hevc,
-            _ => ultrafast_media::Codec::H264,
-        };
         let mut receipt = self.run(
             doc,
             Box::new(move |r, d| {
-                let opts = ultrafast_live::export::ExportOptions {
-                    codec,
-                    ..Default::default()
-                };
+                let mut opts = ultrafast_live::export::ExportOptions::with(settings);
+                if let Some([a, b]) = range {
+                    opts.start = a;
+                    opts.end = Some(b);
+                }
                 let rep = ultrafast_live::export::export_video(r, d, &path, opts, |_, _| {})?;
                 let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
                 Ok(json!({ "frames": rep.frames, "render_seconds": rep.seconds, "bytes": bytes }))

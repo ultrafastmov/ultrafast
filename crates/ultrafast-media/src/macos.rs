@@ -306,7 +306,7 @@ impl Writer {
         fps: f64,
         codec: Codec,
         bitrate: Option<u64>,
-        with_audio: bool,
+        audio_bitrate: Option<u32>,
     ) -> Result<Self, MediaError> {
         let _ = std::fs::remove_file(path);
         let abs_parent = path
@@ -364,8 +364,8 @@ impl Writer {
                 return Err(MediaError::Platform("cannot add writer input".into()));
             }
             writer.addInput(&input);
-            let audio = if with_audio {
-                Some(SendBox(add_audio_input(&writer)?))
+            let audio = if let Some(bits) = audio_bitrate {
+                Some(SendBox(add_audio_input(&writer, bits)?))
             } else {
                 None
             };
@@ -595,15 +595,17 @@ fn snap_fps(fps: f64) -> f64 {
     RATES.iter().copied().find(|r| (r - fps).abs() < 2e-3).unwrap_or(fps)
 }
 
-/// Adds an AAC audio input (48 kHz stereo) fed with float PCM.
+/// Adds an AAC audio input (48 kHz stereo, `bits` per second) fed with
+/// float PCM.
 unsafe fn add_audio_input(
     writer: &AVAssetWriter,
+    bits: u32,
 ) -> Result<(Retained<AVAssetWriterInput>, CFRetained<CMFormatDescription>), MediaError> {
     unsafe {
         let aac = NSNumber::new_u32(0x61616320); // 'aac '
         let rate = NSNumber::new_f64(crate::audio::RATE as f64);
         let ch = NSNumber::new_u32(crate::audio::CHANNELS as u32);
-        let bitrate = NSNumber::new_u32(192_000);
+        let bitrate = NSNumber::new_u32(bits);
         let keys = [
             NSString::from_str("AVFormatIDKey"),
             NSString::from_str("AVSampleRateKey"),

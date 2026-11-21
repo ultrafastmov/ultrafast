@@ -34,6 +34,8 @@
 pub mod audio_mix;
 pub mod estimate;
 pub mod export;
+pub mod ffmpeg;
+pub mod output;
 #[cfg(all(feature = "audio", any(all(target_os = "macos", not(feature = "vulkan")), windows)))]
 pub mod preview_audio;
 pub mod record;

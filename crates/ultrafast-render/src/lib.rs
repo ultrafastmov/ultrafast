@@ -108,6 +108,18 @@ impl From<ultrafast_ops::OpsError> for RenderError {
     }
 }
 
+/// How [`Renderer::render_readback`] hands a frame back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Readback {
+    /// sRGB RGBA8.
+    Srgb8,
+    /// sRGB-encoded RGBA half floats, for 10-bit codecs.
+    SrgbHalf,
+    /// Linear RGBA half floats (EXR); straight alpha, as encoders that
+    /// premultiply take it.
+    LinearHalf,
+}
+
 /// How the renderer treats kernels that are still compiling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -1703,11 +1715,11 @@ impl Renderer {
         Ok(true)
     }
 
-    fn export_texture(&mut self, w: u32, h: u32) -> Texture {
+    fn export_texture(&mut self, w: u32, h: u32, format: PixelFormat) -> Texture {
         let desc = TextureDesc {
             width: w,
             height: h,
-            format: PixelFormat::Rgba8Unorm,
+            format,
             cpu_readable: true,
         };
         match &self.export {
@@ -1732,7 +1744,7 @@ impl Renderer {
         if !export {
             return self.submit_frame_with(doc, t, |_| {});
         }
-        let ex = self.export_texture(doc.format.width, doc.format.height);
+        let ex = self.export_texture(doc.format.width, doc.format.height, PixelFormat::Rgba8Unorm);
         self.submit_frame_with(doc, t, |o| {
             let mut p = header(doc, t).to_vec();
             p.extend(o.origin);
@@ -4784,6 +4796,42 @@ impl Renderer {
         sub.wait()?;
         let mut px = self.read_export();
         clear_transparent(&mut px);
+        Ok((px, report))
+    }
+
+    /// Renders frame `t`, waits, and returns it tightly packed as `kind`.
+    /// `opaque` flattens it over black, as a video without alpha shows it;
+    /// otherwise alpha is straight.
+    pub fn render_readback(
+        &mut self,
+        doc: &Document,
+        t: f64,
+        kind: Readback,
+        opaque: bool,
+    ) -> Result<(Vec<u8>, FrameReport), RenderError> {
+        let format = match kind {
+            Readback::Srgb8 => PixelFormat::Rgba8Unorm,
+            Readback::SrgbHalf | Readback::LinearHalf => PixelFormat::Rgba16Float,
+        };
+        let mode = match (kind, opaque) {
+            (Readback::LinearHalf, true) => 3.0,
+            (Readback::LinearHalf, false) => 2.0,
+            (_, true) => 1.0,
+            (_, false) => 0.0,
+        };
+        let ex = self.export_texture(doc.format.width, doc.format.height, format);
+        let (sub, report) = self.submit_frame_with(doc, t, |o| {
+            let mut p = o.header.to_vec();
+            p.extend(o.origin);
+            p.push(mode);
+            o.list
+                .dispatch(&o.kernels.utility("k_encode_srgb8"), &ex, &[o.texture], &p);
+        })?;
+        sub.wait()?;
+        let mut px = self.read_export();
+        if kind == Readback::Srgb8 && !opaque {
+            clear_transparent(&mut px);
+        }
         Ok((px, report))
     }
 
