@@ -641,11 +641,11 @@ impl Target {
     }
 
     /// What it is, in a few words: `mp4 h264, standard`, `png sequence,
-    /// alpha, draft`, `wav pcm`.
+    /// alpha, draft`, `gif, high`, `wav pcm`, `mp3`.
     pub fn label(&self) -> String {
         let what = match self.video {
             Some(_) if self.container.is_sequence() => format!("{} sequence", self.container.name()),
-            Some(v) if v.codec.name() == self.container.name() => self.container.name().to_string(),
+            _ if self.codec_name() == self.container.name() => self.container.name().to_string(),
             _ => format!("{} {}", self.container.name(), self.codec_name()),
         };
         let alpha = if self.video.is_some_and(|v| v.alpha) {
@@ -1151,6 +1151,18 @@ mod tests {
         let m = Quality::Master.motion_blur(Some(mb)).unwrap();
         assert_eq!((m.samples, m.max_samples, m.shutter), (12, Some(32), 0.5));
         assert_eq!(Quality::High.motion_blur(None), None);
+    }
+
+    #[test]
+    fn labels() {
+        assert_eq!(resolve("{}", "f.mp4").unwrap().label(), "mp4 h264, standard");
+        assert_eq!(resolve("{}", "f.gif").unwrap().label(), "gif, standard");
+        assert_eq!(
+            resolve(r#"{"alpha": true, "quality": "draft"}"#, "f/").unwrap().label(),
+            "png sequence, alpha, draft"
+        );
+        assert_eq!(resolve("{}", "f.wav").unwrap().label(), "wav pcm");
+        assert_eq!(resolve("{}", "f.mp3").unwrap().label(), "mp3");
     }
 
     #[test]
