@@ -1,6 +1,6 @@
 {
   "name": "ultrafastmov",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "TypeScript client for ultrafast, the GPU video engine: render, frame, sheet, check, review, estimate and upload",
   "license": "(Apache-2.0 OR MIT)",
   "homepage": "https://ultrafast.mov",

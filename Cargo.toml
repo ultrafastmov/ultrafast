@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 # The oldest Rust that builds it (cargo install says so on older ones).
 rust-version = "1.91"
@@ -12,18 +12,18 @@ repository = "https://github.com/ultrafastmov/ultrafast"
 homepage = "https://ultrafast.mov"
 
 [workspace.dependencies]
-ultrafast-graph = { path = "crates/ultrafast-graph", version = "0.1.0" }
-ultrafast-gpu = { path = "crates/ultrafast-gpu", version = "0.1.0" }
-ultrafast-render = { path = "crates/ultrafast-render", version = "0.1.0" }
-ultrafast-shaderc = { path = "crates/ultrafast-shaderc", version = "0.1.0" }
-ultrafast-live = { path = "crates/ultrafast-live", version = "0.1.0" }
-ultrafast-media = { path = "crates/ultrafast-media", version = "0.1.0" }
-ultrafast-recon = { path = "crates/ultrafast-recon", version = "0.1.0" }
-ultrafast-framing = { path = "crates/ultrafast-framing", version = "0.1.0" }
-ultrafast-geom = { path = "crates/ultrafast-geom", version = "0.1.0" }
-ultrafast-ops = { path = "crates/ultrafast-ops", version = "0.1.0" }
-ultrafast-mcp = { path = "crates/ultrafast-mcp", version = "0.1.0", package = "ultrafastmov-mcp" }
-ultrafast-service = { path = "crates/ultrafast-service", version = "0.1.0" }
+ultrafast-graph = { path = "crates/ultrafast-graph", version = "0.1.1" }
+ultrafast-gpu = { path = "crates/ultrafast-gpu", version = "0.1.1" }
+ultrafast-render = { path = "crates/ultrafast-render", version = "0.1.1" }
+ultrafast-shaderc = { path = "crates/ultrafast-shaderc", version = "0.1.1" }
+ultrafast-live = { path = "crates/ultrafast-live", version = "0.1.1" }
+ultrafast-media = { path = "crates/ultrafast-media", version = "0.1.1" }
+ultrafast-recon = { path = "crates/ultrafast-recon", version = "0.1.1" }
+ultrafast-framing = { path = "crates/ultrafast-framing", version = "0.1.1" }
+ultrafast-geom = { path = "crates/ultrafast-geom", version = "0.1.1" }
+ultrafast-ops = { path = "crates/ultrafast-ops", version = "0.1.1" }
+ultrafast-mcp = { path = "crates/ultrafast-mcp", version = "0.1.1", package = "ultrafastmov-mcp" }
+ultrafast-service = { path = "crates/ultrafast-service", version = "0.1.1" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
