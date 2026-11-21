@@ -267,6 +267,20 @@ composition is **zero readbacks and zero uploads beyond uniforms**.
   nv-codec-headers; libcuda and libnvidia-encode load at runtime and the
   readback path remains as a fallback (`ULTRAFAST_NVENC=0`). The Docker image
   (packaging/docker) carries the Vulkan manifest NVIDIA containers need.
+- **Other formats** (`ultrafast-live`: `output` resolves the settings,
+  `ffmpeg` builds the command lines, `export` routes): H.264 and HEVC
+  without alpha take the zero-readback paths above, NVENC at constant
+  quality capped at the quality level's bits per pixel. Everything else
+  (ProRes, AV1, VP9, alpha, GIF, PNG and EXR sequences) is read back and
+  piped to `ffmpeg` on every platform: sRGB RGBA8, or half floats for
+  10-bit ProRes (sRGB) and EXR (linear, straight alpha that the EXR
+  encoder premultiplies). Opaque outputs are flattened over black in the
+  encode kernel, as the hardware paths do. Sound is mixed to a 32-bit float
+  WAV and encoded by ffmpeg; sound alone renders no frames. Another output
+  frame rate samples the document's seconds at that rate; simulations and
+  the motion-blur shutter keep the document's own clock. Quality levels set
+  the motion-blur samples on a fork of the document (the shutter never
+  changes).
 - **Linux decode**: still `ffmpeg` processes with uploads. Next: NVDEC into
   CUDA memory exported to Vulkan.
 - Decoders run ahead in a **bounded** window (a few frames). Seeking or editing
