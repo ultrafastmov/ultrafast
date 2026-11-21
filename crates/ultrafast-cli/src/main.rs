@@ -154,6 +154,7 @@ fn usage_for(cmd: &str) -> String {
 }
 
 fn main() -> Result<()> {
+    quiet_on_closed_stdout();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = args.first() else {
         println!("{USAGE}");
@@ -1301,6 +1302,25 @@ fn print_pipelines(device: &Device) {
     if loaded + compiled > 0 {
         println!("  pipelines: {loaded} from cache, {compiled} compiled ({secs:.1} s)");
     }
+}
+
+/// `uf ops | head`: a reader that stops early closes stdout, and printing
+/// to it panics. Exit quietly then, as other command-line tools do. Only
+/// stdout: a broken pipe to ffmpeg stays an error the export reports.
+fn quiet_on_closed_stdout() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let p = info.payload();
+        let msg = p
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| p.downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        if msg.starts_with("failed printing to stdout") && msg.contains("Broken pipe") {
+            std::process::exit(0);
+        }
+        default(info);
+    }));
 }
 
 /// The export flags (`--format`, `--codec`, `--quality`, `--size`, ...)
