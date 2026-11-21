@@ -64,7 +64,7 @@ export class Render {
   get sha256(): string | undefined {
     return this.receipt.sha256 ?? this.receipt.object?.sha256 ?? undefined;
   }
-  /** Size of the mp4 in bytes. */
+  /** Size of the file in bytes. */
   get bytes(): number | undefined {
     return this.receipt.bytes ?? this.receipt.object?.size ?? this.#inline?.byteLength;
   }
@@ -79,6 +79,16 @@ export class Render {
     return this.receipt.minutes;
   }
 
+  /** The file's name: the stored object's, else `film.<format>` (`frames.zip` for an image sequence). */
+  get filename(): string {
+    if (this.url) {
+      const name = decodeURIComponent(new URL(this.url).pathname.split("/").pop() ?? "");
+      if (name.includes(".")) return name;
+    }
+    const format = (this.receipt.video?.format as string | undefined) ?? "mp4";
+    return format === "png" || format === "exr" ? "frames.zip" : `film.${format}`;
+  }
+
   #source(): string {
     if (this.url) return this.url;
     const where = this.receipt.object?.uri;
@@ -88,14 +98,14 @@ export class Render {
     );
   }
 
-  /** The mp4 bytes. */
+  /** The file's bytes (an mp4, a webm, a gif, a zip of frames: `receipt.video.format` says which). */
   async arrayBuffer(opts: { signal?: AbortSignal } = {}): Promise<ArrayBuffer> {
     if (this.#inline) return this.#inline.slice().buffer as ArrayBuffer;
     const res = await this.#transport.download(this.#source(), opts.signal);
     return res.arrayBuffer();
   }
 
-  /** Writes the mp4 to `path` (Node), streaming the download and checking its sha256. Resolves with `path`. */
+  /** Writes the file to `path` (Node), streaming the download and checking its sha256. Resolves with `path`. */
   async save(path: string, opts: { signal?: AbortSignal } = {}): Promise<string> {
     if (this.#inline) return writeBytes(this.#inline, path);
     const res = await this.#transport.download(this.#source(), opts.signal);

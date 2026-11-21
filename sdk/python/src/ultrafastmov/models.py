@@ -361,7 +361,8 @@ class Render:
 
     ``url`` is the signed download link (null when the video went to an
     ``output.uri`` the server cannot sign for); an inline render carries
-    the mp4 itself in ``content``.
+    the file itself in ``content`` (an mp4, a webm, a gif, a zip of frames:
+    ``video["format"]`` says which).
     """
 
     def __init__(self, receipt: Mapping[str, Any], content: Optional[bytes] = None, client: Optional["Ultrafast"] = None) -> None:
@@ -426,13 +427,28 @@ class Render:
     def object(self) -> Dict[str, Any]:
         return dict(self.receipt.get("object") or {})
 
+    @property
+    def filename(self) -> str:
+        """The file's name: the stored object's, else ``film.<format>``
+        (``frames.zip`` for an image sequence)."""
+        url = self.url
+        if url:
+            from urllib.parse import unquote, urlsplit
+
+            name = unquote(urlsplit(url).path.rsplit("/", 1)[-1])
+            if "." in name:
+                return name
+        fmt = str(self.video.get("format") or "mp4")
+        return "frames.zip" if fmt in ("png", "exr") else f"film.{fmt}"
+
     def save(self, path: PathLike, *, verify: bool = True) -> Path:
-        """Write the mp4 to ``path`` (a file, or a directory to put ``film.mp4`` in).
+        """Write the file to ``path`` (a file, or a directory to put
+        :attr:`filename` in).
 
         Downloads stream to a temporary file beside ``path`` and are checked
         against the receipt's sha256 before they replace it.
         """
-        target = _save_target(path, "film.mp4")
+        target = _save_target(path, self.filename)
         if self.content is not None:
             if verify and self.sha256:
                 import hashlib

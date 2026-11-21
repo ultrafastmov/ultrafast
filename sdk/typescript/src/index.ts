@@ -3,6 +3,8 @@ export type {
   UltrafastOptions,
   DocumentInput,
   RenderOptions,
+  ExportSettings,
+  Size,
   JobOptions,
   FrameOptions,
   SheetOptions,

@@ -198,6 +198,24 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(p.name, "film.mp4")
         self.assertEqual(p.read_bytes(), r.content)
 
+    def test_export_settings_reach_the_output(self):
+        r = self.uf.render(self.doc(), inline=True, codec="prores", alpha=True, size="4k", fps=60,
+                           quality="master", prores_profile="4444", audio_codec="pcm-24")
+        self.assertEqual(self.server.seen("/v1/render")[0].json["output"],
+                         {"inline": True, "codec": "prores", "alpha": True, "size": "4k", "fps": 60,
+                          "quality": "master", "prores_profile": "4444", "audio_codec": "pcm-24"})
+        # a size as a pair, a bitrate as text
+        self.uf.render(self.doc(), size=(1280, 720), bitrate="8M", format="webm")
+        self.assertEqual(self.server.seen("/v1/render")[1].json["output"],
+                         {"size": [1280, 720], "bitrate": "8M", "format": "webm"})
+        # saved under the format's name
+        r = Render({"receipt_version": 1, "video": {"format": "webm"}}, content=b"x")
+        self.assertEqual(r.filename, "film.webm")
+        self.assertEqual(Render({"video": {"format": "png"}}, content=b"x").filename, "frames.zip")
+        self.assertEqual(Render({"url": "https://h/v1/files/renders/r/overlay.mov?sig=1"}).filename, "overlay.mov")
+        with self.assertRaises(TypeError):
+            self.uf.estimate(self.doc(), qualty="high")
+
     def test_stored_render_streams_and_verifies(self):
         self.server.video_size = 5 << 20
         r = self.uf.render(self.doc())
@@ -318,6 +336,8 @@ class ClientTest(unittest.TestCase):
         doc["format"].update(width=1080, height=1920)
         self.assertEqual(str(self.uf.estimate(doc, range=[0, 2.5])), "2.5 s of 1080p")
         self.assertEqual(self.server.seen("/v1/estimate")[0].json["range"], [0, 2.5])
+        self.uf.estimate(doc, size="4k", quality="high")
+        self.assertEqual(self.server.seen("/v1/estimate")[1].json["output"], {"size": "4k", "quality": "high"})
 
     def test_new_and_templates(self):
         self.assertEqual(self.uf.templates(), ["vertical", "title"])

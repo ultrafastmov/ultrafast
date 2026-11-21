@@ -60,6 +60,15 @@ const render = await uf.render(doc);            // stored; render.url is signed
 await render.save("film.mp4");                  // streamed, sha256 checked
 const short = await uf.render(doc, { inline: true, range: [0, 3] });
 
+// One document, every deliverable: the settings are `ultrafast export`'s.
+await uf.render(doc, { quality: "draft", size: "720p", inline: true });      // a quick preview
+await uf.render(doc, { size: "4k", quality: "high" });                       // rendered at 4K, not scaled up
+await uf.render(doc, { codec: "prores", alpha: true, name: "overlay.mov" }); // ProRes 4444 with alpha
+await uf.render(doc, { format: "webm", alpha: true });                       // VP9 with alpha
+await uf.render(doc, { format: "gif", fps: 15, size: "480p", loops: 0 });    // a GIF that plays once
+await uf.render(doc, { format: "png", alpha: true });                        // a zip of PNG frames
+console.log(`${await uf.estimate(doc, { size: "4k", quality: "master" })}`); // priced at the output size
+
 const job = await uf.render(doc, { job: true }); // or { webhook } (Cloud)
 const done = await job.wait();                  // polls; throws the job's error if it failed
 await uf.jobs.get(job.id);

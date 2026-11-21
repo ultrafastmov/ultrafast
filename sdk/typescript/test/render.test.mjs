@@ -71,6 +71,19 @@ test("save() refuses a download that does not match the receipt", async () => {
   }
 });
 
+test("export settings reach the output; estimates take them too", async () => {
+  await uf.render(doc, { codec: "prores", alpha: true, size: "4k", fps: 60, quality: "master", prores_profile: "4444" });
+  let sent = server.requestsTo("POST", "/v1/render").at(-1);
+  assert.deepEqual(sent.json.output, { codec: "prores", alpha: true, size: "4k", fps: 60, quality: "master", prores_profile: "4444" });
+  await uf.render(doc, { format: "webm", size: [1280, 720], bitrate: "8M" });
+  sent = server.requestsTo("POST", "/v1/render").at(-1);
+  assert.deepEqual(sent.json.output, { format: "webm", size: [1280, 720], bitrate: "8M" });
+  await uf.estimate(doc, { size: "4k", quality: "high", range: [0, 1] });
+  sent = server.requestsTo("POST", "/v1/estimate").at(-1);
+  assert.deepEqual(sent.json.output, { size: "4k", quality: "high" });
+  assert.deepEqual(sent.json.range, [0, 1]);
+});
+
 test("inline renders carry the mp4 and the receipt header", async () => {
   const r = await uf.render(doc, { inline: true, range: [0, 1], codec: "hevc" });
   assert.equal(r.url, null);

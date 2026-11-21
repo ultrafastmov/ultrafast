@@ -71,12 +71,34 @@ print(asset.uri)                       # asset://7KqH2...
 | `uf.upload(path)` | an `Asset`: `.id`, `.uri`, `.sha256` |
 | `uf.me()` | `caller`, `auth` (and `webhook_secret` on Cloud) |
 
-`render` options: `inline=True` (the MP4 comes back in the response, up to
+`render` options: `inline=True` (the file comes back in the response, up to
 32 MiB), `uri="s3://bucket/key"` (Cloud: create it in your bucket; also
-`r2://`, `gs://`), `codec="hevc"`, `bitrate`, `audio=False`, `range=[from, to]`,
-`name`, `deadline`, and `attempt=True` (or your own render id), which sends
-an attempt id and retries the request safely on `429`, `503` and dropped
-connections. `save` streams to disk and checks the receipt's sha256.
+`r2://`, `gs://`), `audio=False`, `range=[from, to]`, `name`, `deadline`,
+and `attempt=True` (or your own render id), which sends an attempt id and
+retries the request safely on `429`, `503` and dropped connections. `save`
+streams to disk and checks the receipt's sha256; given a folder it names
+the file for its format.
+
+The export settings are `ultrafast export`'s, so one document gives every
+deliverable:
+
+```python
+uf.render(doc, quality="draft", size="720p", inline=True)   # a quick preview
+uf.render(doc, size="4k", quality="high")                   # rendered at 4K, not scaled up
+uf.render(doc, codec="prores", alpha=True, name="overlay.mov")  # ProRes 4444 with alpha
+uf.render(doc, format="webm", alpha=True)                   # VP9 with alpha, for the web
+uf.render(doc, format="gif", fps=15, size="480p", loops=0)  # a GIF that plays once
+uf.render(doc, format="png", alpha=True).save("frames/")    # a zip of PNG frames and audio.wav
+uf.render(doc, format="wav")                                # the sound alone
+print(uf.estimate(doc, size="4k", quality="master"))        # priced at the output size
+```
+
+`format` (`mp4`, `mov`, `mkv`, `webm`, `gif`, `png`, `exr`, `wav`, `mp3`,
+`m4a`, `flac`, `opus`), `codec` (`h264`, `hevc`, `av1`, `vp9`, `prores`),
+`quality` (`draft`, `standard`, `high`, `master`), `size` (`"720p"`,
+`"1080p"`, `"4k"`, `"WxH"` or `(w, h)`) or `scale`, `fps`, `crf` or
+`bitrate` (`"8M"`), `prores_profile`, `alpha`, `audio_codec`,
+`audio_bitrate`, `loops`.
 
 Reads (`frame`, `sheet`, `check`, `review`, `estimate`, `GET`s, uploads) are
 retried twice on `429` and `503` when the server says so.

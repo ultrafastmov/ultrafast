@@ -42,9 +42,15 @@ export interface VideoInfo {
   width: number;
   height: number;
   duration: number;
-  codec: "h264" | "hevc" | (string & {});
+  /** `h264`, `hevc`, `av1`, `vp9`, `prores-<profile>`, `gif`, `png`, `exr`, or the sound's codec for sound alone. */
+  codec: "h264" | "hevc" | "av1" | "vp9" | "gif" | "png" | "exr" | (string & {});
   audio: boolean;
   range: [number, number];
+  /** The container: `mp4`, `mov`, `mkv`, `webm`, `gif`, `png`/`exr` (a zipped sequence), or sound alone. */
+  format?: string;
+  quality?: "draft" | "standard" | "high" | "master";
+  /** Set when transparency was kept. */
+  alpha?: boolean;
 }
 
 export interface InputRecord {

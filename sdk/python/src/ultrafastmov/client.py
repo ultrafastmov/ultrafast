@@ -141,6 +141,43 @@ def _receipt_header(value: Optional[str]) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+#: An output size: ``"720p"``, ``"1080p"``, ``"4k"``, ``"1280x720"`` or ``(w, h)``.
+SizeLike = Union[str, Sequence[int]]
+
+#: The export settings ``render``, ``submit`` and ``estimate`` take.
+SETTINGS = (
+    "format",
+    "codec",
+    "quality",
+    "crf",
+    "bitrate",
+    "prores_profile",
+    "alpha",
+    "size",
+    "scale",
+    "fps",
+    "audio",
+    "audio_codec",
+    "audio_bitrate",
+    "loops",
+)
+
+
+def _settings(settings: Mapping[str, Any]) -> Dict[str, Any]:
+    """Export settings as the API spells them (unknown names refused here, not by the server)."""
+    unknown = sorted(set(settings) - set(SETTINGS))
+    if unknown:
+        raise TypeError(f"unknown export setting(s) {', '.join(unknown)} ({', '.join(SETTINGS)})")
+    out: Dict[str, Any] = {}
+    for k, v in settings.items():
+        if v is None:
+            continue
+        if k == "size" and not isinstance(v, str):
+            v = [int(x) for x in v]
+        out[k] = v
+    return out
+
+
 def _drop_none(d: Mapping[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
 
@@ -410,12 +447,13 @@ class Ultrafast:
         inline: Optional[bool],
         uri: Optional[str],
         codec: Optional[str],
-        bitrate: Optional[int],
+        bitrate: Optional[Union[int, str]],
         audio: Optional[bool],
         range: Optional[Sequence[float]],
         name: Optional[str],
         attempt: Optional[Dict[str, str]],
         deadline: Any,
+        settings: Optional[Mapping[str, Any]] = None,
     ) -> Dict[str, Any]:
         output = _drop_none(
             {
@@ -426,6 +464,7 @@ class Ultrafast:
                 "bitrate": bitrate,
                 "audio": audio,
                 "range": list(range) if range is not None else None,
+                **_settings(settings or {}),
             }
         )
         body: Dict[str, Any] = {"document": self.prepare(doc)}
@@ -446,8 +485,19 @@ class Ultrafast:
         inline: Optional[bool] = ...,
         uri: Optional[str] = ...,
         codec: Optional[str] = ...,
-        bitrate: Optional[int] = ...,
+        bitrate: Optional[Union[int, str]] = ...,
         audio: Optional[bool] = ...,
+        format: Optional[str] = ...,
+        quality: Optional[str] = ...,
+        size: Optional[SizeLike] = ...,
+        scale: Optional[float] = ...,
+        fps: Optional[float] = ...,
+        crf: Optional[float] = ...,
+        prores_profile: Optional[str] = ...,
+        alpha: Optional[bool] = ...,
+        audio_codec: Optional[str] = ...,
+        audio_bitrate: Optional[Union[int, str]] = ...,
+        loops: Optional[int] = ...,
         range: Optional[Sequence[float]] = ...,
         name: Optional[str] = ...,
         webhook: None = ...,
@@ -463,8 +513,19 @@ class Ultrafast:
         inline: Optional[bool] = ...,
         uri: Optional[str] = ...,
         codec: Optional[str] = ...,
-        bitrate: Optional[int] = ...,
+        bitrate: Optional[Union[int, str]] = ...,
         audio: Optional[bool] = ...,
+        format: Optional[str] = ...,
+        quality: Optional[str] = ...,
+        size: Optional[SizeLike] = ...,
+        scale: Optional[float] = ...,
+        fps: Optional[float] = ...,
+        crf: Optional[float] = ...,
+        prores_profile: Optional[str] = ...,
+        alpha: Optional[bool] = ...,
+        audio_codec: Optional[str] = ...,
+        audio_bitrate: Optional[Union[int, str]] = ...,
+        loops: Optional[int] = ...,
         range: Optional[Sequence[float]] = ...,
         name: Optional[str] = ...,
         webhook: str,
@@ -479,15 +540,26 @@ class Ultrafast:
         inline: Optional[bool] = None,
         uri: Optional[str] = None,
         codec: Optional[str] = None,
-        bitrate: Optional[int] = None,
+        bitrate: Optional[Union[int, str]] = None,
         audio: Optional[bool] = None,
+        format: Optional[str] = None,
+        quality: Optional[str] = None,
+        size: Optional[SizeLike] = None,
+        scale: Optional[float] = None,
+        fps: Optional[float] = None,
+        crf: Optional[float] = None,
+        prores_profile: Optional[str] = None,
+        alpha: Optional[bool] = None,
+        audio_codec: Optional[str] = None,
+        audio_bitrate: Optional[Union[int, str]] = None,
+        loops: Optional[int] = None,
         range: Optional[Sequence[float]] = None,
         name: Optional[str] = None,
         webhook: Optional[str] = None,
         attempt: Any = None,
         deadline: Any = None,
     ) -> Union[Render, Job]:
-        """Render a document to MP4.
+        """Render a document: MP4 by default, or any format the server writes.
 
         Without ``webhook`` this waits for the video and returns a
         :class:`Render` (``.save(path)`` downloads it): stored on the server
@@ -495,6 +567,17 @@ class Ultrafast:
         ``inline=True`` (up to 32 MiB), or created at ``uri``
         (``s3://``, ``r2://``, ``gs://``) in your bucket. With ``webhook`` it
         creates a job and returns a :class:`Job` at once.
+
+        The export settings are ``ultrafast export``'s: ``format`` (``mp4``,
+        ``mov``, ``mkv``, ``webm``, ``gif``, ``png``/``exr`` sequences as a
+        zip, or ``wav``/``mp3``/``m4a``/``flac``/``opus`` sound alone; default
+        from ``name``'s extension), ``codec`` (``h264``, ``hevc``, ``av1``,
+        ``vp9``, ``prores``), ``quality`` (``draft``, ``standard``, ``high``,
+        ``master``), ``size`` (``"720p"``, ``"1080p"``, ``"4k"``, ``"WxH"`` or
+        ``(w, h)``) or ``scale``, ``fps``, ``crf`` or ``bitrate`` (``"8M"``),
+        ``prores_profile``, ``alpha`` (keep transparency), ``audio_codec``,
+        ``audio_bitrate`` and ``loops`` (GIF). For example
+        ``uf.render(doc, codec="prores", alpha=True, size="4k")``.
 
         ``range`` is ``[from, to]`` seconds. ``attempt`` (``True``, a render
         id, or ``{"render_id", "attempt_id"}``) is sent with the request and
@@ -505,11 +588,13 @@ class Ultrafast:
             return self.submit(
                 doc, webhook=webhook, uri=uri, codec=codec, bitrate=bitrate, audio=audio,
                 range=range, name=name, attempt=attempt, deadline=deadline, inline=inline,
+                format=format, quality=quality, size=size, scale=scale, fps=fps, crf=crf, prores_profile=prores_profile, alpha=alpha, audio_codec=audio_codec, audio_bitrate=audio_bitrate, loops=loops,
             )
         att = _attempt(attempt)
+        settings = dict(format=format, quality=quality, size=size, scale=scale, fps=fps, crf=crf, prores_profile=prores_profile, alpha=alpha, audio_codec=audio_codec, audio_bitrate=audio_bitrate, loops=loops)
         body = self._render_body(
             doc, inline=inline, uri=uri, codec=codec, bitrate=bitrate, audio=audio,
-            range=range, name=name, attempt=att, deadline=deadline,
+            range=range, name=name, attempt=att, deadline=deadline, settings=settings,
         )
         try:
             resp = self._transport.request("POST", "/v1/render", json_body=body, retry=att is not None)
@@ -532,13 +617,24 @@ class Ultrafast:
         webhook: Optional[str] = None,
         uri: Optional[str] = None,
         codec: Optional[str] = None,
-        bitrate: Optional[int] = None,
+        bitrate: Optional[Union[int, str]] = None,
         audio: Optional[bool] = None,
         range: Optional[Sequence[float]] = None,
         name: Optional[str] = None,
         attempt: Any = None,
         deadline: Any = None,
         inline: Optional[bool] = None,
+        format: Optional[str] = None,
+        quality: Optional[str] = None,
+        size: Optional[SizeLike] = None,
+        scale: Optional[float] = None,
+        fps: Optional[float] = None,
+        crf: Optional[float] = None,
+        prores_profile: Optional[str] = None,
+        alpha: Optional[bool] = None,
+        audio_codec: Optional[str] = None,
+        audio_bitrate: Optional[Union[int, str]] = None,
+        loops: Optional[int] = None,
     ) -> Job:
         """Create a render job (``POST /v1/jobs``) and return it queued; ``job.wait()`` for the video.
 
@@ -548,9 +644,10 @@ class Ultrafast:
         if inline:
             raise ValueError("inline output is not allowed for jobs")
         att = _attempt(attempt)
+        settings = dict(format=format, quality=quality, size=size, scale=scale, fps=fps, crf=crf, prores_profile=prores_profile, alpha=alpha, audio_codec=audio_codec, audio_bitrate=audio_bitrate, loops=loops)
         body = self._render_body(
             doc, inline=None, uri=uri, codec=codec, bitrate=bitrate, audio=audio,
-            range=range, name=name, attempt=att, deadline=deadline,
+            range=range, name=name, attempt=att, deadline=deadline, settings=settings,
         )
         if webhook is not None:
             body["webhook"] = webhook
@@ -607,9 +704,21 @@ class Ultrafast:
         body = _drop_none({"document": self.prepare(doc), "safe": safe, "step": step})
         return Review(self._request_json("POST", "/v1/review", body, retry=True))
 
-    def estimate(self, doc: DocumentLike, range: Optional[Sequence[float]] = None) -> Estimate:
-        """What rendering will cost; ``print(estimate)`` shows ``$0.004, 8 s of 1080p``."""
-        body = _drop_none({"document": self.prepare(doc), "range": list(range) if range is not None else None})
+    def estimate(self, doc: DocumentLike, range: Optional[Sequence[float]] = None, **settings: Any) -> Estimate:
+        """What rendering will cost; ``print(estimate)`` shows ``$0.004, 8 s of 1080p``.
+
+        Pass the export settings you will render with (``size="4k"``,
+        ``quality="high"``, ``fps=60``, ...): minutes count the output size
+        and frames are timed at that quality and frame rate.
+        """
+        output = _settings(settings)
+        body = _drop_none(
+            {
+                "document": self.prepare(doc),
+                "range": list(range) if range is not None else None,
+                "output": output or None,
+            }
+        )
         return Estimate.from_dict(self._request_json("POST", "/v1/estimate", body, retry=True))
 
     # Account and server

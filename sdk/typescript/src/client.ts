@@ -24,18 +24,75 @@ export interface UltrafastOptions {
 /** A document, or the path of a document file (Node). */
 export type DocumentInput = Document | string;
 
-export interface RenderOptions {
-  /** The mp4 in the response (at most 32 MiB) instead of stored with a signed URL. */
+/** An output size: `"720p"`, `"1080p"`, `"1440p"`, `"4k"` (the short side), `"WxH"`, or `[w, h]`. */
+export type Size = "720p" | "1080p" | "1440p" | "4k" | `${number}p` | `${number}x${number}` | [number, number];
+
+/**
+ * Export settings, as `ultrafast export` and the MCP export tools spell them.
+ * Settings that don't go together are refused before anything renders.
+ */
+export interface ExportSettings {
+  /** The container (default: from `name`'s extension, else mp4). `png` and `exr` are image sequences (a zip); `wav` to `opus` are sound alone. */
+  format?: "mp4" | "mov" | "mkv" | "webm" | "gif" | "png" | "exr" | "wav" | "mp3" | "m4a" | "flac" | "opus";
+  /** Default h264 (vp9 for webm). */
+  codec?: "h264" | "hevc" | "h265" | "av1" | "vp9" | "prores";
+  /** draft: a fast preview without motion blur; standard (default); high; master: twice the motion-blur samples, the best encode. */
+  quality?: "draft" | "standard" | "high" | "master";
+  /** Rendered at this size, not scaled up. */
+  size?: Size;
+  /** A multiple of the document's size, instead of `size`. */
+  scale?: number;
+  /** Output frame rate (default the document's; a GIF's at most 30). */
+  fps?: number;
+  /** Constant quality on the codec's scale, lower is better (H.264/HEVC 0-51, AV1/VP9 0-63). */
+  crf?: number;
+  /** Bits per second, or text such as `"8M"`, instead of `crf`; null for the quality level's. */
+  bitrate?: number | string | null;
+  /** Default hq; 4444 with `alpha`. */
+  prores_profile?: "proxy" | "light" | "standard" | "hq" | "4444" | "4444-xq";
+  /** Keep transparency: ProRes 4444, VP9, GIF, PNG, EXR. */
+  alpha?: boolean;
+  /** Mix the document's sound (default true). */
+  audio?: boolean;
+  /** Default aac (opus for webm, pcm with ProRes). */
+  audio_codec?: "aac" | "opus" | "mp3" | "flac" | "pcm" | "pcm-24";
+  /** Bits per second, or text such as `"192k"`. */
+  audio_bitrate?: number | string;
+  /** GIF: times it plays again after the first (0: once; default forever). */
+  loops?: number;
+}
+
+const SETTINGS = [
+  "format",
+  "codec",
+  "quality",
+  "size",
+  "scale",
+  "fps",
+  "crf",
+  "bitrate",
+  "prores_profile",
+  "alpha",
+  "audio",
+  "audio_codec",
+  "audio_bitrate",
+  "loops",
+] as const;
+
+/** The export settings among `opts`. */
+function settingsOf(opts: ExportSettings): ExportSettings {
+  const out: Record<string, unknown> = {};
+  for (const k of SETTINGS) if (opts[k] !== undefined) out[k] = opts[k];
+  return out as ExportSettings;
+}
+
+export interface RenderOptions extends ExportSettings {
+  /** The file in the response (at most 32 MiB) instead of stored with a signed URL. */
   inline?: boolean;
   /** Create the video at this object in your own bucket (`s3://`, `r2://`, `gs://`); create-only. */
   uri?: string;
-  /** The stored file's name (default `film.mp4`). */
+  /** The stored file's name (default `film.<format>`, `frames.zip` for a sequence); its extension picks the format. */
   name?: string;
-  codec?: "h264" | "hevc";
-  /** Bits per second; null for the format's default. */
-  bitrate?: number | null;
-  /** Mix the document's sound (default true). */
-  audio?: boolean;
   /** `[from, to]` seconds of the document (default all of it). */
   range?: [number, number] | null;
   /** Ids that make retries safe; one is made up per call when missing. */
@@ -225,9 +282,7 @@ export class Ultrafast {
       inline: opts.inline,
       uri: opts.uri,
       name: opts.name,
-      codec: opts.codec,
-      bitrate: opts.bitrate,
-      audio: opts.audio,
+      ...settingsOf(opts),
       range: opts.range,
     });
     const body = compact({
@@ -247,7 +302,7 @@ export class Ultrafast {
     const res = await this.#transport.request({
       path: "/v1/render",
       json: body,
-      accept: opts.inline ? "video/mp4, application/json" : "application/json",
+      accept: opts.inline ? "video/mp4, video/*, image/gif, audio/*, application/zip, application/json" : "application/json",
       // With `uri` a retry is a replay (409 with the stored receipt); without
       // it a resent render could render twice, so only what the server refused.
       retry: opts.uri ? "safe" : "unsent",
@@ -261,7 +316,8 @@ export class Ultrafast {
       throw errorFromResponse(409, text);
     }
     const type = res.headers.get("content-type") ?? "";
-    if (type.startsWith("video/") || type === "application/octet-stream") {
+    // Inline: the file itself (an mp4, a webm, a gif, a zip of frames, sound).
+    if (type !== "" && !type.startsWith("application/json")) {
       const bytes = new Uint8Array(await res.arrayBuffer());
       const receipt = (parseJson(res.headers.get("x-ultrafast-receipt")) ?? { receipt_version: 1, status: "rendered" }) as Receipt;
       receipt.sha256 ??= res.headers.get("x-ultrafast-sha256") ?? undefined;
@@ -317,12 +373,20 @@ export class Ultrafast {
     return new Review(data);
   }
 
-  /** What rendering will cost (free). */
-  async estimate(doc: DocumentInput, opts: { range?: [number, number] | null; signal?: AbortSignal } = {}): Promise<Estimate> {
+  /**
+   * What rendering will cost (free). Pass the export settings you will render
+   * with (`size`, `quality`, `fps`, ...): minutes count the output size and
+   * frames are timed at that quality and frame rate.
+   */
+  async estimate(
+    doc: DocumentInput,
+    opts: ExportSettings & { range?: [number, number] | null; signal?: AbortSignal } = {},
+  ): Promise<Estimate> {
     const document = await this.prepare(doc);
+    const output = settingsOf(opts);
     const data = await this.#transport.json<EstimateData>({
       path: "/v1/estimate",
-      json: { document, range: opts.range ?? null },
+      json: compact({ document, range: opts.range ?? null, output: Object.keys(output).length ? output : undefined }),
       signal: opts.signal,
     });
     return new Estimate(data);
