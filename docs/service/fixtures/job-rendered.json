@@ -72,7 +72,9 @@
         0.0,
         1.0
       ],
-      "width": 640
+      "width": 640,
+      "format": "mp4",
+      "quality": "standard"
     },
     "warnings": []
   },

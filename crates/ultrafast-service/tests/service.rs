@@ -380,6 +380,60 @@ fn renders_from_uploads_to_local_storage() {
         .unwrap();
     assert_eq!((e.status, e.code.as_str()), (409, "output_conflict"));
 
+    // Other formats: a transparent VP9 WebM inline, a PNG sequence stored as
+    // a zip, named for their format.
+    if ultrafast_live::ffmpeg::encoder_opens("libvpx-vp9") {
+        let mut webm = request("r8", "a1");
+        webm.output = Some(Output {
+            inline: true,
+            format: Some(Container::Webm),
+            alpha: true,
+            quality: Some(Quality::Draft),
+            fps: Some(15.0),
+            ..Output::default()
+        });
+        let Reply::Bytes {
+            content_type, headers, ..
+        } = engine.render(webm, &grants, Instant::now()).unwrap()
+        else {
+            panic!("expected the video inline");
+        };
+        assert_eq!(content_type, "video/webm");
+        let receipt: Receipt = serde_json::from_str(&headers[0].1).unwrap();
+        assert_eq!(
+            (receipt.video.format.as_str(), receipt.video.codec.as_str()),
+            ("webm", "vp9")
+        );
+        assert_eq!((receipt.video.frames, receipt.video.fps), (30, 15.0));
+        assert!(receipt.video.alpha);
+    }
+    let mut seq = request("r9", "a1");
+    seq.output = Some(Output {
+        format: Some(Container::Png),
+        range: Some([0.0, 0.5]),
+        ..Output::default()
+    });
+    let Reply::Json(status, body) = engine.render(seq, &grants, Instant::now()).unwrap() else {
+        panic!("expected a receipt");
+    };
+    assert_eq!(status, 200, "{body}");
+    let receipt: Receipt = serde_json::from_str(&body).unwrap();
+    assert_eq!((receipt.video.format.as_str(), receipt.video.frames), ("png", 15));
+    let meta = engine
+        .stores
+        .local
+        .stat("", "renders/r9/frames.zip", None)
+        .unwrap()
+        .expect("the sequence stored as frames.zip");
+    assert_eq!(meta.content_type.as_deref(), Some("application/zip"));
+    let zip = zip::ZipArchive::new(std::fs::File::open(m.dir.join("storage/renders/r9/frames.zip")).unwrap()).unwrap();
+    let names: Vec<&str> = zip.file_names().collect();
+    assert!(
+        names.contains(&"00000.png") && names.contains(&"00014.png"),
+        "{names:?}"
+    );
+    assert!(names.contains(&"audio.wav"), "the sound beside the frames: {names:?}");
+
     // Cloud features: bucket output and bucket inputs.
     let mut to_bucket = request("r2", "a1");
     to_bucket.output = Some(Output {

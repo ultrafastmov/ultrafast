@@ -517,6 +517,22 @@ mod tests {
         let r: RenderRequest = round_trip("render-request-inline.json");
         let o = r.output.as_ref().unwrap();
         assert!(o.inline && o.uri.is_none());
+        assert_eq!((o.quality, o.size), (Some(Quality::Draft), Some(Size::Short(720))));
+        // A transparent ProRes master at 4K and 60 fps, resolved as `ultrafast
+        // export` would.
+        let r: RenderRequest = round_trip("render-request-master.json");
+        let o = r.output.as_ref().unwrap();
+        let doc = ultrafast_graph::Document::from_json(&r.document.to_string()).unwrap();
+        let t = o.settings().resolve(o.named_path(), &doc.format).unwrap();
+        assert_eq!(t.container, Container::Mov);
+        assert_eq!(t.codec_name(), "prores-4444");
+        assert_eq!((t.width, t.height, t.fps), (2160, 3840, 60.0));
+        assert!(t.video.unwrap().alpha);
+        assert_eq!(t.audio.unwrap().codec, AudioCodec::Pcm24);
+        // Settings that don't go together are refused before anything runs.
+        let bad: Output = serde_json::from_value(serde_json::json!({"alpha": true, "codec": "h264"})).unwrap();
+        assert!(bad.settings().resolve(None, &doc.format).is_err());
+        assert!(serde_json::from_value::<Output>(serde_json::json!({"quality": "ultra"})).is_err());
         let f: FrameRequest = round_trip("frame-request.json");
         assert_eq!(f.format, ImageFormat::Png);
         // The site's forms: `at` for `t`, no `output` at all.

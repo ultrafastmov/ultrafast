@@ -12,6 +12,8 @@
     "ultrafast-width": "1080",
     "ultrafast-height": "1920",
     "ultrafast-fps": "30",
+    "ultrafast-codec": "h264",
+    "ultrafast-format": "mp4",
     "ultrafast-image-digest": "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
     "ultrafast-version": "0.1.0+e6d123f",
     "ultrafast-inputs-sha256": "7e73612da0197d493346faf295ac1245d10e344e6cbcbc3d99e22704431fd842",

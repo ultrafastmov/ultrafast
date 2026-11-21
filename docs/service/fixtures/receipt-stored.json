@@ -39,7 +39,9 @@
     "range": [
       0.0,
       1.0
-    ]
+    ],
+    "format": "mp4",
+    "quality": "standard"
   },
   "renderer": {
     "service": "ultrafast-service",

@@ -1184,3 +1184,20 @@ impl Engine {
         Ok(Reply::Json(200, serde_json::to_string(&est).unwrap_or_default()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stored_names_follow_the_format() {
+        assert_eq!(output_name(None, Container::Mp4), "film.mp4");
+        assert_eq!(output_name(None, Container::Webm), "film.webm");
+        assert_eq!(output_name(None, Container::Png), "frames.zip");
+        assert_eq!(output_name(Some("teaser"), Container::Gif), "teaser.gif");
+        assert_eq!(output_name(Some("teaser.m4v"), Container::Mp4), "teaser.m4v");
+        assert_eq!(output_name(Some("cut.mov"), Container::Mov), "cut.mov");
+        assert_eq!(output_name(Some("plates"), Container::Exr), "plates.zip");
+        assert_eq!(output_name(Some("plates.zip"), Container::Exr), "plates.zip");
+    }
+}

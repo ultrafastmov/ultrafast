@@ -86,6 +86,8 @@
   "output": {
     "inline": true,
     "codec": "h264",
+    "quality": "draft",
+    "size": "720p",
     "audio": true,
     "range": [
       0,
