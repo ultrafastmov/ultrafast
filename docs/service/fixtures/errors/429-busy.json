@@ -1,0 +1,8 @@
+{
+  "error": {
+    "status": 429,
+    "code": "busy",
+    "message": "this instance is rendering another request",
+    "retry": true
+  }
+}

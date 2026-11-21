@@ -1,0 +1,5 @@
+{
+  "auth": "key",
+  "caller": "default",
+  "webhook_secret": "whsec_000000000000000000000000000000000000000000000000"
+}

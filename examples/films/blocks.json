@@ -1,0 +1,201 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 20.5,
+  "motion_blur": {
+   "samples": 4,
+   "shutter": 0.5
+  }
+ },
+ "output": "grained",
+ "nodes": {
+  "bg": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     324.0,
+     500
+    ],
+    "radius": 1700,
+    "stops": "0:#2a1b3d, 0.55:#120d1e, 1:#07060c"
+   }
+  },
+  "silk": {
+   "op": "marble",
+   "params": {
+    "filaments": 0.35
+   }
+  },
+  "silk_dim": {
+   "op": "adjust",
+   "params": {
+    "exposure": -2.2,
+    "saturation": 0.6
+   },
+   "inputs": {
+    "source": "silk"
+   }
+  },
+  "backdrop": {
+   "op": "over",
+   "params": {
+    "opacity": 0.5
+   },
+   "inputs": {
+    "fg": "silk_dim",
+    "bg": "bg"
+   }
+  },
+  "title": {
+   "op": "block",
+   "params": {
+    "kind": "title",
+    "duration": 4.6,
+    "kicker": "ULTRAFAST \u00b7 BLOCKS",
+    "title": "Built-in blocks, one house style",
+    "subtitle": "A title, a lower third, a quote, a stat, a chapter and an end card. Each is one node."
+   },
+   "timing": {
+    "offset": 0.3
+   }
+  },
+  "lower_third": {
+   "op": "block",
+   "params": {
+    "kind": "lower_third",
+    "name": "Ada Okafor",
+    "role": "MOTION DIRECTOR"
+   },
+   "timing": {
+    "offset": 5.4
+   }
+  },
+  "chapter": {
+   "op": "block",
+   "params": {
+    "kind": "chapter",
+    "number": "01",
+    "title": "On speed",
+    "position": [
+     108,
+     1180
+    ],
+    "duration": 2.6
+   },
+   "timing": {
+    "offset": 5.2
+   }
+  },
+  "quote": {
+   "op": "block",
+   "params": {
+    "kind": "quote",
+    "quote": "The fastest render is the one you never had to wait for.",
+    "author": "A video engineer",
+    "width": 860
+   },
+   "timing": {
+    "offset": 8.2
+   }
+  },
+  "stat": {
+   "op": "block",
+   "params": {
+    "kind": "stat",
+    "value": 235,
+    "suffix": " fps",
+    "label": "EXPORT, 6-SAMPLE MOTION BLUR",
+    "accent": "#2ee6c5"
+   },
+   "timing": {
+    "offset": 13.7
+   }
+  },
+  "end_card": {
+   "op": "block",
+   "params": {
+    "kind": "end_card",
+    "title": "ultrafast",
+    "tagline": "the video engine for agents",
+    "cta": "Make something",
+    "logo": "../assets/svg/ultrafast-mark.svg"
+   },
+   "timing": {
+    "offset": 17.4
+   }
+  },
+  "over": {
+   "op": "over",
+   "inputs": {
+    "fg": "title",
+    "bg": "backdrop"
+   }
+  },
+  "over2": {
+   "op": "over",
+   "inputs": {
+    "fg": "lower_third",
+    "bg": "over"
+   }
+  },
+  "over3": {
+   "op": "over",
+   "inputs": {
+    "fg": "chapter",
+    "bg": "over2"
+   }
+  },
+  "over4": {
+   "op": "over",
+   "inputs": {
+    "fg": "quote",
+    "bg": "over3"
+   }
+  },
+  "over5": {
+   "op": "over",
+   "inputs": {
+    "fg": "stat",
+    "bg": "over4"
+   }
+  },
+  "over6": {
+   "op": "over",
+   "inputs": {
+    "fg": "end_card",
+    "bg": "over5"
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "over6"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.05
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "ultrafast-starter-vercel-ai-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An agent that turns a brief into a reviewed MP4 with ultrafast's MCP tools and the Vercel AI SDK.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "list-tools": "tsx src/index.ts --list-tools",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.107",
+    "@ai-sdk/mcp": "^2.0.102",
+    "@ai-sdk/openai": "^4.0.122",
+    "ai": "^7.0.179",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

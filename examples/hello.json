@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "format": { "width": 1920, "height": 1080, "fps": 60, "duration": 4.0 },
+  "output": "comp",
+  "nodes": {
+    "bg": {
+      "op": "gradient",
+      "params": { "a": "#0b0b1a", "b": "#2a1650", "start": [0, 0], "end": [0, 1080] }
+    },
+    "glow": {
+      "op": "gradient",
+      "params": {
+        "kind": "radial",
+        "a": [1.0, 0.45, 0.15, 0.55],
+        "b": [1.0, 0.45, 0.15, 0.0],
+        "center": { "keys": [
+          { "t": 0, "v": [560, 540], "ease": "in_out_cubic" },
+          { "t": 4, "v": [1360, 540] }
+        ] },
+        "radius": 520
+      }
+    },
+    "disc": {
+      "op": "shape",
+      "params": {
+        "kind": "circle",
+        "color": "#ff7a2e",
+        "size": [360, 360],
+        "center": { "keys": [
+          { "t": 0, "v": [560, 540], "ease": "in_out_cubic" },
+          { "t": 4, "v": [1360, 540] }
+        ] }
+      }
+    },
+    "card": {
+      "op": "shape",
+      "params": {
+        "kind": "rect",
+        "color": [1, 1, 1, 0.12],
+        "size": [1400, 520],
+        "radius": 48,
+        "rotation": { "keys": [ { "t": 0, "v": [-4], "ease": "out_cubic" }, { "t": 2, "v": [4] } ] }
+      }
+    },
+    "ring": {
+      "op": "shape",
+      "params": {
+        "kind": "circle",
+        "color": "#ffffff",
+        "size": [520, 520],
+        "stroke": 6,
+        "softness": 1.5,
+        "center": [960, 540]
+      }
+    },
+    "unused_debug": { "op": "solid", "params": { "color": "#ff00ff" } },
+    "l1": { "op": "over", "inputs": { "fg": "glow", "bg": "bg" } },
+    "l2": { "op": "over", "inputs": { "fg": "card", "bg": "l1" } },
+    "l3": { "op": "over", "inputs": { "fg": "ring", "bg": "l2" }, "params": { "opacity": 0.35 } },
+    "comp": { "op": "over", "inputs": { "fg": "disc", "bg": "l3" } }
+  }
+}

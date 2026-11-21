@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "output": "out",
+  "meta": {
+    "client": {"render_id": "render_9f2", "configuration_sha256": "4f8b2c1d0e9a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c"},
+    "numbers": [1.0, 1e21, 1E-7, 0.1, -0.0, 12345678901234567890, 3.141592653589793, 0.30000000000000004, 2.5e-310, 100, 1381.0559388932143, 907.7331595499569],
+    "text": "Hindi हिन्दी / \"quoted\" \t tab"
+  },
+  "format": {"width": 360, "height": 640, "fps": 30, "duration": 1.5},
+  "nodes": {
+    "out": {"op": "over", "inputs": {"fg": "title", "bg": "bg"}},
+    "bg": {"op": "solid", "params": {"color": "#101418"}},
+    "title": {"op": "text", "params": {"text": "canonical", "font": "Inter", "size": 48.0, "color": "#ffffff", "position": [180, 320.5], "align": "center"}}
+  }
+}

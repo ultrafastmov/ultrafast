@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-11-21T17:23:21.185Z",
+  "error": {
+    "code": "invalid_document",
+    "issues": [
+      {
+        "message": "node `o` input `fg` references missing node `missing`",
+        "node": "",
+        "severity": "error"
+      }
+    ],
+    "message": "node `o` input `fg` references missing node `missing`",
+    "retry": false,
+    "status": 400
+  },
+  "finished_at": "2026-11-21T17:23:21.185Z",
+  "id": "job_01M7ZJ4KZ1JD7G3YDC117RF369",
+  "progress": null,
+  "receipt": null,
+  "started_at": "2026-11-21T17:23:21.185Z",
+  "status": "failed",
+  "webhook": null
+}

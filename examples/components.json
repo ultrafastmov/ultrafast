@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "format": { "width": 1920, "height": 1080, "fps": 60, "duration": 6.0 },
+  "output": "comp",
+  "components": {
+    "lower_third": {
+      "params": { "title": "Title", "subtitle": "Subtitle", "accent": "#22d3ee", "pos": [0, 820] },
+      "inputs": ["under"],
+      "output": "out",
+      "nodes": {
+        "bar": { "op": "shape", "params": {
+          "kind": "rect", "radius": 18, "color": [0.02, 0.02, 0.05, 0.78], "center": [480, 0], "size": [760, 150],
+          "rotation": 0 } },
+        "accent_bar": { "op": "shape", "params": { "kind": "rect", "center": [112, 0], "size": [8, 110], "radius": 4, "color": "$accent" } },
+        "title": { "op": "text", "params": { "text": "$title", "size": 54, "weight": 700, "position": [140, -58], "color": "#ffffff",
+          "reveal": { "keys": [ { "t": 0.2, "v": [0] }, { "t": 1.0, "v": [40] } ] }, "reveal_softness": 3, "reveal_offset": [0, 18] } },
+        "subtitle": { "op": "text", "params": { "text": "$subtitle", "size": 32, "position": [140, 8], "color": [1, 1, 1, 0.7],
+          "reveal": { "keys": [ { "t": 0.5, "v": [0] }, { "t": 1.4, "v": [60] } ] }, "reveal_softness": 6 } },
+        "card1": { "op": "over", "inputs": { "fg": "accent_bar", "bg": "bar" } },
+        "card2": { "op": "over", "inputs": { "fg": "title", "bg": "card1" } },
+        "card3": { "op": "over", "inputs": { "fg": "subtitle", "bg": "card2" } },
+        "slide": { "op": "transform", "inputs": { "source": "card3" }, "params": {
+          "anchor": [0, 0], "position": { "keys": [ { "t": 0, "v": [-800, 0], "ease": "out_cubic" }, { "t": 0.6, "v": [0, 0] } ] } } },
+        "placed": { "op": "transform", "inputs": { "source": "slide" }, "params": { "anchor": [0, 0], "position": "$pos" } },
+        "out": { "op": "over", "inputs": { "fg": "placed", "bg": "$under" } }
+      }
+    }
+  },
+  "nodes": {
+    "bg": { "op": "gradient", "params": { "a": "#334155", "b": "#0f172a" } },
+    "grid": { "op": "checker", "params": { "a": [1, 1, 1, 0.03], "b": [1, 1, 1, 0], "size": 60 } },
+    "base": { "op": "over", "inputs": { "fg": "grid", "bg": "bg" } },
+    "speaker": { "op": "lower_third", "inputs": { "under": "base" },
+      "params": { "title": "Ada Lovelace", "subtitle": "Building ultrafast, live", "pos": [0, 760] },
+      "timing": { "in": 0.5, "out": 4.5, "offset": 0.5 } },
+    "location": { "op": "lower_third", "inputs": { "under": "speaker" },
+      "params": { "title": "Bengaluru", "subtitle": "Composited on the GPU", "accent": "#f472b6", "pos": [0, 940] },
+      "timing": { "in": 2.0, "offset": 2.0 } },
+    "comp": { "op": "adjust", "inputs": { "source": "location" }, "params": { "contrast": 1.05 } }
+  }
+}

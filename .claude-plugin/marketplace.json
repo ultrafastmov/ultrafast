@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ultrafast",
+  "description": "ultrafast, the GPU video engine for agents: the skill and the local MCP server.",
+  "owner": { "name": "ultrafast", "url": "https://ultrafast.mov" },
+  "plugins": [
+    {
+      "name": "ultrafast",
+      "source": "./plugins/ultrafast",
+      "description": "Make and edit videos as JSON documents rendered on your GPU: the ultrafast skill and the `uf mcp` tools (check, frames, contact sheets, review, export).",
+      "category": "media",
+      "homepage": "https://ultrafast.mov/integrations/#coding-agents"
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+# ultrafast over MCP
+
+ultrafast serves agents as Model Context Protocol tools two ways:
+
+- **`uf mcp`** (stdio): on the agent's machine, renders on its GPU, and
+  documents are files there. 20 tools.
+- **`/mcp` on the render service** (Streamable HTTP, behind the server's API
+  key): for agents that can't run a local process (agent frameworks, hosted
+  agents, GPU-less sandboxes). Documents travel inline and exports come back
+  as download links. 16 tools.
+
+Both speak MCP 2024-11-05 through 2025-11-25 (with `initialize`) and the
+stateless 2026-07-28 (`server/discover`, the version in every request's
+`_meta`). The code is in `crates/ultrafast-mcp`; the CLI's stdio server is
+`crates/ultrafast-cli/src/mcp.rs` and the service mounts the HTTP handler in
+`crates/ultrafast-cli/src/serve.rs`.
+
+## Local: `uf mcp`
+
+```bash
+claude mcp add ultrafast -- uf mcp                  # Claude Code
+codex mcp add ultrafast -- uf mcp                   # Codex
+```
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.ultrafast]
+command = "uf"
+args = ["mcp"]
+tool_timeout_sec = 300   # exports of long films outlast the 60 s default
+```
+
+Cursor (`.cursor/mcp.json`), Gemini CLI (`~/.gemini/settings.json`) and
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ultrafast": { "command": "uf", "args": ["mcp"] }
+  }
+}
+```
+
+Desktop apps don't inherit the shell's `PATH`: give Claude Desktop the full
+path from `which uf`.
+
+The server keeps a renderer per document (repeated frames are fast) and
+reloads a file when it changes, whether the agent edits it through
+`ultrafast_edit` or writes it directly. Anything else the process writes to
+stdout goes to stderr, so it can't corrupt the protocol stream.
+
+| tool | does |
+|---|---|
+| `ultrafast_ops` | the op vocabulary as compact Markdown, or the full JSON of named ops (`ops: [...]`) |
+| `ultrafast_new` | write a template (`vertical`, `title`, `square`, `promo`, `explainer`, `product`) to a path |
+| `ultrafast_check` | problems in a document, static and render-time |
+| `ultrafast_frame` | one exact frame, returned as an image |
+| `ultrafast_sheet` | a labeled contact sheet of frames, returned as an image |
+| `ultrafast_review` | renders the film and reports unreadable, too-brief, clipped, overlapping or tiny text, unsafe areas and seizure-risk flashing |
+| `ultrafast_inspect` | what is on screen at a time: each element's node, bounds and words |
+| `ultrafast_edit` | apply an edit batch to the document file (atomic) |
+| `ultrafast_export` | encode to H.264/HEVC with audio and motion blur |
+| `ultrafast_estimate` | rendered minutes, Cloud price, GPU seconds and time to first frame, before rendering |
+| `ultrafast_batch` | one document, a video per row of a data file (CSV, JSON, JSON lines) or inline rows |
+| `ultrafast_profile` | GPU ms per render group (which nodes cost what), for slow films |
+| `ultrafast_beats` | tempo, beats, downbeats and onsets of a soundtrack |
+| `ultrafast_voiceover` | speak a script to WAV with every word's time (macOS voices; eSpeak NG on Linux) |
+| `ultrafast_import_svg` | an SVG as an editable component (or added to a document) |
+| `ultrafast_decompose` | a finished video as an editable document: plate, vector layers with their motion, gradients, and type read back as text in its matched font |
+| `ultrafast_match_font` | a text node's font (family, weight, optical size, axes), size, baseline, tracking and color from a video frame |
+| `ultrafast_ocr` | the text in a video frame, with word boxes, and a draft of text nodes (Apple Vision on macOS, Tesseract elsewhere) |
+| `ultrafast_measure` | glyph metrics of a line of text |
+| `ultrafast_outline` | a line of text as SVG path data |
+
+Frames and sheets come back as PNG, or JPEG when the PNG would pass 1.5 MB
+(sheets of busy footage); sheets are kept within 2400 px.
+
+## Remote: Streamable HTTP
+
+`ultrafast serve` answers MCP at `POST /mcp` (and `POST /`), next to the
+`/v1` API, with the same keys. Every tool takes the whole document inline
+(`document`); media inside it are `asset://` ids from `POST /v1/uploads` or
+https URLs. The remote set is the local one without the tools that read or
+write local files (`voiceover`, `decompose`, `match_font`, `ocr`):
+`ops`, `new`, `check`, `frame`, `sheet`, `review`, `inspect`, `edit`
+(returns the edited document; nothing is stored), `export` (renders, stores
+and returns a signed download link), `estimate`, `batch` (up to 20 rows a
+call, a link per row), `profile`, `beats` (`audio`: an asset id or URL),
+`import_svg` (`svg`: the source text), `measure` and `outline`.
+
+Clients send the server's API key as `Authorization: Bearer <key>`; a call
+without one gets 401.
+
+```bash
+claude mcp add --transport http ultrafast https://video.example.com/mcp \
+  --header "Authorization: Bearer $ULTRAFAST_API_KEY"
+```
+
+Codex: `url = "..."` and `bearer_token_env_var = "ULTRAFAST_API_KEY"`.
+Cursor: `"url"` with `"headers"`. Gemini CLI: `"httpUrl"` with `"headers"`.
+Claude's and ChatGPT's connectors sign in with OAuth rather than a key, so
+they use ultrafast Cloud.
+
+ultrafast Cloud runs the same handler at `https://mcp.ultrafast.mov` and
+adds OAuth sign-in for connectors through `http::handle_with` and the
+`http::SignIn` trait (the sign-in itself is Cloud code, not in this repo).
+
+To try the remote tools without the full service, the crate has a small
+development server on this machine's GPU:
+
+```bash
+ULTRAFAST_API_KEYS=uf_test_dev cargo run --release -p ultrafast-mcp --example dev_server -- 8765
+```
+
+## Skill and plugins
+
+- `skills/ultrafast/`: the agent skill (the document format, the
+  check-look-review-export loop, tested recipes). `npx skills add
+  ultrafastmov/ultrafast` installs it for Claude Code, Codex, Cursor, Gemini
+  CLI and others.
+- `plugins/ultrafast/`: the Claude Code plugin (the skill and `uf mcp`),
+  listed by `.claude-plugin/marketplace.json`:
+  `claude plugin marketplace add ultrafastmov/ultrafast`, then
+  `claude plugin install ultrafast@ultrafast`. Its copy of the skill is kept
+  in sync by `tools/sync-plugin-skill.sh` (`--check` in CI).
+- `gemini-extension.json`: `gemini extensions install
+  https://github.com/ultrafastmov/ultrafast` adds `uf mcp` and the skill.
+
+## Tested clients
+
+What was run against these servers (November 2026):
+
+| client | transport | result |
+|---|---|---|
+| Claude Code 2.1.325 | stdio | a model run used new, check, sheet (saw the image), inspect, edit and export |
+| Claude Code 2.1.325 | HTTP, bearer key | stateless 2026-07-28 (`server/discover`, then `tools/list` and `tools/call`); new, edit, frame and export with a download link |
+| Claude Code 2.1.325 | HTTP, bearer key, `ultrafast serve` | stateless 2026-07-28 through the service's router; new, estimate and export with a signed link |
+| MCP Inspector (CLI) | HTTP, `ultrafast serve` | `tools/mcp-every-tool.sh`: all 16 remote tools answered, `beats` on an uploaded `asset://` |
+| Claude Code 2.1.325 + skill | stdio | from a one-line request: loaded the skill, then template, ops, check, sheets, two fixes, review (0 findings), export |
+| MCP TypeScript SDK 1.32 | HTTP, OAuth (Cloud's sign-in, tested before it moved out of this repo) | 401 → metadata → DCR, and separately CIMD with Claude Code's published client document → sign-in page → PKCE token → every tool |
+| Gemini CLI 0.70 | stdio and HTTP (`httpUrl` + header) | connected (`gemini mcp list`); no model run (no Gemini sign-in) |
+| Cursor CLI 2026.11.19 | stdio (`.cursor/mcp.json`) | ready, all 20 tools listed (`agent mcp list-tools`); no model run (no Cursor sign-in) |
+| Codex 0.169 | stdio | not run: Codex's sign-in on this machine had expired |
+| Claude Desktop | stdio | not run |

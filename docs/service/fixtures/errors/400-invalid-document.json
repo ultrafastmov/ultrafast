@@ -1,0 +1,20 @@
+{
+  "error": {
+    "status": 400,
+    "code": "invalid_document",
+    "message": "the document has 2 problems",
+    "retry": false,
+    "issues": [
+      {
+        "node": "title",
+        "severity": "error",
+        "message": "param `size` must be a number (got \"big\")"
+      },
+      {
+        "node": "stack",
+        "severity": "error",
+        "message": "input `fg` references missing node `subjct`"
+      }
+    ]
+  }
+}

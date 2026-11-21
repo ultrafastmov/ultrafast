@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SLANG_VERSION: "2026.19"
+
+jobs:
+  fmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  # Every test, GPU ones included, on lavapipe (Mesa's software Vulkan), so
+  # CI needs no GPU. Slow, but the pixels are the same code path.
+  test-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Vulkan (lavapipe) and ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 vulkan-tools ffmpeg
+          ls /usr/share/vulkan/icd.d/
+          ICD=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | grep -v i686 | head -1)
+          echo "VK_ICD_FILENAMES=$ICD" >> "$GITHUB_ENV"
+          VK_ICD_FILENAMES=$ICD vulkaninfo --summary
+      - name: Slang
+        run: |
+          mkdir -p "$RUNNER_TEMP/slang"
+          curl -fsSL "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-linux-x86_64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP/slang"
+          echo "SLANG_DIR=$RUNNER_TEMP/slang" >> "$GITHUB_ENV"
+          echo "ULTRAFAST_SLANG_DIR=$RUNNER_TEMP/slang" >> "$GITHUB_ENV"
+      - run: cargo build --release --workspace
+      - run: target/release/ultrafast info
+      - name: Test footage
+        run: sh examples/assets/make_test_video.sh
+      - name: Every example passes check
+        run: |
+          for f in examples/*.json examples/templates/*.json; do
+            echo "== $f"; out=$(target/release/ultrafast check "$f") || { echo "$out"; exit 1; }
+          done
+      - run: cargo test --release --workspace --no-fail-fast
+
+  # Metal. Manual for now (macOS minutes are expensive on private repos).
+  test-macos:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Slang and ffmpeg
+        run: |
+          brew install ffmpeg
+          mkdir -p "$RUNNER_TEMP/slang"
+          curl -fsSL "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/slang-${SLANG_VERSION}-macos-aarch64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP/slang"
+          echo "SLANG_DIR=$RUNNER_TEMP/slang" >> "$GITHUB_ENV"
+          echo "ULTRAFAST_SLANG_DIR=$RUNNER_TEMP/slang" >> "$GITHUB_ENV"
+      - run: cargo test --release --workspace --no-fail-fast
+
+  # Every crate packs for crates.io: nothing it includes lies outside its
+  # folder (packaging/README.md). Building them is the release's job.
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo package --workspace --no-verify --locked
+
+  # The skill `npx skills add` finds (skills/ultrafast) and the Claude Code
+  # plugin's copy of it stay the same, and the plugin validates.
+  skill:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh tools/sync-plugin-skill.sh --check
+      # Unproven without a signed-in CLI on a runner: reported, not blocking.
+      - name: claude plugin validate
+        continue-on-error: true
+        run: npx -y @anthropic-ai/claude-code plugin validate ./plugins/ultrafast
+
+  licenses:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources

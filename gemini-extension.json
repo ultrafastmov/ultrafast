@@ -1,0 +1,11 @@
+{
+  "name": "ultrafast",
+  "version": "0.1.0",
+  "description": "Make and edit videos as JSON documents rendered on your GPU: the ultrafast MCP tools (uf mcp) and the ultrafast skill.",
+  "mcpServers": {
+    "ultrafast": {
+      "command": "uf",
+      "args": ["mcp"]
+    }
+  }
+}

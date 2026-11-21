@@ -1,0 +1,10 @@
+{ "version": 1, "format": { "width": 1080, "height": 1920, "fps": 30, "duration": 33.0 }, "output": "r4",
+  "nodes": {
+    "chrome":   { "op": "video", "params": { "src": "chrome.mp4", "fit": "fill" }, "timing": { "in": 0, "out": 8, "offset": 0 } },
+    "signal":   { "op": "video", "params": { "src": "signal.mp4", "fit": "fill" }, "timing": { "in": 8, "out": 16, "offset": 8 } },
+    "terminal": { "op": "video", "params": { "src": "terminal.mp4", "fit": "fill" }, "timing": { "in": 16, "out": 25, "offset": 16 } },
+    "warp":     { "op": "video", "params": { "src": "warp.mp4", "fit": "fill" }, "timing": { "in": 25, "out": 33, "offset": 25 } },
+    "r2": { "op": "over", "inputs": { "fg": "signal", "bg": "chrome" } },
+    "r3": { "op": "over", "inputs": { "fg": "terminal", "bg": "r2" } },
+    "r4": { "op": "over", "inputs": { "fg": "warp", "bg": "r3" } }
+  } }

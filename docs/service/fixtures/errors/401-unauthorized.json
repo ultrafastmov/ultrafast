@@ -1,0 +1,8 @@
+{
+  "error": {
+    "status": 401,
+    "code": "unauthorized",
+    "message": "unknown API key",
+    "retry": false
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-11-21T17:23:20.883Z",
+  "error": null,
+  "finished_at": null,
+  "id": "job_01M7ZJ4KNKR633PMW5THD2QWYS",
+  "progress": null,
+  "receipt": null,
+  "started_at": null,
+  "status": "queued",
+  "webhook": "https://example.com/rendered"
+}

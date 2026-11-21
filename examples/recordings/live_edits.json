@@ -1,0 +1,18 @@
+[
+ {"at": 1.4, "note": "agent ▸ make the second line pink",
+  "edits": [{"edit": "set_param", "node": "line2", "param": "color", "value": "#ff5c7a"}]},
+ {"at": 3.0, "note": "agent ▸ warmer, deeper backdrop",
+  "edits": [{"edit": "set_param", "node": "ground", "param": "stops", "value": "0:#3a1430, 0.6:#120a18, 1:#050407"}]},
+ {"at": 4.6, "note": "agent ▸ heavier display face",
+  "edits": [{"edit": "set_param", "node": "line1", "param": "font", "value": "Fraunces"},
+            {"edit": "set_param", "node": "line1", "param": "weight", "value": 800}]},
+ {"at": 6.2, "note": "agent ▸ retype the line",
+  "edits": [{"edit": "set_param", "node": "line2", "param": "text", "value": "real thing."}]},
+ {"at": 7.4, "note": "agent ▸ add a lower third",
+  "edits": [{"edit": "add_layer", "id": "who", "node": {"op": "block", "params": {"kind": "lower_third", "name": "A live document", "role": "EDITED WHILE IT PLAYS", "duration": 3.4}, "timing": {"offset": 1.4}}}]},
+ {"at": 9.4, "note": "agent ▸ chapter two, accent rule",
+  "edits": [{"edit": "set_param", "node": "label", "param": "text", "value": "CHAPTER 02"},
+            {"edit": "set_param", "node": "rule", "param": "color", "value": "#ff5c7a"}]},
+ {"at": 10.8, "note": "agent ▸ more glow",
+  "edits": [{"edit": "set_param", "node": "lit", "param": "intensity", "value": 1.1}]}
+]

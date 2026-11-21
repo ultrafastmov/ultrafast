@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "format": { "width": 1920, "height": 1080, "fps": 60, "duration": 4.0 },
+  "output": "comp",
+  "nodes": {
+    "bg": { "op": "gradient", "params": { "a": "#0f0c29", "b": "#302b63" } },
+
+    "title": { "op": "text", "params": {
+      "text": "ultrafast renders type on the GPU", "font": "Helvetica Neue", "weight": 700, "size": 96,
+      "position": [960, 300], "align": "center", "valign": "middle", "color": "#ffffff",
+      "reveal": { "keys": [ { "t": 0, "v": [0] }, { "t": 2, "v": [34] } ] },
+      "reveal_softness": 4, "reveal_offset": [0, 40] } },
+    "title_x": { "op": "transform", "inputs": { "source": "title" }, "params": {
+      "anchor": [960, 300], "position": [960, 300],
+      "scale": { "keys": [ { "t": 0, "v": [0.9], "ease": "out_cubic" }, { "t": 4, "v": [1.15] } ] } } },
+
+    "body": { "op": "text", "params": {
+      "text": "Shaped with HarfBuzz rules, laid out with Unicode line breaking, and rasterized with exact area coverage. Ligatures: office ffi. Kerning: AVATAR Wave.",
+      "size": 40, "width": 1200, "line_height": 1.35, "position": [360, 470], "color": [1, 1, 1, 0.85] } },
+
+    "star": { "op": "path", "params": { "kind": "star", "sides": 5, "radius": 120, "inner_radius": 52, "center": [0, 0],
+      "position": [1650, 850], "rotation": { "keys": [ { "t": 0, "v": [0] }, { "t": 4, "v": [72] } ] }, "color": "#ffd166" } },
+    "squiggle": { "op": "path", "params": {
+      "d": "M 200 860 C 320 720, 440 1000, 560 860 S 800 720, 920 860 S 1160 1000, 1280 860",
+      "stroke": 14, "cap": "round", "join": "round", "color": "#06d6a0",
+      "trim_end": { "keys": [ { "t": 0, "v": [0], "ease": "in_out_cubic" }, { "t": 2.5, "v": [1] } ] } } },
+    "dashed": { "op": "path", "params": { "kind": "circle", "center": [1650, 850], "radius": 170, "stroke": 6, "dash": [24, 14],
+      "dash_offset": { "keys": [ { "t": 0, "v": [0] }, { "t": 4, "v": [152] } ] }, "color": [1, 1, 1, 0.6] } },
+    "outline": { "op": "text", "params": { "text": "OUTLINE", "size": 140, "weight": 800, "stroke": 3, "position": [120, 140], "color": "#ef476f" } },
+
+    "l1": { "op": "over", "inputs": { "fg": "title_x", "bg": "bg" } },
+    "l2": { "op": "over", "inputs": { "fg": "body", "bg": "l1" } },
+    "l3": { "op": "over", "inputs": { "fg": "star", "bg": "l2" } },
+    "l4": { "op": "over", "inputs": { "fg": "squiggle", "bg": "l3" } },
+    "l5": { "op": "over", "inputs": { "fg": "dashed", "bg": "l4" } },
+    "comp": { "op": "over", "inputs": { "fg": "outline", "bg": "l5" } }
+  }
+}

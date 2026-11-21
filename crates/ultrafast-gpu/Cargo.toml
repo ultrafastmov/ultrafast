@@ -1,0 +1,27 @@
+[package]
+name = "ultrafast-gpu"
+description = "Thin native GPU layer for ultrafast (Metal today, Vulkan next)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+# Use the Vulkan backend on macOS too (through MoltenVK), for testing the
+# path NVIDIA GPUs take.
+vulkan = []
+
+[dependencies]
+thiserror.workspace = true
+ash = "0.38"
+gpu-allocator = { version = "0.28", default-features = false, features = ["std", "vulkan"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-metal = "0.3"
+objc2-quartz-core = "0.3"
+objc2-core-graphics = "0.3"
+objc2-core-foundation = "0.3"

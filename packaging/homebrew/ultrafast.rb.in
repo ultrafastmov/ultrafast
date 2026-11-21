@@ -1,0 +1,47 @@
+# The ultrafast formula for the ultrafastmov/homebrew-tap repository, filled
+# in by packaging/homebrew/formula.sh from a release's archives. Prebuilt:
+# the archives carry the binaries and the Slang libraries they load.
+class Ultrafast < Formula
+  desc "GPU video engine for agents: JSON documents in, video out"
+  homepage "https://ultrafast.mov"
+  license any_of: ["Apache-2.0", "MIT"]
+
+  on_macos do
+    on_arm do
+      url "@URL@/ultrafast-@VERSION@-aarch64-apple-darwin.tar.gz"
+      sha256 "@SHA_AARCH64_APPLE_DARWIN@"
+    end
+  end
+
+  on_linux do
+    on_intel do
+      url "@URL@/ultrafast-@VERSION@-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "@SHA_X86_64_UNKNOWN_LINUX_GNU@"
+    end
+  end
+
+  def install
+    libexec.install "ultrafast", "uf", Dir["slang-*"]
+    bin.install_symlink libexec/"ultrafast", libexec/"uf"
+    doc.install "README.md", "THIRD-PARTY.md", "licenses"
+  end
+
+  def caveats
+    on_linux do
+      <<~EOS
+        ultrafast renders with Vulkan: it needs your GPU's Vulkan driver.
+        Exports use ffmpeg, `uf voiceover` uses espeak-ng, and `uf ocr` and
+        `uf reconstruct` use tesseract: install them with your package
+        manager (or brew install ffmpeg espeak-ng tesseract).
+      EOS
+    end
+  end
+
+  # Without a GPU: the version, a template and the op vocabulary.
+  test do
+    assert_match version.to_s, shell_output("#{bin}/uf --version")
+    system bin/"uf", "new", "title", testpath/"film.json"
+    assert_path_exists testpath/"film.json"
+    assert_match "gradient", shell_output("#{bin}/ultrafast ops")
+  end
+end

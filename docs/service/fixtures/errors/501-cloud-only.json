@@ -1,0 +1,9 @@
+{
+  "error": {
+    "status": 501,
+    "code": "cloud_only",
+    "message": "jobs and their webhooks are an ultrafast Cloud feature; this server renders while you wait: POST /v1/render (stored, or `output.inline`)",
+    "retry": false,
+    "feature": "jobs"
+  }
+}

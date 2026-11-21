@@ -1,0 +1,26 @@
+[package]
+name = "ultrafast-recon"
+description = "Reconstruction tooling: probe reference videos, compare renders, fit parameters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+vulkan = ["ultrafast-gpu/vulkan", "ultrafast-render/vulkan", "ultrafast-media/vulkan"]
+
+[dependencies]
+ultrafast-graph.workspace = true
+ultrafast-gpu.workspace = true
+ultrafast-render.workspace = true
+ultrafast-media.workspace = true
+serde_json.workspace = true
+png.workspace = true
+rustybuzz = "0.20"
+fontdb = "0.24"
+kurbo = "0.13"
+
+[dev-dependencies]
+ultrafast-live = { path = "../ultrafast-live", default-features = false }

@@ -1,0 +1,31 @@
+[package]
+name = "ultrafast-live"
+description = "Live ultrafast sessions: realtime preview window and a JSON-lines edit server for agents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = ["window", "audio"]
+window = ["dep:winit"]
+vulkan = ["ultrafast-gpu/vulkan", "ultrafast-render/vulkan", "ultrafast-media/vulkan"]
+# Audio in the preview window (default output device; macOS and Windows).
+audio = ["dep:cpal"]
+
+[dependencies]
+ultrafast-graph.workspace = true
+ultrafast-gpu.workspace = true
+ultrafast-render.workspace = true
+ultrafast-media.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+png.workspace = true
+winit = { version = "0.30", optional = true }
+
+# Preview audio needs a window, which macOS and Windows have; keeping cpal
+# (and ALSA on Linux) out of headless builds.
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
+cpal = { version = "0.18.2", optional = true }

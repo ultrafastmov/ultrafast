@@ -1,0 +1,988 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 8.0
+ },
+ "output": "grained",
+ "nodes": {
+  "bars": {
+   "op": "video",
+   "params": {
+    "src": "../assets/testsrc.mp4",
+    "fit": "fill",
+    "loop": true
+   }
+  },
+  "graded": {
+   "op": "adjust",
+   "params": {
+    "saturation": 1.25,
+    "contrast": 1.15,
+    "exposure": -0.4
+   },
+   "inputs": {
+    "source": "bars"
+   }
+  },
+  "black": {
+   "op": "solid",
+   "params": {
+    "color": "#050505"
+   }
+  },
+  "dark": {
+   "op": "solid",
+   "params": {
+    "color": "#000000"
+   }
+  },
+  "no": {
+   "op": "text",
+   "params": {
+    "text": "NO",
+    "font": "../assets/fonts/ArchivoBlack-Regular.ttf",
+    "size": 330,
+    "position": [
+     76,
+     820
+    ],
+    "color": "#ffffff",
+    "valign": "baseline",
+    "stagger": 0.035,
+    "stagger_order": "random",
+    "glyph_opacity": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.03,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.07,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.1,
+       "v": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "timing": {
+    "offset": 0.4
+   }
+  },
+  "sig": {
+   "op": "text",
+   "params": {
+    "text": "SIGNAL",
+    "font": "../assets/fonts/ArchivoBlack-Regular.ttf",
+    "size": 250,
+    "position": [
+     76,
+     1060
+    ],
+    "color": "#ffffff",
+    "valign": "baseline",
+    "stagger": 0.035,
+    "stagger_order": "random",
+    "glyph_opacity": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.03,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.07,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.1,
+       "v": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "timing": {
+    "offset": 0.55
+   }
+  },
+  "osd": {
+   "op": "text",
+   "params": {
+    "text": "CH 03  \u00b7  REC  \u00b7  SP",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 30,
+    "position": [
+     76,
+     1700
+    ],
+    "color": "#ffffffd0",
+    "valign": "baseline",
+    "weight": 600,
+    "tracking": 2
+   }
+  },
+  "rec": {
+   "op": "shape",
+   "params": {
+    "kind": "circle",
+    "center": [
+     970,
+     160
+    ],
+    "size": [
+     26,
+     26
+    ],
+    "color": "#ff2a2a",
+    "softness": 1
+   }
+  },
+  "rec_blink": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 3.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 3.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 4.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 4.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 6.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 6.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 8.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "rec"
+   }
+  },
+  "word": {
+   "op": "text",
+   "params": {
+    "text": "ultrafast",
+    "font": "../assets/fonts/ArchivoBlack-Regular.ttf",
+    "size": 300,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#f2f2f2",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": -6,
+    "stagger": 0.05,
+    "stagger_order": "center",
+    "glyph_offset": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0,
+        140
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 0.5,
+       "v": [
+        0,
+        0
+       ]
+      }
+     ]
+    },
+    "glyph_opacity": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0
+       ]
+      },
+      {
+       "t": 0.15,
+       "v": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "timing": {
+    "offset": 3.0
+   }
+  },
+  "sub": {
+   "op": "text",
+   "params": {
+    "text": "BROADCAST FROM THE GPU",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 34,
+    "position": [
+     540.0,
+     1160
+    ],
+    "color": "#ffffffc0",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 600,
+    "tracking": 4,
+    "stagger": 0.03,
+    "glyph_opacity": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.02,
+       "v": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "timing": {
+    "offset": 3.6
+   }
+  },
+  "redbar": {
+   "op": "shape",
+   "params": {
+    "kind": "rect",
+    "color": "#ff2a2a",
+    "center": [
+     540.0,
+     1210
+    ],
+    "size": {
+     "keys": [
+      {
+       "t": 3.7,
+       "v": [
+        0,
+        8
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 4.3,
+       "v": [
+        560,
+        8
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "over": {
+   "op": "over",
+   "params": {
+    "opacity": 0.45
+   },
+   "inputs": {
+    "fg": "dark",
+    "bg": "graded"
+   }
+  },
+  "over2": {
+   "op": "over",
+   "inputs": {
+    "fg": "no",
+    "bg": "over"
+   },
+   "timing": {
+    "in": 0.4
+   }
+  },
+  "over3": {
+   "op": "over",
+   "inputs": {
+    "fg": "sig",
+    "bg": "over2"
+   },
+   "timing": {
+    "in": 0.55
+   }
+  },
+  "over4": {
+   "op": "over",
+   "inputs": {
+    "fg": "word",
+    "bg": "black"
+   },
+   "timing": {
+    "in": 3.0
+   }
+  },
+  "over5": {
+   "op": "over",
+   "inputs": {
+    "fg": "sub",
+    "bg": "over4"
+   },
+   "timing": {
+    "in": 3.6
+   }
+  },
+  "over6": {
+   "op": "over",
+   "inputs": {
+    "fg": "redbar",
+    "bg": "over5"
+   },
+   "timing": {
+    "in": 3.7
+   }
+  },
+  "through": {
+   "op": "mask",
+   "params": {
+    "mode": "alpha"
+   },
+   "inputs": {
+    "source": "graded",
+    "matte": "word"
+   }
+  },
+  "over7": {
+   "op": "over",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 5.6,
+       "v": [
+        0.0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.62,
+       "v": [
+        1.0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.75,
+       "v": [
+        0.0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.8,
+       "v": [
+        1.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "fg": "through",
+    "bg": "over6"
+   },
+   "timing": {
+    "in": 5.6
+   }
+  },
+  "over8": {
+   "op": "over",
+   "inputs": {
+    "fg": "over7",
+    "bg": "over3"
+   },
+   "timing": {
+    "in": 2.9
+   }
+  },
+  "over9": {
+   "op": "over",
+   "inputs": {
+    "fg": "osd",
+    "bg": "over8"
+   }
+  },
+  "over10": {
+   "op": "over",
+   "inputs": {
+    "fg": "rec_blink",
+    "bg": "over9"
+   }
+  },
+  "glitch": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat h2(float2 p) { return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }\nfloat4 shade(float2 pos, float px) {\n  float t = time();\n  float amt = param(0);\n  float frame = floor(t * 30.0);\n  // Tear the frame into bands of random height and slide some sideways.\n  float coarse = floor(pos.y / 64.0);\n  float bandH = 6.0 + 90.0 * h2(float2(coarse, frame));\n  float band = floor(pos.y / bandH);\n  float pick = h2(float2(band, frame + 1.0));\n  float shift = pick > 1.0 - 0.4 * amt ? (h2(float2(band, frame + 7.0)) - 0.5) * 260.0 * amt : 0.0;\n  float2 p = pos + float2(shift, 0.0);\n  // Split the channels.\n  float split = (2.0 + 22.0 * amt) * (0.6 + 0.8 * h2(float2(frame, 3.0)));\n  float4 g = input(0, p);\n  float r = input(0, p + float2(split, 0.0)).r;\n  float b = input(0, p - float2(split, 0.0)).b;\n  float4 c = float4(r, g.g, b, g.a);\n  // Blocks of the picture freeze to a flat color now and then.\n  float2 blk = floor(pos / 24.0);\n  if (h2(blk + frame * 0.37) > 1.0 - 0.05 * amt * amt) c.rgb = input(0, (blk + 0.5) * 24.0).rgb * 1.3;\n  // Scanlines, a rolling tracking band, and snow.\n  c.rgb *= 0.86 + 0.14 * step(1.5, fmod(pos.y, 3.0));\n  float roll = frac(t * param(1)) * (size().y + 200.0) - 100.0;\n  float trk = smoothstep(46.0, 0.0, abs(pos.y - roll)) * param(2);\n  c.rgb = lerp(c.rgb, float3(h2(float2(pos.x * 0.05, frame + pos.y))) * 0.6, trk * 0.7);\n  c.rgb += (h2(pos + frame * 13.0) - 0.5) * (0.04 + 0.12 * amt);\n  return float4(max(c.rgb, 0.0), c.a);\n}",
+    "u0": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.0,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.0,
+       "v": [
+        0.589284665132364
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.1,
+       "v": [
+        0.8926472547885622
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.1667,
+       "v": [
+        0.5888742404496741
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.2667,
+       "v": [
+        0.392426523480529
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.3667,
+       "v": [
+        0.6068224271566572
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.4667,
+       "v": [
+        0.8447326543899645
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.5,
+       "v": [
+        0.5849448645677489
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.5333,
+       "v": [
+        0.3180029031188796
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.6333,
+       "v": [
+        0.7258395871625114
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.7,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.6,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.6,
+       "v": [
+        0.6906515459193585
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.6667,
+       "v": [
+        0.5183093301052663
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.7667,
+       "v": [
+        0.5162872613048881
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.8667,
+       "v": [
+        0.18287538689854255
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.9667,
+       "v": [
+        0.20816158303070312
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.0,
+       "v": [
+        0.27485933796891276
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.0333,
+       "v": [
+        0.48979949460024647
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.1,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.7,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.7,
+       "v": [
+        0.49472001441119856
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.8,
+       "v": [
+        0.881820346388899
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.9,
+       "v": [
+        0.4252342282251923
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.9667,
+       "v": [
+        0.6248298641550938
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 3.0667,
+       "v": [
+        0.3137415710314915
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 3.15,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 4.9,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 4.9,
+       "v": [
+        0.2293110873739572
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.0,
+       "v": [
+        0.4983843656210747
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.0333,
+       "v": [
+        0.3904286080617311
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.1,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.55,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.55,
+       "v": [
+        0.736643283106569
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.65,
+       "v": [
+        0.4201019644370865
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.6833,
+       "v": [
+        0.6051210259440863
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.7167,
+       "v": [
+        0.49526986831998143
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.7833,
+       "v": [
+        0.48589663390150584
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.8167,
+       "v": [
+        0.796934096979393
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.85,
+       "v": [
+        0.369113632973725
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.8833,
+       "v": [
+        0.5422414113092249
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.9833,
+       "v": [
+        0.4932614619535148
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 6.0,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.4,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.4,
+       "v": [
+        0.26987252376106735
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.4333,
+       "v": [
+        0.33355325760299526
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.5,
+       "v": [
+        0.2010678509335463
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.55,
+       "v": [
+        0.04
+       ],
+       "ease": "hold"
+      }
+     ]
+    },
+    "u1": 0.35,
+    "u2": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        1.0
+       ]
+      },
+      {
+       "t": 2.9,
+       "v": [
+        1.0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 3.0,
+       "v": [
+        0.25
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "in0": "over10"
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "glitch"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.08
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

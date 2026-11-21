@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ultrafastmov"
+version = "0.1.1"
+description = "Python client for ultrafast, the GPU video engine: render JSON documents to MP4 on ultrafast Cloud or your own server"
+readme = "README.md"
+license = "Apache-2.0 OR MIT"
+license-files = ["LICENSE-APACHE", "LICENSE-MIT"]
+requires-python = ">=3.9"
+dependencies = []
+keywords = ["video", "gpu", "rendering", "agents", "motion-graphics", "mp4"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Multimedia :: Video",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://ultrafast.mov"
+Documentation = "https://ultrafast.mov/docs/"
+Repository = "https://github.com/ultrafastmov/ultrafast"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ultrafastmov"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/ultrafastmov", "tests", "tools", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]

@@ -1,0 +1,41 @@
+[package]
+name = "ultrafast-service"
+description = "ultrafast's render service: the v1 HTTP API behind `ultrafast serve` on one machine (render, frame, sheet, check, review, estimate and uploads; one API key; local storage)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "ultrafast-service"
+path = "src/main.rs"
+
+[dependencies]
+ultrafast-graph.workspace = true
+ultrafast-gpu.workspace = true
+ultrafast-render.workspace = true
+ultrafast-live.workspace = true
+ultrafast-media.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+png.workspace = true
+tiny_http = "0.12"
+ureq = { version = "3", default-features = false, features = ["rustls", "json"] }
+crc32c = "0.6.8"
+md-5 = "0.11.0"
+base64 = "0.23.1"
+sha2 = "0.11.1"
+mp4 = "0.14"
+zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2"] }
+ultrafast-framing.workspace = true
+ultrafast-ops.workspace = true
+ring = "0.17"
+
+[dev-dependencies]
+zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2"] }

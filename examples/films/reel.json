@@ -1,0 +1,12 @@
+{ "version": 1, "format": { "width": 1080, "height": 1920, "fps": 30, "duration": 41.0 }, "output": "r5",
+  "nodes": {
+    "ink":     { "op": "video", "params": { "src": "ink.mp4", "fit": "fill" }, "timing": { "in": 0, "out": 9, "offset": 0 } },
+    "riso":    { "op": "video", "params": { "src": "riso.mp4", "fit": "fill" }, "timing": { "in": 9, "out": 17, "offset": 9 } },
+    "glass":   { "op": "video", "params": { "src": "glass.mp4", "fit": "fill" }, "timing": { "in": 17, "out": 25, "offset": 17 } },
+    "clay":    { "op": "video", "params": { "src": "clay.mp4", "fit": "fill" }, "timing": { "in": 25, "out": 33, "offset": 25 } },
+    "kinetic": { "op": "video", "params": { "src": "kinetic.mp4", "fit": "fill" }, "timing": { "in": 33, "out": 41, "offset": 33 } },
+    "r2": { "op": "over", "inputs": { "fg": "riso", "bg": "ink" } },
+    "r3": { "op": "over", "inputs": { "fg": "glass", "bg": "r2" } },
+    "r4": { "op": "over", "inputs": { "fg": "clay", "bg": "r3" } },
+    "r5": { "op": "over", "inputs": { "fg": "kinetic", "bg": "r4" } }
+  } }

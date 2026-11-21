@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "format": { "width": 1920, "height": 1080, "fps": 60, "duration": 6.0 },
+  "output": "comp",
+  "nodes": {
+    "bg": { "op": "gradient", "params": { "stops": "0:#090a1a, 1:#1c1440", "space": "srgb" } },
+    "sparks": { "op": "particles", "params": {
+      "seed": 7, "rate": 900, "life": [0.6, 1.4], "position": [960, 760], "emitter_size": [40, 4],
+      "direction": -90, "spread": 70, "speed": [500, 1100], "gravity": [0, 1400], "drag": 0.6,
+      "size": [7, 2], "shape": "spark", "stretch": 2.5, "blend": "add",
+      "color_start": "#fff3b0", "color_end": "#ff4d00" } },
+    "snow": { "op": "particles", "params": {
+      "seed": 3, "rate": 120, "life": [6, 9], "position": [960, -20], "emitter_size": [2200, 0],
+      "direction": 90, "spread": 20, "speed": [40, 90], "gravity": [15, 10],
+      "size": [6, 6], "size_jitter": 0.7, "shape": "circle", "color_start": [1, 1, 1, 0.8], "fade_in": 0.05, "fade_out": 0.2,
+      "emit_start": -9 } },
+    "confetti": { "op": "particles", "params": {
+      "seed": 11, "rate": 220, "life": [2, 3], "position": [300, 980], "direction": -60, "spread": 25,
+      "speed": [900, 1500], "gravity": [0, 900], "drag": 0.9, "size": [14, 12], "spin": [-400, 400],
+      "shape": "square", "color_start": "#3ad1ff", "color_end": "#ff3fa4", "emit_end": 3 } },
+    "glow": { "op": "glow", "inputs": { "source": "sparks" }, "params": { "radius": 12, "intensity": 0.8 } },
+    "l1": { "op": "over", "inputs": { "fg": "snow", "bg": "bg" } },
+    "l2": { "op": "blend", "inputs": { "fg": "glow", "bg": "l1" }, "params": { "mode": "add" } },
+    "comp": { "op": "over", "inputs": { "fg": "confetti", "bg": "l2" } }
+  }
+}

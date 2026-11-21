@@ -1,0 +1,21 @@
+/target
+/out
+*.png
+!examples/**/*.png
+!plugins/**/*.png
+/examples/assets/*.mp4
+/examples/assets/*.mov
+target-linux/
+target-vk/
+
+# Terraform working directories (the lock files are committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Finder metadata
+.DS_Store
+
+# Showcase output and Python caches
+/examples/showcase/out/
+__pycache__/

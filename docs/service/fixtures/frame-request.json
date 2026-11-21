@@ -1,0 +1,88 @@
+{
+  "document": {
+    "version": 1,
+    "format": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration": 11.5
+    },
+    "meta": {
+      "composer": {
+        "name": "example-composer",
+        "version": "0.1.0",
+        "revision": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "libraries": {
+        "ultrafast": "e6d123f"
+      },
+      "fonts": [
+        {
+          "family": "Inter",
+          "weight": 800,
+          "style": "normal",
+          "src": "gs://example-renders/fonts/inter/Inter-ExtraBold.ttf#1760390000000001",
+          "sha256": "8f1d2c3b4a5968778695a4b3c2d1e0f8f1d2c3b4a5968778695a4b3c2d1e0f9"
+        }
+      ]
+    },
+    "nodes": {
+      "clip": {
+        "op": "video",
+        "params": {
+          "src": "gs://example-renders/inputs/run_42/render_source.mp4#1760390000000002",
+          "start": 3725.4,
+          "fit": "cover"
+        }
+      },
+      "clip_audio": {
+        "op": "audio",
+        "params": {
+          "src": "gs://example-renders/inputs/run_42/render_source.mp4#1760390000000002",
+          "start": 3725.4
+        }
+      },
+      "subject": {
+        "op": "image",
+        "params": {
+          "src": "gs://example-renders/inputs/run_42/cutout_7/foreground_frames.zip#1760390000000003!/frame_{frame:06}.webp",
+          "fps": 30,
+          "first_frame": 0,
+          "fit": "cover"
+        }
+      },
+      "title": {
+        "op": "text",
+        "params": {
+          "text": "The part nobody tells you",
+          "font": "Inter",
+          "weight": 800,
+          "size": 96,
+          "color": "#ffffff",
+          "position": [
+            540,
+            420
+          ],
+          "align": "center"
+        }
+      },
+      "stack": {
+        "op": "over",
+        "inputs": {
+          "fg": "subject",
+          "bg": "clip"
+        }
+      },
+      "out": {
+        "op": "over",
+        "inputs": {
+          "fg": "title",
+          "bg": "stack"
+        }
+      }
+    },
+    "output": "out"
+  },
+  "t": 1.5,
+  "format": "png"
+}

@@ -1,0 +1,16 @@
+[package]
+name = "ultrafast-shaderc"
+description = "Runtime Slang compiler for ultrafast (Slang -> MSL / SPIR-V), with a disk cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+libloading = "0.9"
+blake3 = "1"
+thiserror.workspace = true
+# Checks the Slang release fetched when none is installed.
+sha2 = "0.11"

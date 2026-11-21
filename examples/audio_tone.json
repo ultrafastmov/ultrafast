@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "format": { "width": 640, "height": 360, "fps": 30, "duration": 2.0 },
+  "output": "bg",
+  "nodes": {
+    "bg": { "op": "solid", "params": { "color": "#203040" } },
+    "tone": { "op": "audio", "params": { "src": "assets/tone.m4a", "start": 0.25,
+      "gain": { "keys": [ { "t": 0, "v": 0 }, { "t": 0.5, "v": 1 }, { "t": 1.5, "v": 1 }, { "t": 2, "v": 0 } ] } } }
+  }
+}

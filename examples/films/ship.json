@@ -1,0 +1,725 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "duration": 22.0,
+  "motion_blur": {
+   "samples": 4,
+   "shutter": 0.5
+  }
+ },
+ "output": "grained",
+ "nodes": {
+  "night": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     960.0,
+     1188.0
+    ],
+    "radius": 1700,
+    "stops": "0:#1a1230, 0.55:#0b0a12, 1:#060509"
+   }
+  },
+  "ember01": {
+   "op": "shape",
+   "params": {
+    "kind": "circle",
+    "size": 150,
+    "color": "#7d5cff",
+    "center": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        300,
+        1130
+       ]
+      },
+      {
+       "t": 22,
+       "v": [
+        820,
+        1130
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "ember11": {
+   "op": "shape",
+   "params": {
+    "kind": "circle",
+    "size": 150,
+    "color": "#ff5c7a",
+    "center": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        1650,
+        1130
+       ]
+      },
+      {
+       "t": 22,
+       "v": [
+        1100,
+        1130
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "embers": {
+   "op": "over",
+   "inputs": {
+    "fg": "ember11",
+    "bg": "ember01"
+   }
+  },
+  "smoke": {
+   "op": "fluid",
+   "params": {
+    "emit": 2.2,
+    "dissipation": 0.45,
+    "velocity_dissipation": 0.2,
+    "vorticity": 7,
+    "turbulence": 520,
+    "turbulence_scale": 260,
+    "buoyancy": 900,
+    "stir": 0,
+    "resolution": 0.25,
+    "dye_resolution": 0.4,
+    "seed": 11
+   },
+   "inputs": {
+    "dye": "embers"
+   }
+  },
+  "smoke_dim": {
+   "op": "opacity",
+   "params": {
+    "opacity": 0.55
+   },
+   "inputs": {
+    "source": "smoke"
+   }
+  },
+  "backdrop": {
+   "op": "blend",
+   "params": {
+    "mode": "screen"
+   },
+   "inputs": {
+    "fg": "smoke_dim",
+    "bg": "night"
+   }
+  },
+  "title": {
+   "op": "block",
+   "params": {
+    "ink": "#f3efe8",
+    "accent": "#ff5c7a",
+    "kind": "title",
+    "duration": 3.0,
+    "kicker": "ULTRAFAST \u00b7 OPEN SOURCE",
+    "title": "Write a film the way you write *code*",
+    "subtitle": "A GPU engine where every frame is a document you can edit.",
+    "position": [
+     180,
+     360
+    ],
+    "width": 1400
+   },
+   "timing": {
+    "offset": 0.3
+   }
+  },
+  "code": {
+   "op": "code",
+   "params": {
+    "code": "{\n  \"nodes\": {\n    \"sky\": { \"op\": \"gradient\",\n      \"params\": { \"stops\": \"0:#2b1550, 1:#ff7a59\" } },\n    \"sun\": { \"op\": \"shape\",\n      \"params\": { \"kind\": \"circle\", \"size\": 300,\n        \"scale\": { \"ease\": \"spring\" } } },\n    \"hi\": { \"op\": \"text\",\n      \"params\": { \"text\": \"Hello, *world*\" } }\n  }\n}",
+    "language": "json",
+    "title": "film.json",
+    "type_speed": 72.0,
+    "at": 4.0,
+    "size": 25,
+    "position": [
+     150,
+     250
+    ],
+    "highlight": "6-7",
+    "highlight_at": 6.972222222222222
+   },
+   "timing": {
+    "in": 3.6,
+    "out": 10.6
+   }
+  },
+  "p_sky": {
+   "op": "gradient",
+   "params": {
+    "kind": "linear",
+    "start": [
+     0,
+     250
+    ],
+    "end": [
+     0,
+     770
+    ],
+    "stops": "0:#2b1550, 1:#ff7a59"
+   }
+  },
+  "p_sky_in": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 5.3472,
+       "v": [
+        0
+       ]
+      },
+      {
+       "t": 5.8472,
+       "v": [
+        1
+       ],
+       "ease": "out_cubic"
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "p_sky"
+   }
+  },
+  "p_sun": {
+   "op": "shape",
+   "params": {
+    "kind": "circle",
+    "center": [
+     1490.0,
+     470.0
+    ],
+    "color": "#ffd9a8",
+    "size": {
+     "keys": [
+      {
+       "t": 6.9722,
+       "v": [
+        0,
+        0
+       ],
+       "ease": "spring"
+      },
+      {
+       "t": 8.0722,
+       "v": [
+        300,
+        300
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "p_hello": {
+   "op": "text",
+   "params": {
+    "text": "Hello, *world*",
+    "font": "ultrafast:sans",
+    "size": 72,
+    "weight": 650,
+    "em_font": "ultrafast:serif",
+    "em_style": "italic",
+    "em_size": 84,
+    "color": "#2b1550",
+    "align": "center",
+    "valign": "middle",
+    "position": [
+     1490.0,
+     695.0
+    ],
+    "glyph_offset": {
+     "keys": [
+      {
+       "t": 7.9583,
+       "v": [
+        0,
+        30
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1,
+         0.3,
+         1
+        ]
+       }
+      },
+      {
+       "t": 8.6583,
+       "v": [
+        0,
+        0
+       ]
+      }
+     ]
+    },
+    "glyph_opacity": {
+     "keys": [
+      {
+       "t": 7.9583,
+       "v": [
+        0
+       ]
+      },
+      {
+       "t": 8.3583,
+       "v": [
+        1
+       ]
+      }
+     ]
+    },
+    "stagger": 0.03
+   }
+  },
+  "over": {
+   "op": "over",
+   "inputs": {
+    "fg": "p_sun",
+    "bg": "p_sky_in"
+   }
+  },
+  "over2": {
+   "op": "over",
+   "inputs": {
+    "fg": "p_hello",
+    "bg": "over"
+   }
+  },
+  "p_frame": {
+   "op": "shape",
+   "params": {
+    "kind": "rect",
+    "center": [
+     1490.0,
+     510.0
+    ],
+    "size": [
+     620,
+     520
+    ],
+    "radius": 18,
+    "color": "#ffffff"
+   }
+  },
+  "p_masked": {
+   "op": "mask",
+   "inputs": {
+    "source": "over2",
+    "matte": "p_frame"
+   }
+  },
+  "p_empty": {
+   "op": "shape",
+   "params": {
+    "kind": "rect",
+    "center": [
+     1490.0,
+     510.0
+    ],
+    "size": [
+     620,
+     520
+    ],
+    "radius": 18,
+    "color": "#15131c"
+   }
+  },
+  "p_edge": {
+   "op": "shape",
+   "params": {
+    "kind": "rect",
+    "center": [
+     1490.0,
+     510.0
+    ],
+    "size": [
+     620,
+     520
+    ],
+    "radius": 18,
+    "stroke": 1.5,
+    "color": "#ffffff26"
+   }
+  },
+  "over3": {
+   "op": "over",
+   "inputs": {
+    "fg": "p_masked",
+    "bg": "p_empty"
+   }
+  },
+  "over4": {
+   "op": "over",
+   "inputs": {
+    "fg": "p_edge",
+    "bg": "over3"
+   }
+  },
+  "p_label": {
+   "op": "text",
+   "params": {
+    "text": "LIVE PREVIEW",
+    "font": "ultrafast:mono",
+    "size": 24,
+    "tracking": 4,
+    "color": "#f3efe8c0",
+    "valign": "baseline",
+    "position": [
+     1206,
+     230
+    ]
+   }
+  },
+  "p_dot": {
+   "op": "shape",
+   "params": {
+    "kind": "circle",
+    "center": [
+     1188,
+     222
+    ],
+    "size": [
+     12,
+     12
+    ],
+    "color": "#ff5c7a"
+   }
+  },
+  "p_dot_blink": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "expr": "0.35 + 0.65 * (fract(t * 0.9) < 0.6)"
+    }
+   },
+   "inputs": {
+    "source": "p_dot"
+   }
+  },
+  "over5": {
+   "op": "over",
+   "inputs": {
+    "fg": "p_label",
+    "bg": "over4"
+   }
+  },
+  "over6": {
+   "op": "over",
+   "inputs": {
+    "fg": "p_dot_blink",
+    "bg": "over5"
+   }
+  },
+  "preview_in": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 3.8,
+       "v": [
+        0
+       ]
+      },
+      {
+       "t": 4.3,
+       "v": [
+        1
+       ],
+       "ease": "out_cubic"
+      },
+      {
+       "t": 10.1,
+       "v": [
+        1
+       ]
+      },
+      {
+       "t": 10.5,
+       "v": [
+        0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "over6"
+   }
+  },
+  "caption": {
+   "op": "text",
+   "params": {
+    "text": "Edit the document. *The frame follows.*",
+    "font": "ultrafast:sans",
+    "size": 34,
+    "color": "#f3efe8d8",
+    "em_color": "#f3efe8",
+    "em_weight": 600,
+    "position": [
+     150,
+     900
+    ],
+    "reveal": {
+     "keys": [
+      {
+       "t": 7.8139,
+       "v": [
+        0
+       ]
+      },
+      {
+       "t": 8.9139,
+       "v": [
+        40
+       ]
+      }
+     ]
+    }
+   },
+   "timing": {
+    "in": 3.6,
+    "out": 10.6
+   }
+  },
+  "chart": {
+   "op": "block",
+   "params": {
+    "ink": "#f3efe8",
+    "accent": "#ff5c7a",
+    "kind": "bar_chart",
+    "duration": 4.0,
+    "kicker": "EXPORT SPEED",
+    "title": "Frames per second, 1080p with motion blur",
+    "values": [
+     24,
+     31,
+     58,
+     570
+    ],
+    "labels": "Browser capture|Headless DOM|Filter graph|ultrafast",
+    "suffix": " fps",
+    "height": 430,
+    "position": [
+     180,
+     190
+    ],
+    "width": 1560
+   },
+   "timing": {
+    "offset": 10.8
+   }
+  },
+  "stat": {
+   "op": "block",
+   "params": {
+    "ink": "#f3efe8",
+    "accent": "#ff5c7a",
+    "kind": "stat",
+    "duration": 2.6,
+    "value": 0,
+    "label": "READBACKS PER FRAME",
+    "position": [
+     180,
+     330
+    ]
+   },
+   "timing": {
+    "offset": 15.2
+   }
+  },
+  "side": {
+   "op": "text",
+   "params": {
+    "text": "Frames go from the GPU *straight into the encoder.* Nothing comes back to the CPU.",
+    "font": "ultrafast:sans",
+    "size": 44,
+    "line_height": 1.3,
+    "color": "#f3efe8c8",
+    "em_color": "#f3efe8",
+    "em_weight": 600,
+    "em_highlight": "#ff5c7a3a",
+    "em_draw": {
+     "keys": [
+      {
+       "t": 0.9,
+       "v": [
+        0
+       ],
+       "ease": "out_expo"
+      },
+      {
+       "t": 1.9,
+       "v": [
+        1
+       ]
+      }
+     ]
+    },
+    "position": [
+     860,
+     410
+    ],
+    "width": 860,
+    "reveal": {
+     "keys": [
+      {
+       "t": 0.2,
+       "v": [
+        0
+       ]
+      },
+      {
+       "t": 1.0,
+       "v": [
+        90
+       ]
+      }
+     ]
+    }
+   },
+   "timing": {
+    "in": 15.2,
+    "out": 19.5,
+    "offset": 15.2
+   }
+  },
+  "end": {
+   "op": "block",
+   "params": {
+    "ink": "#f3efe8",
+    "accent": "#ff5c7a",
+    "kind": "end_card",
+    "title": "ultrafast",
+    "tagline": "the video engine for agents",
+    "cta": "Rust \u00b7 Metal \u00b7 Vulkan",
+    "logo": "../assets/svg/ultrafast-mark.svg"
+   },
+   "timing": {
+    "offset": 19.4
+   }
+  },
+  "over7": {
+   "op": "over",
+   "inputs": {
+    "fg": "title",
+    "bg": "backdrop"
+   }
+  },
+  "over8": {
+   "op": "over",
+   "inputs": {
+    "fg": "code",
+    "bg": "over7"
+   }
+  },
+  "over9": {
+   "op": "over",
+   "inputs": {
+    "fg": "preview_in",
+    "bg": "over8"
+   },
+   "timing": {
+    "in": 3.6,
+    "out": 10.6
+   }
+  },
+  "over10": {
+   "op": "over",
+   "inputs": {
+    "fg": "caption",
+    "bg": "over9"
+   }
+  },
+  "over11": {
+   "op": "over",
+   "inputs": {
+    "fg": "chart",
+    "bg": "over10"
+   }
+  },
+  "over12": {
+   "op": "over",
+   "inputs": {
+    "fg": "stat",
+    "bg": "over11"
+   }
+  },
+  "over13": {
+   "op": "over",
+   "inputs": {
+    "fg": "side",
+    "bg": "over12"
+   }
+  },
+  "over14": {
+   "op": "over",
+   "inputs": {
+    "fg": "end",
+    "bg": "over13"
+   }
+  },
+  "bloom": {
+   "op": "bloom",
+   "params": {
+    "threshold": 0.8,
+    "radius": 40,
+    "intensity": 0.35,
+    "wide": 0.3
+   },
+   "inputs": {
+    "source": "over14"
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "bloom"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.055
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

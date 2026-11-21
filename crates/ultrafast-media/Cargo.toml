@@ -1,0 +1,38 @@
+[package]
+name = "ultrafast-media"
+description = "ultrafast media I/O: hardware video decode and encode with zero-copy GPU interop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+vulkan = ["ultrafast-gpu/vulkan"]
+
+[dependencies]
+serde_json.workspace = true
+ultrafast-gpu.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+# The NVIDIA driver libraries (CUDA, NVENC, NVDEC), loaded at runtime.
+libloading = "0.9"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# MP4 demux for NVDEC (samples go to the hardware decoder without ffmpeg).
+mp4 = "0.14"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-metal = "0.3"
+objc2-av-foundation = { version = "0.3", features = ["objc2-core-media", "objc2-core-video", "objc2-core-foundation", "block2"] }
+objc2-core-video = "0.3"
+objc2-core-media = { version = "0.3", features = ["objc2-core-audio-types"] }
+objc2-core-audio-types = "0.3"
+objc2-vision = "0.3"
+objc2-core-foundation = "0.3"
+block2 = "0.6"

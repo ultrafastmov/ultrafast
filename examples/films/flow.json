@@ -1,0 +1,1255 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 16.0,
+  "motion_blur": {
+   "samples": 4,
+   "shutter": 0.5
+  }
+ },
+ "output": "grained",
+ "nodes": {
+  "score": {
+   "op": "audio",
+   "params": {
+    "src": "../../out/films/hero_score.wav",
+    "start": 4.0,
+    "gain": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 0.5,
+       "v": [
+        0.9
+       ]
+      },
+      {
+       "t": 15.0,
+       "v": [
+        0.9
+       ]
+      },
+      {
+       "t": 16.0,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "paper": {
+   "op": "solid",
+   "params": {
+    "color": "#efe8dc"
+   }
+  },
+  "fibre": {
+   "op": "noise",
+   "params": {
+    "a": "#efe8dc00",
+    "b": "#5a463018",
+    "scale": [
+     3,
+     90
+    ],
+    "octaves": 3
+   }
+  },
+  "paper_fibre": {
+   "op": "over",
+   "inputs": {
+    "fg": "fibre",
+    "bg": "paper"
+   }
+  },
+  "ink_word": {
+   "op": "text",
+   "params": {
+    "text": "Every",
+    "font": "../assets/fonts/InstrumentSerif-Italic.ttf",
+    "size": 330,
+    "position": [
+     540.0,
+     860
+    ],
+    "color": "#121626",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": -6
+   }
+  },
+  "ink_word2": {
+   "op": "text",
+   "params": {
+    "text": "frame",
+    "font": "../assets/fonts/InstrumentSerif-Regular.ttf",
+    "size": 330,
+    "position": [
+     540.0,
+     1150
+    ],
+    "color": "#121626",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": -6
+   }
+  },
+  "ink_type": {
+   "op": "over",
+   "inputs": {
+    "fg": "ink_word",
+    "bg": "ink_word2"
+   }
+  },
+  "pour": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 0.9,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 1.05,
+       "v": [
+        1.0
+       ]
+      },
+      {
+       "t": 1.5,
+       "v": [
+        1.0
+       ]
+      },
+      {
+       "t": 1.9,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "ink_type"
+   }
+  },
+  "ink": {
+   "op": "fluid",
+   "params": {
+    "start": 0.8,
+    "emit": 10,
+    "dissipation": 0.0,
+    "velocity_dissipation": 0.35,
+    "vorticity": 6,
+    "turbulence": {
+     "keys": [
+      {
+       "t": 0.8,
+       "v": [
+        120.0
+       ]
+      },
+      {
+       "t": 2.2,
+       "v": [
+        420.0
+       ]
+      }
+     ]
+    },
+    "turbulence_scale": 340,
+    "buoyancy": -70,
+    "stir": 800,
+    "swirl": 450,
+    "resolution": 0.25,
+    "dye_resolution": 0.75,
+    "seed": 3
+   },
+   "inputs": {
+    "dye": "pour",
+    "stir": "pour"
+   }
+  },
+  "crisp": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 0.2,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 0.6,
+       "v": [
+        1.0
+       ],
+       "ease": "in_out_cubic"
+      },
+      {
+       "t": 1.1,
+       "v": [
+        1.0
+       ]
+      },
+      {
+       "t": 1.7,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "ink_type"
+   }
+  },
+  "ink_on_paper": {
+   "op": "over",
+   "inputs": {
+    "fg": "ink",
+    "bg": "paper_fibre"
+   }
+  },
+  "crisp_ink": {
+   "op": "over",
+   "inputs": {
+    "fg": "crisp",
+    "bg": "ink_on_paper"
+   }
+  },
+  "cap": {
+   "op": "text",
+   "params": {
+    "text": "type, poured into water",
+    "font": "../assets/fonts/InstrumentSerif-Italic.ttf",
+    "size": 64,
+    "position": [
+     540.0,
+     1690
+    ],
+    "color": "#1d1f2acc",
+    "valign": "baseline",
+    "align": "center"
+   }
+  },
+  "cap_in": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 1.6,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 2.3,
+       "v": [
+        1.0
+       ],
+       "ease": "in_out_cubic"
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "cap"
+   }
+  },
+  "s1_cap": {
+   "op": "over",
+   "inputs": {
+    "fg": "cap_in",
+    "bg": "crisp_ink"
+   }
+  },
+  "label": {
+   "op": "text",
+   "params": {
+    "text": "01",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     72,
+     132
+    ],
+    "color": "#1d1f2ae6",
+    "valign": "baseline",
+    "tracking": 2,
+    "weight": 500
+   }
+  },
+  "label2": {
+   "op": "text",
+   "params": {
+    "text": "INK",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     1008,
+     132
+    ],
+    "color": "#1d1f2ae6",
+    "valign": "baseline",
+    "tracking": 4,
+    "weight": 500,
+    "align": "right"
+   }
+  },
+  "labels": {
+   "op": "over",
+   "inputs": {
+    "fg": "label",
+    "bg": "label2"
+   }
+  },
+  "s11": {
+   "op": "over",
+   "inputs": {
+    "fg": "labels",
+    "bg": "s1_cap"
+   }
+  },
+  "night": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     1500
+    ],
+    "radius": 1500,
+    "stops": "0:#1a0d0a, 0.6:#070506, 1:#020203"
+   }
+  },
+  "smoke_line": {
+   "op": "text",
+   "params": {
+    "text": "is a simulation",
+    "font": "../assets/fonts/Geist-VF.ttf",
+    "size": 118,
+    "position": [
+     540.0,
+     1520
+    ],
+    "color": "#ffffff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 600,
+    "tracking": -3
+   }
+  },
+  "heat": {
+   "op": "gradient",
+   "params": {
+    "kind": "linear",
+    "start": {
+     "keys": [
+      {
+       "t": 4.2,
+       "v": [
+        -300,
+        0
+       ]
+      },
+      {
+       "t": 8.4,
+       "v": [
+        500,
+        0
+       ]
+      }
+     ]
+    },
+    "end": {
+     "keys": [
+      {
+       "t": 4.2,
+       "v": [
+        700,
+        0
+       ]
+      },
+      {
+       "t": 8.4,
+       "v": [
+        1500,
+        0
+       ]
+      }
+     ]
+    },
+    "stops": "0:#ff2e63, 0.5:#ffb347, 1:#ff5a1f"
+   }
+  },
+  "hot_line": {
+   "op": "mask",
+   "inputs": {
+    "source": "heat",
+    "matte": "smoke_line"
+   }
+  },
+  "smoke": {
+   "op": "fluid",
+   "params": {
+    "start": 4.2,
+    "emit": 3.5,
+    "dissipation": 0.32,
+    "velocity_dissipation": 0.15,
+    "vorticity": 9,
+    "turbulence": 650,
+    "turbulence_scale": 200,
+    "buoyancy": 1500,
+    "wind": [
+     30,
+     0
+    ],
+    "stir": 0,
+    "resolution": 0.25,
+    "dye_resolution": 0.5,
+    "seed": 7
+   },
+   "inputs": {
+    "dye": "hot_line"
+   }
+  },
+  "smoke_add": {
+   "op": "blend",
+   "params": {
+    "mode": "add"
+   },
+   "inputs": {
+    "fg": "smoke",
+    "bg": "night"
+   }
+  },
+  "smoke_bloom": {
+   "op": "bloom",
+   "params": {
+    "threshold": 0.35,
+    "radius": 60,
+    "intensity": 0.9,
+    "wide": 0.5
+   },
+   "inputs": {
+    "source": "smoke_add"
+   }
+  },
+  "smoke_core": {
+   "op": "text",
+   "params": {
+    "text": "is a simulation",
+    "font": "../assets/fonts/Geist-VF.ttf",
+    "size": 118,
+    "position": [
+     540.0,
+     1520
+    ],
+    "color": "#fff4e6",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 600,
+    "tracking": -3
+   }
+  },
+  "line_over": {
+   "op": "over",
+   "inputs": {
+    "fg": "smoke_core",
+    "bg": "smoke_bloom"
+   }
+  },
+  "label3": {
+   "op": "text",
+   "params": {
+    "text": "02",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     72,
+     132
+    ],
+    "color": "#f1eee8e6",
+    "valign": "baseline",
+    "tracking": 2,
+    "weight": 500
+   }
+  },
+  "label4": {
+   "op": "text",
+   "params": {
+    "text": "SMOKE",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     1008,
+     132
+    ],
+    "color": "#f1eee8e6",
+    "valign": "baseline",
+    "tracking": 4,
+    "weight": 500,
+    "align": "right"
+   }
+  },
+  "labels2": {
+   "op": "over",
+   "inputs": {
+    "fg": "label3",
+    "bg": "label4"
+   }
+  },
+  "s21": {
+   "op": "over",
+   "inputs": {
+    "fg": "labels2",
+    "bg": "line_over"
+   }
+  },
+  "grow_word": {
+   "op": "text",
+   "params": {
+    "text": "alive",
+    "font": "../assets/fonts/Fraunces-VF.ttf",
+    "size": 470,
+    "position": [
+     540.0,
+     1120
+    ],
+    "color": "#ffffff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "coral": {
+   "op": "feedback",
+   "params": {
+    "code": "\nfloat hash21(float2 p) { return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }\nfloat4 update(float2 pos, float px) {\n    float mask = input(0, pos).a;\n    if (step_index() == 0) {\n        float spot = step(0.982, hash21(floor(pos / (px * 3.0))));\n        return float4(1.0, spot * mask, 0.0, 1.0);\n    }\n    float2 c = prev(pos).xy;\n    float2 lap = -c\n        + 0.2 * (prev(pos + float2(px, 0)).xy + prev(pos - float2(px, 0)).xy\n               + prev(pos + float2(0, px)).xy + prev(pos - float2(0, px)).xy)\n        + 0.05 * (prev(pos + float2(px, px)).xy + prev(pos - float2(px, px)).xy\n                + prev(pos + float2(px, -px)).xy + prev(pos + float2(-px, px)).xy);\n    float a = c.x, b = c.y;\n    float kill = lerp(param(2), param(1), mask);\n    float r = a * b * b;\n    a += lap.x - r + param(0) * (1.0 - a);\n    b += 0.5 * lap.y + r - (kill + param(0)) * b;\n    return float4(saturate(a), saturate(b), 0.0, 1.0);\n}\n",
+    "start": 8.4,
+    "resolution": 0.6,
+    "substeps": 26,
+    "u": [
+     0.0545,
+     0.062,
+     0.09
+    ],
+    "u2": {
+     "keys": [
+      {
+       "t": 8.4,
+       "v": [
+        0.09
+       ]
+      },
+      {
+       "t": 10.6,
+       "v": [
+        0.09
+       ]
+      },
+      {
+       "t": 12.0,
+       "v": [
+        0.0635
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "in0": "grow_word"
+   }
+  },
+  "coral_lit": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat4 shade(float2 pos, float px) {\n    float e = 2.5;\n    float b = input(0, pos).y;\n    float bx = input(0, pos + float2(e, 0)).y - input(0, pos - float2(e, 0)).y;\n    float by = input(0, pos + float2(0, e)).y - input(0, pos - float2(0, e)).y;\n    float3 n = normalize(float3(-bx * 5.0, -by * 5.0, 1.0));\n    float3 l = normalize(float3(-0.45, -0.75, 0.55));\n    float diff = saturate(dot(n, l));\n    float spec = pow(saturate(dot(reflect(-l, n), float3(0, 0, 1))), 30.0);\n    float m = smoothstep(0.1, 0.3, b);\n    float2 uv = pos / size();\n    float3 sea = lerp(srgb_to_linear(float3(0.02, 0.09, 0.13)), srgb_to_linear(float3(0.01, 0.03, 0.06)), uv.y);\n    float3 coral = srgb_to_linear(float3(1.0, 0.42, 0.33));\n    float3 tip = srgb_to_linear(float3(1.0, 0.86, 0.72));\n    float3 col = lerp(coral, tip, smoothstep(0.28, 0.48, b)) * (0.35 + 0.85 * diff) + spec * 0.8;\n    // A soft shadow under the growth.\n    float sh = input(0, pos - float2(-10.0, -16.0)).y;\n    sea *= 1.0 - 0.6 * smoothstep(0.1, 0.35, sh);\n    return float4(lerp(sea, col, m), 1.0);\n}\n"
+   },
+   "inputs": {
+    "in0": "coral"
+   }
+  },
+  "cap2": {
+   "op": "text",
+   "params": {
+    "text": "grown, not drawn",
+    "font": "../assets/fonts/InstrumentSerif-Italic.ttf",
+    "size": 64,
+    "position": [
+     540.0,
+     1690
+    ],
+    "color": "#ffd2b5d0",
+    "valign": "baseline",
+    "align": "center"
+   }
+  },
+  "cap_in2": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 9.6,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 10.3,
+       "v": [
+        1.0
+       ],
+       "ease": "in_out_cubic"
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "cap2"
+   }
+  },
+  "s3_cap": {
+   "op": "over",
+   "inputs": {
+    "fg": "cap_in2",
+    "bg": "coral_lit"
+   }
+  },
+  "label5": {
+   "op": "text",
+   "params": {
+    "text": "03",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     72,
+     132
+    ],
+    "color": "#f1eee8e6",
+    "valign": "baseline",
+    "tracking": 2,
+    "weight": 500
+   }
+  },
+  "label6": {
+   "op": "text",
+   "params": {
+    "text": "CORAL",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     1008,
+     132
+    ],
+    "color": "#f1eee8e6",
+    "valign": "baseline",
+    "tracking": 4,
+    "weight": 500,
+    "align": "right"
+   }
+  },
+  "labels3": {
+   "op": "over",
+   "inputs": {
+    "fg": "label5",
+    "bg": "label6"
+   }
+  },
+  "s31": {
+   "op": "over",
+   "inputs": {
+    "fg": "labels3",
+    "bg": "s3_cap"
+   }
+  },
+  "void": {
+   "op": "solid",
+   "params": {
+    "color": "#050407"
+   }
+  },
+  "mark": {
+   "op": "text",
+   "params": {
+    "text": "ultrafast",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "size": 210,
+    "position": [
+     540.0,
+     1000
+    ],
+    "color": "#ff6a3d",
+    "valign": "middle",
+    "align": "center",
+    "weight": 800
+   }
+  },
+  "mark_spin": {
+   "op": "transform",
+   "params": {
+    "anchor": [
+     540.0,
+     1000
+    ],
+    "rotation": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        -14.0
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 14.8,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    },
+    "scale": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        0.82
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 14.8,
+       "v": [
+        1.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "mark"
+   }
+  },
+  "mark_hue": {
+   "op": "adjust",
+   "params": {
+    "hue": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 16.0,
+       "v": [
+        -170.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "mark_spin"
+   }
+  },
+  "ring": {
+   "op": "text",
+   "params": {
+    "text": "ultrafast",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "size": 210,
+    "position": [
+     540.0,
+     1000
+    ],
+    "color": "#ff6a3d",
+    "valign": "middle",
+    "align": "center",
+    "weight": 800,
+    "stroke": 3
+   }
+  },
+  "ring_spin": {
+   "op": "transform",
+   "params": {
+    "anchor": [
+     540.0,
+     1000
+    ],
+    "rotation": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        -14.0
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 14.8,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    },
+    "scale": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        0.82
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 14.8,
+       "v": [
+        1.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "ring"
+   }
+  },
+  "ring_hue": {
+   "op": "adjust",
+   "params": {
+    "hue": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 16.0,
+       "v": [
+        -170.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "ring_spin"
+   }
+  },
+  "echo": {
+   "op": "feedback",
+   "params": {
+    "code": "\nfloat3 hue_rotate(float3 c, float a) {\n    float3 k = float3(0.57735, 0.57735, 0.57735);\n    float ca = cos(a);\n    return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);\n}\nfloat4 update(float2 pos, float px) {\n    float2 c = float2(param(4), param(5));\n    float2 q = pos - c;\n    float a = param(0) * dt();\n    float z = 1.0 - param(1) * dt();\n    float2 r = float2(cos(a) * q.x - sin(a) * q.y, sin(a) * q.x + cos(a) * q.y) * z;\n    float4 p = max(prev_sharp(c + r), 0.0);\n    p.rgb = max(hue_rotate(p.rgb, param(2) * dt()), 0.0);\n    p *= exp(-param(3) * dt());\n    float4 i = input(0, pos);\n    return i + p * (1.0 - i.a);\n}\n",
+    "start": 12.4,
+    "resolution": 1.0,
+    "u": [
+     0.35,
+     0.9,
+     1.6,
+     1.4,
+     540.0,
+     1500
+    ],
+    "u3": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        1.0
+       ]
+      },
+      {
+       "t": 14.6,
+       "v": [
+        1.0
+       ]
+      },
+      {
+       "t": 15.4,
+       "v": [
+        6.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "in0": "ring_hue"
+   }
+  },
+  "echo_add": {
+   "op": "blend",
+   "params": {
+    "mode": "add"
+   },
+   "inputs": {
+    "fg": "echo",
+    "bg": "void"
+   }
+  },
+  "echo_bloom": {
+   "op": "bloom",
+   "params": {
+    "threshold": 0.3,
+    "radius": 48,
+    "intensity": 0.7,
+    "wide": 0.4
+   },
+   "inputs": {
+    "source": "echo_add"
+   }
+  },
+  "mark_over": {
+   "op": "over",
+   "inputs": {
+    "fg": "mark_hue",
+    "bg": "echo_bloom"
+   }
+  },
+  "tag": {
+   "op": "text",
+   "params": {
+    "text": "simulation is just another node.",
+    "font": "../assets/fonts/InstrumentSerif-Italic.ttf",
+    "size": 66,
+    "position": [
+     540.0,
+     1690
+    ],
+    "color": "#f1eee8",
+    "valign": "baseline",
+    "align": "center"
+   }
+  },
+  "tag_in": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 13.7,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 14.3,
+       "v": [
+        1.0
+       ],
+       "ease": "in_out_cubic"
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "tag"
+   }
+  },
+  "s4_tag": {
+   "op": "over",
+   "inputs": {
+    "fg": "tag_in",
+    "bg": "mark_over"
+   }
+  },
+  "label7": {
+   "op": "text",
+   "params": {
+    "text": "04",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     72,
+     132
+    ],
+    "color": "#f1eee8e6",
+    "valign": "baseline",
+    "tracking": 2,
+    "weight": 500
+   }
+  },
+  "label8": {
+   "op": "text",
+   "params": {
+    "text": "ECHO",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     1008,
+     132
+    ],
+    "color": "#f1eee8e6",
+    "valign": "baseline",
+    "tracking": 4,
+    "weight": 500,
+    "align": "right"
+   }
+  },
+  "labels4": {
+   "op": "over",
+   "inputs": {
+    "fg": "label7",
+    "bg": "label8"
+   }
+  },
+  "s41": {
+   "op": "over",
+   "inputs": {
+    "fg": "labels4",
+    "bg": "s4_tag"
+   }
+  },
+  "black": {
+   "op": "solid",
+   "params": {
+    "color": "#000000"
+   }
+  },
+  "at": {
+   "op": "over",
+   "inputs": {
+    "fg": "s11",
+    "bg": "black"
+   },
+   "timing": {
+    "in": 0.0,
+    "out": 4.2
+   }
+  },
+  "at2": {
+   "op": "over",
+   "inputs": {
+    "fg": "s21",
+    "bg": "at"
+   },
+   "timing": {
+    "in": 4.2,
+    "out": 8.4
+   }
+  },
+  "at3": {
+   "op": "over",
+   "inputs": {
+    "fg": "s31",
+    "bg": "at2"
+   },
+   "timing": {
+    "in": 8.4,
+    "out": 12.4
+   }
+  },
+  "at4": {
+   "op": "over",
+   "inputs": {
+    "fg": "s41",
+    "bg": "at3"
+   },
+   "timing": {
+    "in": 12.4,
+    "out": 16.0
+   }
+  },
+  "flash": {
+   "op": "solid",
+   "params": {
+    "color": "#fff6ea"
+   }
+  },
+  "flash_o": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 4.2,
+       "v": [
+        0.3
+       ]
+      },
+      {
+       "t": 4.27,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "flash"
+   }
+  },
+  "flash_at": {
+   "op": "over",
+   "inputs": {
+    "fg": "flash_o",
+    "bg": "at4"
+   },
+   "timing": {
+    "in": 4.2,
+    "out": 4.2700000000000005
+   }
+  },
+  "flash_o2": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 8.4,
+       "v": [
+        0.3
+       ]
+      },
+      {
+       "t": 8.47,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "flash"
+   }
+  },
+  "flash_at2": {
+   "op": "over",
+   "inputs": {
+    "fg": "flash_o2",
+    "bg": "flash_at"
+   },
+   "timing": {
+    "in": 8.4,
+    "out": 8.47
+   }
+  },
+  "flash_o3": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 12.4,
+       "v": [
+        0.3
+       ]
+      },
+      {
+       "t": 12.47,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "flash"
+   }
+  },
+  "flash_at3": {
+   "op": "over",
+   "inputs": {
+    "fg": "flash_o3",
+    "bg": "flash_at2"
+   },
+   "timing": {
+    "in": 12.4,
+    "out": 12.47
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "flash_at3"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.06
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

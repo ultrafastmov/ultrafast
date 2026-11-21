@@ -1,0 +1,9 @@
+{
+  "error": {
+    "status": 403,
+    "code": "input_not_allowed",
+    "message": "gs://other-bucket/x.mp4 is outside this caller's read prefixes",
+    "retry": false,
+    "location": "gs://other-bucket/x.mp4#1760390000000009"
+  }
+}

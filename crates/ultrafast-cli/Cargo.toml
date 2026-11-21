@@ -1,0 +1,41 @@
+[package]
+name = "ultrafast"
+description = "The GPU video engine for agents: JSON documents in, video out, at hundreds of frames a second"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["video", "gpu", "rendering", "motion-graphics", "agents"]
+categories = ["multimedia::video", "rendering", "command-line-utilities"]
+
+[[bin]]
+name = "ultrafast"
+path = "src/main.rs"
+
+# The same command, short.
+[[bin]]
+name = "uf"
+path = "src/bin/uf.rs"
+
+[features]
+# Render with Vulkan (MoltenVK on macOS): the backend NVIDIA GPUs use.
+vulkan = ["ultrafast-live/vulkan", "ultrafast-render/vulkan", "ultrafast-media/vulkan", "ultrafast-gpu/vulkan", "ultrafast-recon/vulkan"]
+
+[dependencies]
+ultrafast-graph.workspace = true
+ultrafast-gpu.workspace = true
+ultrafast-render.workspace = true
+ultrafast-ops.workspace = true
+ultrafast-live.workspace = true
+ultrafast-media.workspace = true
+ultrafast-recon.workspace = true
+ultrafast-mcp.workspace = true
+ultrafast-service.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
+serde_json.workspace = true
+anyhow.workspace = true
+tiny_http = "0.12"
+png.workspace = true

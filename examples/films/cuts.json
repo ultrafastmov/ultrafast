@@ -1,0 +1,882 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 22.5,
+  "motion_blur": {
+   "samples": 4,
+   "shutter": 0.5
+  }
+ },
+ "output": "grained",
+ "nodes": {
+  "bg": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#1b1033, 1:#050407"
+   }
+  },
+  "word": {
+   "op": "text",
+   "params": {
+    "text": "fade",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#ff5c7a",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num": {
+   "op": "text",
+   "params": {
+    "text": "01",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over": {
+   "op": "over",
+   "inputs": {
+    "fg": "word",
+    "bg": "bg"
+   }
+  },
+  "over2": {
+   "op": "over",
+   "inputs": {
+    "fg": "num",
+    "bg": "over"
+   }
+  },
+  "bg2": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#0b2b26, 1:#050407"
+   }
+  },
+  "word2": {
+   "op": "text",
+   "params": {
+    "text": "dip",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#2ee6c5",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num2": {
+   "op": "text",
+   "params": {
+    "text": "02",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over3": {
+   "op": "over",
+   "inputs": {
+    "fg": "word2",
+    "bg": "bg2"
+   }
+  },
+  "over4": {
+   "op": "over",
+   "inputs": {
+    "fg": "num2",
+    "bg": "over3"
+   }
+  },
+  "bg3": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#2a1505, 1:#050407"
+   }
+  },
+  "word3": {
+   "op": "text",
+   "params": {
+    "text": "wipe",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#ffb547",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num3": {
+   "op": "text",
+   "params": {
+    "text": "03",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over5": {
+   "op": "over",
+   "inputs": {
+    "fg": "word3",
+    "bg": "bg3"
+   }
+  },
+  "over6": {
+   "op": "over",
+   "inputs": {
+    "fg": "num3",
+    "bg": "over5"
+   }
+  },
+  "bg4": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#0a1a3a, 1:#050407"
+   }
+  },
+  "word4": {
+   "op": "text",
+   "params": {
+    "text": "push",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#5aa2ff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num4": {
+   "op": "text",
+   "params": {
+    "text": "04",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over7": {
+   "op": "over",
+   "inputs": {
+    "fg": "word4",
+    "bg": "bg4"
+   }
+  },
+  "over8": {
+   "op": "over",
+   "inputs": {
+    "fg": "num4",
+    "bg": "over7"
+   }
+  },
+  "bg5": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#3a0a1e, 1:#050407"
+   }
+  },
+  "word5": {
+   "op": "text",
+   "params": {
+    "text": "slide",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#ff7ab6",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num5": {
+   "op": "text",
+   "params": {
+    "text": "05",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over9": {
+   "op": "over",
+   "inputs": {
+    "fg": "word5",
+    "bg": "bg5"
+   }
+  },
+  "over10": {
+   "op": "over",
+   "inputs": {
+    "fg": "num5",
+    "bg": "over9"
+   }
+  },
+  "bg6": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#14240a, 1:#050407"
+   }
+  },
+  "word6": {
+   "op": "text",
+   "params": {
+    "text": "iris",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#b5ff5a",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num6": {
+   "op": "text",
+   "params": {
+    "text": "06",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over11": {
+   "op": "over",
+   "inputs": {
+    "fg": "word6",
+    "bg": "bg6"
+   }
+  },
+  "over12": {
+   "op": "over",
+   "inputs": {
+    "fg": "num6",
+    "bg": "over11"
+   }
+  },
+  "bg7": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#1e0a3a, 1:#050407"
+   }
+  },
+  "word7": {
+   "op": "text",
+   "params": {
+    "text": "zoom",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#b07aff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num7": {
+   "op": "text",
+   "params": {
+    "text": "07",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over13": {
+   "op": "over",
+   "inputs": {
+    "fg": "word7",
+    "bg": "bg7"
+   }
+  },
+  "over14": {
+   "op": "over",
+   "inputs": {
+    "fg": "num7",
+    "bg": "over13"
+   }
+  },
+  "bg8": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#3a2a0a, 1:#050407"
+   }
+  },
+  "word8": {
+   "op": "text",
+   "params": {
+    "text": "burn",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#ffd25a",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num8": {
+   "op": "text",
+   "params": {
+    "text": "08",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over15": {
+   "op": "over",
+   "inputs": {
+    "fg": "word8",
+    "bg": "bg8"
+   }
+  },
+  "over16": {
+   "op": "over",
+   "inputs": {
+    "fg": "num8",
+    "bg": "over15"
+   }
+  },
+  "bg9": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#062a3a, 1:#050407"
+   }
+  },
+  "word9": {
+   "op": "text",
+   "params": {
+    "text": "glitch",
+    "font": "ultrafast:display",
+    "size": 270,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#5af0ff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num9": {
+   "op": "text",
+   "params": {
+    "text": "09",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over17": {
+   "op": "over",
+   "inputs": {
+    "fg": "word9",
+    "bg": "bg9"
+   }
+  },
+  "over18": {
+   "op": "over",
+   "inputs": {
+    "fg": "num9",
+    "bg": "over17"
+   }
+  },
+  "bg10": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#2e2e33, 1:#050407"
+   }
+  },
+  "word10": {
+   "op": "text",
+   "params": {
+    "text": "blur",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#f3f1ec",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num10": {
+   "op": "text",
+   "params": {
+    "text": "10",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over19": {
+   "op": "over",
+   "inputs": {
+    "fg": "word10",
+    "bg": "bg10"
+   }
+  },
+  "over20": {
+   "op": "over",
+   "inputs": {
+    "fg": "num10",
+    "bg": "over19"
+   }
+  },
+  "bg11": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     800
+    ],
+    "radius": 1500,
+    "stops": "0:#0d0b14, 1:#050407"
+   }
+  },
+  "word11": {
+   "op": "text",
+   "params": {
+    "text": "cuts",
+    "font": "ultrafast:display",
+    "size": 330,
+    "position": [
+     540.0,
+     1060
+    ],
+    "color": "#ff5c7a",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 900,
+    "axis_SOFT": 100,
+    "axis_opsz": 144,
+    "tracking": -10
+   }
+  },
+  "num11": {
+   "op": "text",
+   "params": {
+    "text": "11",
+    "font": "ultrafast:mono",
+    "size": 34,
+    "position": [
+     540.0,
+     1220
+    ],
+    "color": "#f3f1ecb0",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 4
+   }
+  },
+  "over21": {
+   "op": "over",
+   "inputs": {
+    "fg": "word11",
+    "bg": "bg11"
+   }
+  },
+  "over22": {
+   "op": "over",
+   "inputs": {
+    "fg": "num11",
+    "bg": "over21"
+   }
+  },
+  "score": {
+   "op": "audio",
+   "params": {
+    "src": "../../out/films/hero_score.wav",
+    "gain": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        0.0
+       ]
+      },
+      {
+       "t": 0.3,
+       "v": [
+        0.9
+       ]
+      },
+      {
+       "t": 21.5,
+       "v": [
+        0.9
+       ]
+      },
+      {
+       "t": 22.5,
+       "v": [
+        0.0
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "cut": {
+   "op": "transition",
+   "params": {
+    "kind": "crossfade",
+    "at": 1.75,
+    "duration": 0.75,
+    "direction": 0
+   },
+   "inputs": {
+    "a": "over2",
+    "b": "over4"
+   }
+  },
+  "cut2": {
+   "op": "transition",
+   "params": {
+    "kind": "dip",
+    "at": 3.75,
+    "duration": 0.75,
+    "direction": 0,
+    "color": "#ffffff"
+   },
+   "inputs": {
+    "a": "cut",
+    "b": "over6"
+   }
+  },
+  "cut3": {
+   "op": "transition",
+   "params": {
+    "kind": "wipe",
+    "at": 5.75,
+    "duration": 0.75,
+    "direction": 30,
+    "color": "#ffffff",
+    "glow": 1.5
+   },
+   "inputs": {
+    "a": "cut2",
+    "b": "over8"
+   }
+  },
+  "cut4": {
+   "op": "transition",
+   "params": {
+    "kind": "push",
+    "at": 7.75,
+    "duration": 0.75,
+    "direction": 0
+   },
+   "inputs": {
+    "a": "cut3",
+    "b": "over10"
+   }
+  },
+  "cut5": {
+   "op": "transition",
+   "params": {
+    "kind": "slide",
+    "at": 9.75,
+    "duration": 0.75,
+    "direction": 90
+   },
+   "inputs": {
+    "a": "cut4",
+    "b": "over12"
+   }
+  },
+  "cut6": {
+   "op": "transition",
+   "params": {
+    "kind": "iris",
+    "at": 11.5,
+    "duration": 1.0,
+    "direction": 0
+   },
+   "inputs": {
+    "a": "cut5",
+    "b": "over14"
+   }
+  },
+  "cut7": {
+   "op": "transition",
+   "params": {
+    "kind": "zoom",
+    "at": 13.75,
+    "duration": 0.75,
+    "direction": 0
+   },
+   "inputs": {
+    "a": "cut6",
+    "b": "over16"
+   }
+  },
+  "cut8": {
+   "op": "transition",
+   "params": {
+    "kind": "dissolve",
+    "at": 15.5,
+    "duration": 1.0,
+    "direction": 0,
+    "color": "#ffb547"
+   },
+   "inputs": {
+    "a": "cut7",
+    "b": "over18"
+   }
+  },
+  "cut9": {
+   "op": "transition",
+   "params": {
+    "kind": "glitch",
+    "at": 17.75,
+    "duration": 0.75,
+    "direction": 0
+   },
+   "inputs": {
+    "a": "cut8",
+    "b": "over20"
+   }
+  },
+  "cut10": {
+   "op": "transition",
+   "params": {
+    "kind": "blur",
+    "at": 19.75,
+    "duration": 0.75,
+    "direction": 0
+   },
+   "inputs": {
+    "a": "cut9",
+    "b": "over22"
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "cut10"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.05
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

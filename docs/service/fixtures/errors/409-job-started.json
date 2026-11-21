@@ -1,0 +1,9 @@
+{
+  "error": {
+    "status": 409,
+    "code": "job_started",
+    "message": "the job is rendered; only queued jobs can be canceled",
+    "retry": false,
+    "job_status": "rendered"
+  }
+}

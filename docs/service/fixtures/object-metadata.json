@@ -1,0 +1,20 @@
+{
+  "contentType": "video/mp4",
+  "metadata": {
+    "ultrafast-receipt-version": "1",
+    "ultrafast-render-id": "render_9f2",
+    "ultrafast-attempt-id": "attempt_2",
+    "ultrafast-document-sha256": "a0ff09093f50cbbcb7483e9c9ac06762a4643b14c76769ea35bec7870f489e8b",
+    "ultrafast-sha256": "3b5d7f9a1c2e4f6a8b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a",
+    "sha256": "3b5d7f9a1c2e4f6a8b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a",
+    "ultrafast-frames": "345",
+    "ultrafast-duration": "11.5",
+    "ultrafast-width": "1080",
+    "ultrafast-height": "1920",
+    "ultrafast-fps": "30",
+    "ultrafast-image-digest": "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "ultrafast-version": "0.1.0+e6d123f",
+    "ultrafast-inputs-sha256": "7e73612da0197d493346faf295ac1245d10e344e6cbcbc3d99e22704431fd842",
+    "ultrafast-created-at": "2026-10-13T22:45:11.981Z"
+  }
+}

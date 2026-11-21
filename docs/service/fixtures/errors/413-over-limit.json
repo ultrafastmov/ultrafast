@@ -1,0 +1,11 @@
+{
+  "error": {
+    "status": 413,
+    "code": "over_limit",
+    "message": "output duration 240 s exceeds 180 s",
+    "retry": false,
+    "limit": "duration_s",
+    "value": 240,
+    "max": 180
+  }
+}

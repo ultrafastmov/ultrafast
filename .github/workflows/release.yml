@@ -1,0 +1,276 @@
+name: Release
+
+# A tag vX.Y.Z builds every install path, tests each one, then publishes:
+# release archives on GitHub, crates on crates.io, the image on ghcr.io and
+# the formula in ultrafastmov/homebrew-tap. Run it by hand with publish off
+# to build and test everything without publishing anything.
+#
+# Secrets used when publishing:
+#   CARGO_REGISTRY_TOKEN  crates.io token (the first release; later ones can
+#                         use trusted publishing instead)
+#   HOMEBREW_TAP_TOKEN    fine-grained token with contents: write on
+#                         ultrafastmov/homebrew-tap
+# The image is pushed with this workflow's GITHUB_TOKEN.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to GitHub releases, crates.io, ghcr.io and the Homebrew tap (only when run on a v* tag; off: build and test only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Release binaries without debug info (the workspace profile keeps line
+  # tables for local profiling).
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
+  CARGO_PROFILE_RELEASE_STRIP: debuginfo
+  # Publishing happens only from a tag: pushed, or a rerun by hand on it.
+  PUBLISH: ${{ github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish) }}
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "v$v" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match Cargo.toml version $v"; exit 1
+          fi
+
+  # glibc 2.28 and newer (RHEL 8, Debian 10, Ubuntu 18.10 on), through zig.
+  linux:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-linux
+      - name: cargo-zigbuild
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zb"
+          "$RUNNER_TEMP/zb/bin/pip" install -q cargo-zigbuild==0.24.1
+          echo "$RUNNER_TEMP/zb/bin" >> "$GITHUB_PATH"
+      - run: cargo zigbuild --release --locked --target x86_64-unknown-linux-gnu.2.28 -p ultrafast
+      - run: packaging/dist.sh x86_64-unknown-linux-gnu target/x86_64-unknown-linux-gnu/release dist
+      - name: Vulkan (lavapipe) and ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1 ffmpeg
+          for ICD in /usr/share/vulkan/icd.d/lvp_icd.x86_64.json /usr/share/vulkan/icd.d/lvp_icd.json; do
+            [ -f "$ICD" ] && { echo "VK_ICD_FILENAMES=$ICD" >> "$GITHUB_ENV"; break; }
+          done
+      - name: Smoke test the archive
+        run: |
+          mkdir -p "$RUNNER_TEMP/x" && tar -xzf dist/ultrafast-*-x86_64-unknown-linux-gnu.tar.gz -C "$RUNNER_TEMP/x"
+          ULTRAFAST_SLANG_FETCH=0 packaging/smoke.sh "$RUNNER_TEMP"/x/ultrafast-*/uf
+      - name: Smoke test on a clean Ubuntu 22.04
+        run: |
+          docker run --rm -v "$RUNNER_TEMP/x:/x:ro" -v "$PWD/packaging/smoke.sh:/smoke.sh:ro" ubuntu:22.04 sh -c '
+            apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends mesa-vulkan-drivers libvulkan1 ffmpeg >/dev/null
+            ULTRAFAST_SLANG_FETCH=0 sh /smoke.sh /x/ultrafast-*/uf'
+      - name: Loads on glibc 2.28 (Rocky Linux 8)
+        run: |
+          docker run --rm -v "$RUNNER_TEMP/x:/x:ro" rockylinux/rockylinux:8 sh -c '
+            cd /tmp && /x/ultrafast-*/uf --version && /x/ultrafast-*/uf new title t.json && /x/ultrafast-*/ultrafast ops >/dev/null'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          path: dist/
+          if-no-files-found: error
+
+  macos:
+    needs: version
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-macos
+      - run: cargo build --release --locked -p ultrafast
+      - run: packaging/dist.sh aarch64-apple-darwin target/release dist
+      - name: Smoke test the archive
+        run: |
+          mkdir -p "$RUNNER_TEMP/x" && tar -xzf dist/ultrafast-*-aarch64-apple-darwin.tar.gz -C "$RUNNER_TEMP/x"
+          uf=$(ls "$RUNNER_TEMP"/x/ultrafast-*/uf)
+          "$uf" --version && "$uf" ops >/dev/null
+          # Hosted runners are VMs; render only where Metal has a device.
+          if "$uf" info; then ULTRAFAST_SLANG_FETCH=0 packaging/smoke.sh "$uf"
+          else echo "::warning::no Metal device on this runner; rendering not tested"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-aarch64-apple-darwin
+          path: dist/
+          if-no-files-found: error
+
+  # The formula exactly as it will be published, pointed at the archives
+  # just built, installed with brew and tested on both platforms.
+  homebrew:
+    needs: [linux, macos]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: brew install ultrafastmov/tap/ultrafast (from these archives)
+        run: |
+          eval "$($(command -v brew || echo /home/linuxbrew/.linuxbrew/bin/brew) shellenv)"
+          brew tap-new --no-git ultrafastmov/tap
+          packaging/homebrew/formula.sh dist "file://$PWD/dist" > "$(brew --repository)/Library/Taps/ultrafastmov/homebrew-tap/Formula/ultrafast.rb"
+          brew install ultrafastmov/tap/ultrafast
+          brew test ultrafastmov/tap/ultrafast
+          brew audit --strict ultrafastmov/tap/ultrafast
+          uf --version
+          if [ "$RUNNER_OS" = macOS ] && uf info; then ULTRAFAST_SLANG_FETCH=0 packaging/smoke.sh "$(command -v uf)"; fi
+
+  image:
+    needs: [version, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/ultrafastmov/ultrafast
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-x86_64-unknown-linux-gnu
+          path: dist
+      - name: Build context
+        run: |
+          mkdir -p ctx && tar -xzf "dist/ultrafast-$VERSION-x86_64-unknown-linux-gnu.tar.gz" -C ctx
+          mv "ctx/ultrafast-$VERSION-x86_64-unknown-linux-gnu" ctx/ultrafast
+          cp packaging/docker/Dockerfile packaging/docker/nvidia_icd.json ctx/
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: ctx
+          load: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+      - name: Smoke test the image (lavapipe inside it)
+        run: |
+          docker run --rm "$IMAGE:$VERSION" --version
+          docker run --rm "$IMAGE:$VERSION" info
+          docker run --rm -v "$PWD/packaging/smoke.sh:/smoke.sh:ro" --entrypoint sh "$IMAGE:$VERSION" /smoke.sh uf
+      # Up means /v1/health answers (503 while the GPU warms up, then 200).
+      - name: serve answers
+        run: |
+          docker run -d --name uf -p 8080:8080 "$IMAGE:$VERSION" serve
+          for _ in $(seq 150); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/v1/health || true)
+            legacy=$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/health || true)
+            if [ "$code" = 200 ] || [ "$code" = 503 ] || [ "$legacy" = 200 ]; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs uf 2>&1 | tail -40
+          docker stop uf
+          [ "${ok:-}" = 1 ]
+      - name: Push
+        if: env.PUBLISH == 'true'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          MINOR=${VERSION%.*}
+          for t in "$VERSION" "$MINOR" latest; do
+            docker tag "$IMAGE:$VERSION" "$IMAGE:$t"
+            docker push "$IMAGE:$t"
+          done
+
+  crates:
+    needs: [linux, macos, homebrew, image]
+    if: github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Trusted publishing token (when crates.io is set up for it)
+        id: auth
+        continue-on-error: true
+        uses: rust-lang/crates-io-auth-action@v1
+      # In dependency order, skipping versions already published and waiting
+      # out crates.io's new-crate rate limit (the first release adds a dozen).
+      - name: Publish the crates
+        timeout-minutes: 150
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || steps.auth.outputs.token }}
+        run: packaging/publish-crates.sh
+
+  github-release:
+    needs: [version, linux, macos, homebrew, image]
+    if: github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/*.tar.gz dist/*.sha256 \
+            --repo "$GITHUB_REPOSITORY" --title "ultrafast $VERSION" --generate-notes --verify-tag
+
+  tap:
+    needs: [github-release]
+    if: github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/checkout@v4
+        with:
+          repository: ultrafastmov/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+      - name: Update Formula/ultrafast.rb
+        run: |
+          mkdir -p tap/Formula
+          packaging/homebrew/formula.sh dist > tap/Formula/ultrafast.rb
+          cd tap
+          git config user.name "ultrafast release"
+          git config user.email "release@ultrafast.mov"
+          git add Formula/ultrafast.rb
+          if git diff --cached --quiet; then echo "formula unchanged"; exit 0; fi
+          git commit -m "ultrafast $(sed -n 's/^version = "\(.*\)"$/\1/p' ../Cargo.toml | head -1)"
+          git push

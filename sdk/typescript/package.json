@@ -1,0 +1,59 @@
+{
+  "name": "ultrafastmov",
+  "version": "0.1.1",
+  "description": "TypeScript client for ultrafast, the GPU video engine: render, frame, sheet, check, review, estimate and upload",
+  "license": "(Apache-2.0 OR MIT)",
+  "homepage": "https://ultrafast.mov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ultrafastmov/ultrafast.git",
+    "directory": "sdk/typescript"
+  },
+  "keywords": [
+    "video",
+    "gpu",
+    "rendering",
+    "agents",
+    "motion-graphics",
+    "mcp"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT"
+  ],
+  "scripts": {
+    "gen": "node scripts/gen-types.mjs",
+    "build": "node scripts/build.mjs",
+    "typecheck": "node scripts/build.mjs && tsc -p test/tsconfig.json",
+    "test": "node scripts/build.mjs && tsc -p test/tsconfig.json && node --test test/*.test.mjs",
+    "prepack": "node scripts/build.mjs",
+    "e2e": "node scripts/build.mjs && node --test test/e2e.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,586 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 8.0,
+  "motion_blur": {
+   "samples": 6,
+   "shutter": 0.5
+  }
+ },
+ "output": "grained",
+ "nodes": {
+  "studio": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat4 shade(float2 pos, float px) {\n  float2 uv = pos / size();\n  float y = uv.y, u = uv.x;\n  // Classic chrome: a bright sky that peaks at a hard horizon, dark ground\n  // below. Tops and upper rims catch the sky; fronts mirror the ground.\n  float3 sky = lerp(float3(0.55, 0.58, 0.66), float3(2.6, 2.5, 2.35), pow(saturate(y / 0.5), 2.2));\n  float3 ground = lerp(float3(0.10, 0.085, 0.075), float3(0.008, 0.008, 0.01), smoothstep(0.5, 0.58, y));\n  float3 c = y < 0.5 ? sky : ground;\n  // Soft vertical light panels in the sky, sweeping as the world turns.\n  for (int k = 0; k < 4; k++) {\n    float cu = (float(k) + 0.5) / 4.0;\n    float dx = abs(frac(u - cu + 0.5) - 0.5);\n    c *= y < 0.5 ? 1.0 - 0.55 * smoothstep(0.03, 0.0, dx - 0.04) : 1.0;\n  }\n  c += smoothstep(0.05, 0.0, length((uv - float2(0.62, 0.36)) * float2(1.0, 2.0)) - 0.03) * float3(16.0, 8.0, 2.8);\n  return float4(c, 1.0);\n}"
+   }
+  },
+  "key": {
+   "op": "light",
+   "params": {
+    "direction": [
+     -0.3,
+     1.0,
+     0.6
+    ],
+    "intensity": 0.6
+   }
+  },
+  "cam": {
+   "op": "camera",
+   "params": {
+    "target": [
+     0,
+     0.35,
+     0
+    ],
+    "fov": 30,
+    "orbit": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        -24,
+        3,
+        15.5
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 8.0,
+       "v": [
+        16,
+        11,
+        15.2
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "word": {
+   "op": "mesh",
+   "params": {
+    "primitive": "text",
+    "text": "ultrafast",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "weight": 800,
+    "size": 1.15,
+    "depth": 0.42,
+    "bevel": 0.05,
+    "color": "#f4f4f6",
+    "metallic": 1.0,
+    "roughness": 0.07,
+    "position": [
+     0,
+     0.62,
+     0
+    ],
+    "scale": [
+     1,
+     1,
+     1
+    ],
+    "rotation": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0,
+        -30,
+        0
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 8.0,
+       "v": [
+        0,
+        22,
+        0
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "scene": {
+   "op": "render3d",
+   "params": {
+    "background": "#000000",
+    "environment_intensity": 1.0,
+    "environment_rotation": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        -40
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 8.0,
+       "v": [
+        70
+       ]
+      }
+     ]
+    },
+    "shadows": false
+   },
+   "inputs": {
+    "camera": "cam",
+    "word": "word",
+    "key": "key",
+    "environment": "studio"
+   }
+  },
+  "word_m": {
+   "op": "mesh",
+   "params": {
+    "primitive": "text",
+    "text": "ultrafast",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "weight": 800,
+    "size": 1.15,
+    "depth": 0.42,
+    "bevel": 0.05,
+    "color": "#f4f4f6",
+    "metallic": 1.0,
+    "roughness": 0.07,
+    "position": [
+     0,
+     -0.62,
+     0
+    ],
+    "scale": [
+     1,
+     -1,
+     1
+    ],
+    "rotation": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0,
+        -30,
+        0
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 8.0,
+       "v": [
+        0,
+        22,
+        0
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "mirror": {
+   "op": "render3d",
+   "params": {
+    "background": "#00000000",
+    "environment_intensity": 1.0,
+    "environment_rotation": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        -40
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 8.0,
+       "v": [
+        70
+       ]
+      }
+     ]
+    },
+    "shadows": false
+   },
+   "inputs": {
+    "camera": "cam",
+    "word": "word_m",
+    "key": "key",
+    "environment": "studio"
+   }
+  },
+  "fade": {
+   "op": "gradient",
+   "params": {
+    "kind": "linear",
+    "start": [
+     0,
+     1000
+    ],
+    "end": [
+     0,
+     1500
+    ],
+    "stops": "0:#ffffffff, 1:#ffffff00"
+   }
+  },
+  "mirror_fade": {
+   "op": "mask",
+   "params": {
+    "mode": "alpha"
+   },
+   "inputs": {
+    "source": "mirror",
+    "matte": "fade"
+   }
+  },
+  "mirror_soft": {
+   "op": "blur",
+   "params": {
+    "radius": 3
+   },
+   "inputs": {
+    "source": "mirror_fade"
+   }
+  },
+  "stage": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     1150
+    ],
+    "radius": 1100,
+    "stops": "0:#1b1d24, 0.5:#0b0c10, 1:#020203"
+   }
+  },
+  "floor_glow": {
+   "op": "gradient",
+   "params": {
+    "kind": "linear",
+    "start": [
+     0,
+     960
+    ],
+    "end": [
+     0,
+     1300
+    ],
+    "stops": "0:#ffffff00, 0.15:#ffffff0c, 1:#ffffff00"
+   }
+  },
+  "over": {
+   "op": "over",
+   "inputs": {
+    "fg": "floor_glow",
+    "bg": "stage"
+   }
+  },
+  "over2": {
+   "op": "over",
+   "params": {
+    "opacity": 0.55
+   },
+   "inputs": {
+    "fg": "mirror_soft",
+    "bg": "over"
+   }
+  },
+  "over3": {
+   "op": "over",
+   "inputs": {
+    "fg": "scene",
+    "bg": "over2"
+   }
+  },
+  "hot": {
+   "op": "levels",
+   "params": {
+    "in_black": 0.8,
+    "in_white": 2.0
+   },
+   "inputs": {
+    "source": "over3"
+   }
+  },
+  "bloom": {
+   "op": "blur",
+   "params": {
+    "radius": 38
+   },
+   "inputs": {
+    "source": "hot"
+   }
+  },
+  "bloomed": {
+   "op": "blend",
+   "params": {
+    "mode": "add",
+    "opacity": 0.55
+   },
+   "inputs": {
+    "fg": "bloom",
+    "bg": "over3"
+   }
+  },
+  "bloom_wide": {
+   "op": "blur",
+   "params": {
+    "radius": 120
+   },
+   "inputs": {
+    "source": "hot"
+   }
+  },
+  "bloomed_wide": {
+   "op": "blend",
+   "params": {
+    "mode": "add",
+    "opacity": 0.35
+   },
+   "inputs": {
+    "fg": "bloom_wide",
+    "bg": "bloomed"
+   }
+  },
+  "l11": {
+   "op": "text",
+   "params": {
+    "text": "Liquid metal,",
+    "font": "../assets/fonts/InstrumentSerif-Italic.ttf",
+    "size": 96,
+    "position": {
+     "keys": [
+      {
+       "t": 1.2,
+       "v": [
+        540.0,
+        1660.8
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 2.0,
+       "v": [
+        540.0,
+        1560
+       ]
+      }
+     ]
+    },
+    "color": "#f1eee8",
+    "valign": "baseline",
+    "align": "center"
+   }
+  },
+  "crop": {
+   "op": "crop",
+   "params": {
+    "rect": [
+     -4000,
+     1464.0,
+     9000,
+     129.60000000000002
+    ],
+    "softness": 0.0
+   },
+   "inputs": {
+    "source": "l11"
+   }
+  },
+  "l21": {
+   "op": "text",
+   "params": {
+    "text": "rendered live.",
+    "font": "../assets/fonts/InstrumentSerif-Italic.ttf",
+    "size": 96,
+    "position": {
+     "keys": [
+      {
+       "t": 1.35,
+       "v": [
+        540.0,
+        1760.8
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 2.15,
+       "v": [
+        540.0,
+        1660
+       ]
+      }
+     ]
+    },
+    "color": "#f1eee8",
+    "valign": "baseline",
+    "align": "center"
+   }
+  },
+  "crop2": {
+   "op": "crop",
+   "params": {
+    "rect": [
+     -4000,
+     1564.0,
+     9000,
+     129.60000000000002
+    ],
+    "softness": 0.0
+   },
+   "inputs": {
+    "source": "l21"
+   }
+  },
+  "folio": {
+   "op": "text",
+   "params": {
+    "text": "ULTRAFAST / CHROME",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 24,
+    "position": [
+     72,
+     150
+    ],
+    "color": "#f1eee890",
+    "valign": "baseline",
+    "tracking": 3,
+    "weight": 500
+   }
+  },
+  "folio2": {
+   "op": "text",
+   "params": {
+    "text": "ENV ROTATION 110\u00b0  \u00b7  BEVEL 0.05",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 24,
+    "position": [
+     1008,
+     150
+    ],
+    "color": "#f1eee860",
+    "valign": "baseline",
+    "align": "right",
+    "tracking": 2
+   }
+  },
+  "over4": {
+   "op": "over",
+   "inputs": {
+    "fg": "crop",
+    "bg": "bloomed_wide"
+   },
+   "timing": {
+    "in": 1.2
+   }
+  },
+  "over5": {
+   "op": "over",
+   "inputs": {
+    "fg": "crop2",
+    "bg": "over4"
+   },
+   "timing": {
+    "in": 1.35
+   }
+  },
+  "over6": {
+   "op": "over",
+   "inputs": {
+    "fg": "folio",
+    "bg": "over5"
+   }
+  },
+  "over7": {
+   "op": "over",
+   "inputs": {
+    "fg": "folio2",
+    "bg": "over6"
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "over7"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.07
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

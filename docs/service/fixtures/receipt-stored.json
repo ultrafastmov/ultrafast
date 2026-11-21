@@ -1,0 +1,69 @@
+{
+  "receipt_version": 1,
+  "id": "render_01M7ZJ4KHZBBK7TSHNA75778EY",
+  "url": "https://render.example.com/v1/files/renders/render_01M7ZJ4KHZBBK7TSHNA75778EY/film.mp4?expires=1795886600&sig=324cc771124aac326c0c844302fb90ae60370e16",
+  "url_expires_at": "2026-11-28T17:23:20.882Z",
+  "duration": 1.0,
+  "frames": 30,
+  "bytes": 10550,
+  "sha256": "af7547619dfc810aa30c4cfb939799bdc8c3b1d92b664ff60c94eb86322bbea1",
+  "minutes": 0.008,
+  "status": "rendered",
+  "attempt": {
+    "render_id": "render_01M7ZJ4KHZBBK7TSHNA75778EY",
+    "attempt_id": "1"
+  },
+  "object": {
+    "uri": "file:///data/storage/renders/render_01M7ZJ4KHZBBK7TSHNA75778EY/film.mp4",
+    "bucket": "",
+    "name": "renders/render_01M7ZJ4KHZBBK7TSHNA75778EY/film.mp4",
+    "generation": "1795281800882135000103",
+    "size": 10550,
+    "crc32c": "MnBndA==",
+    "md5": "6QCXnRGQMIJEdHAyKYtl9w==",
+    "sha256": "af7547619dfc810aa30c4cfb939799bdc8c3b1d92b664ff60c94eb86322bbea1",
+    "content_type": "video/mp4"
+  },
+  "manifest": {
+    "uri": "file:///data/storage/renders/render_01M7ZJ4KHZBBK7TSHNA75778EY/film.mp4.manifest.json",
+    "generation": "1795281800882201000106"
+  },
+  "video": {
+    "frames": 30,
+    "fps": 30.0,
+    "width": 640,
+    "height": 360,
+    "duration": 1.0,
+    "codec": "h264",
+    "audio": true,
+    "range": [
+      0.0,
+      1.0
+    ]
+  },
+  "renderer": {
+    "service": "ultrafast-service",
+    "version": "0.1.0",
+    "git": "unknown",
+    "image_digest": "unknown"
+  },
+  "document": {
+    "sha256": "ab6b5de19bd9e8ae0143bb0a57fda554d14b500737a4ee7f9b5d54db8375137d",
+    "format_version": 1,
+    "meta": null
+  },
+  "inputs": [],
+  "fonts": [],
+  "timings": {
+    "instance_start_s": null,
+    "fetch_s": 1.3426e-05,
+    "unpack_s": 0.0,
+    "plan_s": 0.032150266,
+    "render_s": 0.114402735,
+    "encode_s": 0.005730527999999999,
+    "upload_s": 7.0241e-05,
+    "total_s": 0.114738814
+  },
+  "warnings": [],
+  "created_at": "2026-11-21T17:23:20.882Z"
+}

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "format": { "width": 1920, "height": 1080, "fps": 60, "duration": 6.0 },
+  "output": "final",
+  "nodes": {
+    "bg": { "op": "gradient", "params": { "kind": "conic", "a": "#101828", "b": "#3b1d5e", "center": [960, 540], "angle": { "keys": [ { "t": 0, "v": [0] }, { "t": 6, "v": [360] } ] } } },
+    "clouds": { "op": "noise", "params": { "a": [1, 1, 1, 0], "b": [1, 1, 1, 0.35], "scale": [420, 260], "octaves": 5, "evolution": { "keys": [ { "t": 0, "v": [0] }, { "t": 6, "v": [3] } ] } } },
+    "sky": { "op": "blend", "inputs": { "fg": "clouds", "bg": "bg" }, "params": { "mode": "screen" } },
+
+    "photo": { "op": "image", "params": { "src": "assets/test.jpg", "fit": "contain" } },
+    "photo_graded": { "op": "adjust", "inputs": { "source": "photo" }, "params": { "saturation": 1.4, "contrast": 1.15, "hue": { "keys": [ { "t": 0, "v": [0] }, { "t": 6, "v": [60] } ] } } },
+    "photo_round": { "op": "shape", "params": { "kind": "rect", "size": [1728, 1080], "radius": 64, "color": "#ffffff" } },
+    "photo_card": { "op": "mask", "inputs": { "source": "photo_graded", "matte": "photo_round" } },
+    "photo_xf": { "op": "transform", "inputs": { "source": "photo_card" }, "params": {
+        "scale": [0.42, 0.42], "position": [520, 560],
+        "rotation": { "keys": [ { "t": 0, "v": [-8], "ease": "in_out_cubic" }, { "t": 3, "v": [6], "ease": "in_out_cubic" }, { "t": 6, "v": [-8] } ] } } },
+    "shadow_src": { "op": "shape", "params": { "kind": "rect", "size": [730, 455], "radius": 28, "color": [0, 0, 0, 0.7], "center": [540, 600] } },
+    "shadow": { "op": "blur", "inputs": { "source": "shadow_src" }, "params": { "radius": 28 } },
+    "with_shadow": { "op": "over", "inputs": { "fg": "shadow", "bg": "sky" } },
+    "with_photo": { "op": "over", "inputs": { "fg": "photo_xf", "bg": "with_shadow" } },
+
+    "plasma": { "op": "shader", "params": {
+        "code": "float4 shade(float2 pos, float px) {\n  float2 uv = pos / size();\n  float t = time();\n  float v = sin(uv.x * 10.0 + t) + sin(uv.y * 8.0 - t * 1.3) + sin((uv.x + uv.y) * 6.0 + t * 0.7);\n  float3 c = 0.5 + 0.5 * cos(v + float3(0.0, 2.1, 4.2));\n  return from_srgb(float4(c, 1.0));\n}",
+        "u0": 1 } },
+    "plasma_disc": { "op": "shape", "params": { "kind": "circle", "size": [420, 420], "center": [1420, 540], "color": "#ffffff" } },
+    "plasma_masked": { "op": "mask", "inputs": { "source": "plasma", "matte": "plasma_disc" } },
+    "plasma_wavy": { "op": "wave", "inputs": { "source": "plasma_masked" }, "params": { "amplitude": 14, "wavelength": 180, "phase": { "keys": [ { "t": 0, "v": [0] }, { "t": 6, "v": [720] } ] } } },
+    "ring": { "op": "shape", "params": { "kind": "circle", "size": [470, 470], "center": [1420, 540], "stroke": 5, "color": [1, 1, 1, 0.8] } },
+    "with_plasma": { "op": "over", "inputs": { "fg": "plasma_wavy", "bg": "with_photo" } },
+    "with_ring": { "op": "blend", "inputs": { "fg": "ring", "bg": "with_plasma" }, "params": { "mode": "overlay" } },
+
+    "bar": { "op": "shape", "params": { "kind": "rect", "size": [1920, 96], "center": [960, 1032], "color": [0, 0, 0, 0.45] } },
+    "with_bar": { "op": "over", "inputs": { "fg": "bar", "bg": "with_ring" } },
+    "final": { "op": "levels", "inputs": { "source": "with_bar" }, "params": { "in_black": 0.02, "gamma": 1.05 } }
+  }
+}

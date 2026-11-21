@@ -1,0 +1,360 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 8.0,
+  "motion_blur": {
+   "samples": 4,
+   "shutter": 0.5
+  }
+ },
+ "output": "grained",
+ "nodes": {
+  "bands": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat4 shade(float2 pos, float px) {\n  float2 uv = pos / size();\n  float x = uv.x * 5.0 + uv.y * 1.4 + sin(uv.y * 4.0 + time() * 0.6) * 0.25 - time() * 0.35;\n  float k = floor(x);\n  float f = frac(x);\n  // Wide bands of saturated color with thin bright gaps between them.\n  float3 pal[4] = { float3(1.0, 0.36, 0.28), float3(1.0, 0.78, 0.25), float3(0.25, 0.62, 1.0), float3(0.75, 0.3, 1.0) };\n  float3 c = srgb_to_linear(pal[int(fmod(fmod(k, 4.0) + 4.0, 4.0))]);\n  c *= 0.35 + 0.65 * smoothstep(0.0, 0.5, f) * smoothstep(1.0, 0.6, f);\n  c += smoothstep(0.07, 0.0, abs(f - 0.03)) * 1.6;\n  return float4(c, 1.0);\n}"
+   }
+  },
+  "studio": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat4 shade(float2 pos, float px) {\n  float2 uv = pos / size();\n  float y = uv.y;\n  float3 c = lerp(float3(0.05, 0.05, 0.07), float3(0.9, 0.9, 1.0), pow(saturate(1.0 - y * 1.6), 3.0));\n  for (int k = 0; k < 3; k++) {\n    float cu = 0.18 + 0.32 * float(k);\n    float d = abs(frac(uv.x - cu + 0.5) - 0.5);\n    c += smoothstep(0.012, 0.0, d - 0.02) * smoothstep(0.62, 0.3, y) * float3(6.0);\n  }\n  return float4(c, 1.0);\n}"
+   }
+  },
+  "wall": {
+   "op": "mesh",
+   "params": {
+    "primitive": "plane",
+    "scale": [
+     16,
+     28,
+     1
+    ],
+    "position": [
+     0,
+     0,
+     -3.0
+    ],
+    "roughness": 1.0,
+    "emissive": "#000000"
+   },
+   "inputs": {
+    "texture": "bands"
+   }
+  },
+  "word": {
+   "op": "mesh",
+   "params": {
+    "primitive": "text",
+    "text": "prism",
+    "font": "ultrafast:wide",
+    "weight": 800,
+    "size": 0.68,
+    "depth": 0.55,
+    "bevel": 0.07,
+    "color": "#f4f8ff",
+    "roughness": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        0.02
+       ]
+      },
+      {
+       "t": 5.0,
+       "v": [
+        0.02
+       ],
+       "ease": "in_out_cubic"
+      },
+      {
+       "t": 6.5,
+       "v": [
+        0.35
+       ]
+      }
+     ]
+    },
+    "transmission": 1.0,
+    "ior": 1.52,
+    "thickness": 1.1,
+    "dispersion": 1.6,
+    "rotation": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        6,
+        -38,
+        -3
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 8.0,
+       "v": [
+        -4,
+        30,
+        2
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "key": {
+   "op": "light",
+   "params": {
+    "direction": [
+     -0.5,
+     0.9,
+     0.5
+    ],
+    "intensity": 2.0
+   }
+  },
+  "rim": {
+   "op": "light",
+   "params": {
+    "direction": [
+     0.7,
+     0.2,
+     -0.6
+    ],
+    "intensity": 1.4,
+    "color": "#9fc3ff"
+   }
+  },
+  "cam": {
+   "op": "camera",
+   "params": {
+    "target": [
+     0,
+     0,
+     0
+    ],
+    "fov": 30,
+    "orbit": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        -8,
+        4,
+        10.5
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 8.0,
+       "v": [
+        8,
+        6,
+        10.0
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "scene": {
+   "op": "render3d",
+   "params": {
+    "background": "#07060c",
+    "environment_intensity": 1.0,
+    "shadows": false,
+    "environment_rotation": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        -30.0
+       ]
+      },
+      {
+       "t": 8,
+       "v": [
+        60.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "camera": "cam",
+    "wall": "wall",
+    "word": "word",
+    "key": "key",
+    "rim": "rim",
+    "environment": "studio"
+   }
+  },
+  "bloom": {
+   "op": "bloom",
+   "params": {
+    "threshold": 0.85,
+    "radius": 40,
+    "intensity": 0.5
+   },
+   "inputs": {
+    "source": "scene"
+   }
+  },
+  "cap": {
+   "op": "text",
+   "params": {
+    "text": "solid glass, rendered live",
+    "font": "ultrafast:serif",
+    "size": 64,
+    "position": {
+     "keys": [
+      {
+       "t": 1.2,
+       "v": [
+        540.0,
+        1707.2
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 2.0,
+       "v": [
+        540.0,
+        1640
+       ]
+      }
+     ]
+    },
+    "color": "#f3f1ec",
+    "valign": "baseline",
+    "align": "center",
+    "style": "italic"
+   }
+  },
+  "crop": {
+   "op": "crop",
+   "params": {
+    "rect": [
+     -4000,
+     1576.0,
+     9000,
+     86.4
+    ],
+    "softness": 0.0
+   },
+   "inputs": {
+    "source": "cap"
+   }
+  },
+  "lab": {
+   "op": "text",
+   "params": {
+    "text": "IOR 1.52  \u00b7  DISPERSION 1.6",
+    "font": "ultrafast:mono",
+    "size": 26,
+    "position": [
+     540.0,
+     1730
+    ],
+    "color": "#f3f1ece8",
+    "valign": "baseline",
+    "align": "center",
+    "tracking": 3
+   }
+  },
+  "lab_in": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 1.6,
+       "v": [
+        0.0
+       ],
+       "ease": "in_out_cubic"
+      },
+      {
+       "t": 2.2,
+       "v": [
+        1.0
+       ]
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "lab"
+   }
+  },
+  "over": {
+   "op": "over",
+   "inputs": {
+    "fg": "crop",
+    "bg": "bloom"
+   },
+   "timing": {
+    "in": 1.2
+   }
+  },
+  "over2": {
+   "op": "over",
+   "inputs": {
+    "fg": "lab_in",
+    "bg": "over"
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "over2"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.05
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

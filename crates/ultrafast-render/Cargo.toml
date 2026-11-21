@@ -1,0 +1,39 @@
+[package]
+name = "ultrafast-render"
+description = "ultrafast graph compiler, kernel fusion and frame executor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+vulkan = ["ultrafast-gpu/vulkan", "ultrafast-media/vulkan"]
+
+[dependencies]
+ultrafast-graph.workspace = true
+ultrafast-framing.workspace = true
+ultrafast-geom.workspace = true
+ultrafast-ops.workspace = true
+ultrafast-gpu.workspace = true
+ultrafast-shaderc.workspace = true
+ultrafast-media.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+blake3 = "1"
+kurbo = "0.13"
+usvg = "0.48"
+lyon_tessellation = "1"
+gltf = { version = "1", default-features = false, features = ["import", "utils"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "tiff"] }
+# libwebp (vendored C, SIMD) decodes WebP stills and cutout sequences about
+# twice as fast as the pure-Rust decoder.
+libwebp-sys = { version = "0.14", default-features = false, features = ["std", "parallel"] }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+libwebp-sys = { version = "0.14", default-features = false, features = ["std", "parallel", "sse41", "avx2"] }
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+libwebp-sys = { version = "0.14", default-features = false, features = ["std", "parallel", "neon"] }

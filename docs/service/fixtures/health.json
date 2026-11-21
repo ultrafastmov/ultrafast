@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "ready": true,
+  "busy": false,
+  "device": "NVIDIA L4",
+  "backend": "vulkan",
+  "version": "0.1.0",
+  "git": "e6d123f",
+  "image_digest": "sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+  "uptime_s": 12.3
+}

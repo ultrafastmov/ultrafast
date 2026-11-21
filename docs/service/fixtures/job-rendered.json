@@ -1,0 +1,82 @@
+{
+  "created_at": "2026-11-21T17:23:20.883Z",
+  "error": null,
+  "finished_at": "2026-11-21T17:23:20.979Z",
+  "id": "job_01M7ZJ4KNKR633PMW5THD2QWYS",
+  "progress": {
+    "frames": 30,
+    "of": 30
+  },
+  "receipt": {
+    "attempt": {
+      "attempt_id": "1",
+      "render_id": "render_01M7ZJ4KNKG6JFG2VF956MF0VM"
+    },
+    "bytes": 6324,
+    "created_at": "2026-11-21T17:23:20.979Z",
+    "document": {
+      "format_version": 1,
+      "meta": null,
+      "sha256": "022f40b3b9567e62c8fb999fa20a761905cab2cada98108b2442c5f8fdaafddc"
+    },
+    "duration": 1.0,
+    "fonts": [],
+    "frames": 30,
+    "id": "render_01M7ZJ4KNKG6JFG2VF956MF0VM",
+    "inputs": [],
+    "manifest": {
+      "generation": "1795281800979407000122",
+      "uri": "file:///data/storage/renders/render_01M7ZJ4KNKG6JFG2VF956MF0VM/film.mp4.manifest.json"
+    },
+    "minutes": 0.008,
+    "object": {
+      "bucket": "",
+      "content_type": "video/mp4",
+      "crc32c": "oidM/A==",
+      "generation": "1795281800979341000119",
+      "md5": "8gy4fdIPjZbLs+BIAQtDAg==",
+      "name": "renders/render_01M7ZJ4KNKG6JFG2VF956MF0VM/film.mp4",
+      "sha256": "c74567bdfba4efe0bfc3c050fe8f5f1c26ad98a145b3553b418c6e31f64c95f4",
+      "size": 6324,
+      "uri": "file:///data/storage/renders/render_01M7ZJ4KNKG6JFG2VF956MF0VM/film.mp4"
+    },
+    "receipt_version": 1,
+    "renderer": {
+      "git": "unknown",
+      "image_digest": "unknown",
+      "service": "ultrafast-service",
+      "version": "0.1.0"
+    },
+    "sha256": "c74567bdfba4efe0bfc3c050fe8f5f1c26ad98a145b3553b418c6e31f64c95f4",
+    "status": "rendered",
+    "timings": {
+      "encode_s": 0.005253702999999999,
+      "fetch_s": 8.136e-06,
+      "instance_start_s": null,
+      "plan_s": 0.022552349,
+      "render_s": 0.095930485,
+      "total_s": 0.096212171,
+      "unpack_s": 0.0,
+      "upload_s": 7.6753e-05
+    },
+    "url": "https://render.example.com/v1/files/renders/render_01M7ZJ4KNKG6JFG2VF956MF0VM/film.mp4?expires=1795886600&sig=832cb3e5b1a5b236e1f0c04867175822a4381616",
+    "url_expires_at": "2026-11-28T17:23:20.979Z",
+    "video": {
+      "audio": true,
+      "codec": "h264",
+      "duration": 1.0,
+      "fps": 30.0,
+      "frames": 30,
+      "height": 360,
+      "range": [
+        0.0,
+        1.0
+      ],
+      "width": 640
+    },
+    "warnings": []
+  },
+  "started_at": "2026-11-21T17:23:20.883Z",
+  "status": "rendered",
+  "webhook": "https://example.com/rendered"
+}

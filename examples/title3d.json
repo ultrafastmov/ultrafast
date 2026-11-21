@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "format": { "width": 1920, "height": 1080, "fps": 60, "duration": 6.0 },
+  "output": "comp",
+  "nodes": {
+    "bg": { "op": "gradient", "params": { "kind": "radial", "stops": "0:#2a2f4a, 1:#07080f", "space": "srgb", "radius": 1300 } },
+    "title": { "op": "mesh", "params": { "primitive": "text", "text": "ULTRAFAST", "weight": 800, "size": 1.6, "depth": 0.45,
+      "color": "#d9dde8", "metallic": 1, "roughness": 0.28,
+      "rotation": { "keys": [ { "t": 0, "v": [8, -28, 0], "ease": "in_out_cubic" }, { "t": 6, "v": [8, 28, 0] } ] } } },
+    "logo": { "op": "mesh", "params": { "primitive": "path", "d": "M 0 -50 L 47.5 -15.5 L 29.4 40.5 L -29.4 40.5 L -47.5 -15.5 Z", "units": 60, "depth": 0.3,
+      "position": [0, -1.55, 0], "color": "#ff5a36", "roughness": 0.4,
+      "rotation": { "keys": [ { "t": 0, "v": [0, 0, 0] }, { "t": 6, "v": [0, 360, 0] } ] } } },
+    "key": { "op": "light", "params": { "direction": [0.3, 0.6, 0.9], "intensity": 3.0 } },
+    "rim": { "op": "light", "params": { "kind": "point", "position": [-3, 2, -2], "intensity": 25, "color": "#6aa8ff" } },
+    "cam": { "op": "camera", "params": { "position": [0, 0.3, 6.5], "target": [0, -0.3, 0], "fov": 38 } },
+    "scene": { "op": "render3d", "inputs": { "camera": "cam", "title": "title", "logo": "logo", "key": "key", "rim": "rim" },
+      "params": { "ambient": 0.6, "sky": "#c8d4ff", "ground": "#3a2a20" } },
+    "comp": { "op": "over", "inputs": { "fg": "scene", "bg": "bg" } }
+  }
+}

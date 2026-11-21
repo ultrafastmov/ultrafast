@@ -1,0 +1,13 @@
+{
+  "minutes": 0.008333333333333333,
+  "usd": null,
+  "gpu_seconds": 8.2432e-05,
+  "first_byte_s": 0.00059836,
+  "width": 640,
+  "height": 360,
+  "fps": 30.0,
+  "seconds": 1.0,
+  "frames": 30,
+  "device": "NVIDIA GeForce RTX 5090",
+  "sampled_frames": 30
+}

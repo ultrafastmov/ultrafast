@@ -1,0 +1,28 @@
+[package]
+name = "ultrafast-geom"
+description = "Vector geometry and text: paths, fonts, shaping, layout, measuring (CPU only)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+ultrafast-graph.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+kurbo = "0.13"
+rustybuzz = "0.20"
+fontdb = "0.24"
+unicode-linebreak = "0.1"
+# Writing systems a document sets: script lookup and right-to-left order.
+unicode-script = "0.5"
+unicode-bidi = "0.3"
+# Color glyph strikes (sbix, CBDT) are PNGs.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Checks the fetched Noto Color Emoji.
+sha2 = "0.11"
+
+[dev-dependencies]
+serde_json.workspace = true

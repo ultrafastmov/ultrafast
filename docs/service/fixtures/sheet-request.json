@@ -1,0 +1,43 @@
+{
+  "document": {
+    "version": 1,
+    "format": {
+      "width": 640,
+      "height": 360,
+      "fps": 30,
+      "duration": 1.0
+    },
+    "nodes": {
+      "bg": {
+        "op": "solid",
+        "params": {
+          "color": "#1d3557"
+        }
+      },
+      "t": {
+        "op": "text",
+        "params": {
+          "text": "sheet",
+          "font": "Inter",
+          "size": 72,
+          "position": [
+            320,
+            180
+          ],
+          "color": "#f1faee"
+        }
+      },
+      "o": {
+        "op": "over",
+        "inputs": {
+          "fg": "t",
+          "bg": "bg"
+        }
+      }
+    },
+    "output": "o"
+  },
+  "count": 9,
+  "columns": 3,
+  "format": "png"
+}

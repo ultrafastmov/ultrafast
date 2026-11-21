@@ -1,0 +1,9 @@
+{
+  "error": {
+    "status": 403,
+    "code": "output_not_allowed",
+    "message": "gs://other-bucket/out.mp4 is outside this caller's write prefixes",
+    "retry": false,
+    "location": "gs://other-bucket/out.mp4"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "error": {
+    "status": 403,
+    "code": "local_path_not_allowed",
+    "message": "file params must be gs:// references",
+    "retry": false,
+    "node": "clip",
+    "param": "src",
+    "value": "/etc/hosts"
+  }
+}

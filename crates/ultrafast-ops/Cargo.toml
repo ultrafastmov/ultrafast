@@ -1,0 +1,15 @@
+[package]
+name = "ultrafast-ops"
+description = "ultrafast's op vocabulary: the op registry and param packing, built-in components, the machine-readable schema and the document check (CPU only)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+ultrafast-graph.workspace = true
+ultrafast-geom.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true

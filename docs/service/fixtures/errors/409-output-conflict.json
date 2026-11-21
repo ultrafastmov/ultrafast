@@ -1,0 +1,16 @@
+{
+  "error": {
+    "status": 409,
+    "code": "output_conflict",
+    "message": "the output object exists and is not this request's render",
+    "retry": false,
+    "object": {
+      "uri": "gs://example-renders/renders/render_9f2/attempt_2.mp4",
+      "generation": "1760396700000001",
+      "size": 1234,
+      "sha256": null,
+      "render_id": "render_9f2",
+      "attempt_id": "attempt_1"
+    }
+  }
+}

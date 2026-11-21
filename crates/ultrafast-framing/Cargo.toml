@@ -1,0 +1,17 @@
+[package]
+name = "ultrafast-framing"
+description = "Face-following clip camera: turns face tracks and shot boundaries into a per-frame crop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+ultrafast-graph.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Face detection for clips that come without face tracks (SeetaFace's
+# frontal model, BSD-2-Clause; models/LICENSE-SeetaFace).
+rustface = { version = "0.1.7", default-features = false }

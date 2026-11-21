@@ -1,0 +1,888 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 9.0
+ },
+ "output": "grained",
+ "nodes": {
+  "line": {
+   "op": "text",
+   "params": {
+    "text": "$ ultrafast render film.json",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     330
+    ],
+    "color": "#7dff9b",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 0.4,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 1.8,
+       "v": [
+        24
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line2": {
+   "op": "text",
+   "params": {
+    "text": "  planning 55 nodes -> 17 kernels",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     408
+    ],
+    "color": "#3fae5f",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 1.6,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 1.85,
+       "v": [
+        33
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line3": {
+   "op": "text",
+   "params": {
+    "text": "  compiling slang ........... ok",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     486
+    ],
+    "color": "#3fae5f",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 1.95,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.45,
+       "v": [
+        32
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line4": {
+   "op": "text",
+   "params": {
+    "text": "  frame 0001   0.31 ms   gpu",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     564
+    ],
+    "color": "#3fae5f",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 2.55,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.67,
+       "v": [
+        28
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line5": {
+   "op": "text",
+   "params": {
+    "text": "  frame 0002   0.29 ms   gpu",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     642
+    ],
+    "color": "#3fae5f",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 2.7,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.82,
+       "v": [
+        28
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line6": {
+   "op": "text",
+   "params": {
+    "text": "  frame 0240   0.30 ms   gpu",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     720
+    ],
+    "color": "#3fae5f",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 2.85,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.97,
+       "v": [
+        28
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line7": {
+   "op": "text",
+   "params": {
+    "text": "  0 readbacks. 3,200 fps.",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     798
+    ],
+    "color": "#7dff9b",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 3.1,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 3.4,
+       "v": [
+        25
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line8": {
+   "op": "text",
+   "params": {
+    "text": "$ ultrafast live film.json",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     876
+    ],
+    "color": "#7dff9b",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 3.8,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 4.7,
+       "v": [
+        22
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "line9": {
+   "op": "text",
+   "params": {
+    "text": "  edit -> next frame. no recompile.",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     954
+    ],
+    "color": "#3fae5f",
+    "valign": "baseline",
+    "reveal": {
+     "keys": [
+      {
+       "t": 4.9,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 5.3,
+       "v": [
+        35
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "cursor": {
+   "op": "shape",
+   "params": {
+    "kind": "rect",
+    "color": "#7dff9b",
+    "size": [
+     24.32,
+     49.92
+    ],
+    "center": {
+     "keys": [
+      {
+       "t": 0.4,
+       "v": [
+        96.8,
+        309.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 1.8,
+       "v": [
+        711.2,
+        309.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.6,
+       "v": [
+        96.8,
+        387.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 1.85,
+       "v": [
+        941.6,
+        387.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 1.95,
+       "v": [
+        96.8,
+        465.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.45,
+       "v": [
+        916.0,
+        465.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.55,
+       "v": [
+        96.8,
+        543.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.67,
+       "v": [
+        813.6,
+        543.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.7,
+       "v": [
+        96.8,
+        621.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.82,
+       "v": [
+        813.6,
+        621.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 2.85,
+       "v": [
+        96.8,
+        699.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 2.97,
+       "v": [
+        813.6,
+        699.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 3.1,
+       "v": [
+        96.8,
+        777.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 3.4,
+       "v": [
+        736.8000000000001,
+        777.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 3.8,
+       "v": [
+        96.8,
+        855.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 4.7,
+       "v": [
+        660.0,
+        855.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 4.9,
+       "v": [
+        96.8,
+        933.52
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 5.3,
+       "v": [
+        992.8000000000001,
+        933.52
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.5,
+       "v": [
+        148.0,
+        1011.52
+       ],
+       "ease": "hold"
+      }
+     ]
+    }
+   }
+  },
+  "prompt": {
+   "op": "text",
+   "params": {
+    "text": "$",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     84,
+     1032
+    ],
+    "color": "#7dff9b",
+    "valign": "baseline"
+   }
+  },
+  "blink": {
+   "op": "opacity",
+   "params": {
+    "opacity": {
+     "keys": [
+      {
+       "t": 5.5,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 5.9,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 6.3,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 6.7,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.1,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.5,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 7.9,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 8.3,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 8.7,
+       "v": [
+        1
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 9.1,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      }
+     ]
+    }
+   },
+   "inputs": {
+    "source": "cursor"
+   }
+  },
+  "mark": {
+   "op": "text",
+   "params": {
+    "text": "ultrafast",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "size": 230,
+    "position": [
+     540.0,
+     1420
+    ],
+    "color": "#ffffff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 800,
+    "tracking": -4,
+    "stagger": 0.06,
+    "glyph_offset": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0,
+        60
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 0.5,
+       "v": [
+        0,
+        0
+       ]
+      }
+     ]
+    },
+    "glyph_opacity": {
+     "keys": [
+      {
+       "t": 0.0,
+       "v": [
+        0
+       ],
+       "ease": "hold"
+      },
+      {
+       "t": 0.06,
+       "v": [
+        1
+       ]
+      }
+     ]
+    }
+   },
+   "timing": {
+    "offset": 5.8
+   }
+  },
+  "dots": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat4 shade(float2 pos, float px) {\n  // Re-sample the wordmark on an LED dot grid.\n  float cell = param(0);\n  float2 c = (floor(pos / cell) + 0.5) * cell;\n  float a = input(0, c).a;\n  float d = length(pos - c) / cell;\n  float dot_ = smoothstep(0.42, 0.30, d) * step(0.35, a);\n  float3 col = srgb_to_linear(float3(0.49, 1.0, 0.61));\n  return float4(col * dot_, dot_);\n}",
+    "u0": 11.0
+   },
+   "inputs": {
+    "in0": "mark"
+   }
+  },
+  "tag": {
+   "op": "text",
+   "params": {
+    "text": "VIDEO, COMPILED.",
+    "font": "../assets/fonts/VT323-Regular.ttf",
+    "size": 64,
+    "position": [
+     540.0,
+     1540
+    ],
+    "color": "#7dff9b",
+    "valign": "baseline",
+    "align": "center",
+    "reveal": {
+     "keys": [
+      {
+       "t": 6.8,
+       "v": [
+        0
+       ],
+       "ease": "linear"
+      },
+      {
+       "t": 7.4,
+       "v": [
+        16
+       ]
+      }
+     ]
+    },
+    "reveal_softness": 0.01
+   }
+  },
+  "bg": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     960.0
+    ],
+    "radius": 1300,
+    "stops": "0:#04140a, 1:#010402"
+   }
+  },
+  "over": {
+   "op": "over",
+   "inputs": {
+    "fg": "line",
+    "bg": "bg"
+   },
+   "timing": {
+    "in": 0.4
+   }
+  },
+  "over2": {
+   "op": "over",
+   "inputs": {
+    "fg": "line2",
+    "bg": "over"
+   },
+   "timing": {
+    "in": 1.6
+   }
+  },
+  "over3": {
+   "op": "over",
+   "inputs": {
+    "fg": "line3",
+    "bg": "over2"
+   },
+   "timing": {
+    "in": 1.95
+   }
+  },
+  "over4": {
+   "op": "over",
+   "inputs": {
+    "fg": "line4",
+    "bg": "over3"
+   },
+   "timing": {
+    "in": 2.55
+   }
+  },
+  "over5": {
+   "op": "over",
+   "inputs": {
+    "fg": "line5",
+    "bg": "over4"
+   },
+   "timing": {
+    "in": 2.7
+   }
+  },
+  "over6": {
+   "op": "over",
+   "inputs": {
+    "fg": "line6",
+    "bg": "over5"
+   },
+   "timing": {
+    "in": 2.85
+   }
+  },
+  "over7": {
+   "op": "over",
+   "inputs": {
+    "fg": "line7",
+    "bg": "over6"
+   },
+   "timing": {
+    "in": 3.1
+   }
+  },
+  "over8": {
+   "op": "over",
+   "inputs": {
+    "fg": "line8",
+    "bg": "over7"
+   },
+   "timing": {
+    "in": 3.8
+   }
+  },
+  "over9": {
+   "op": "over",
+   "inputs": {
+    "fg": "line9",
+    "bg": "over8"
+   },
+   "timing": {
+    "in": 4.9
+   }
+  },
+  "over10": {
+   "op": "over",
+   "inputs": {
+    "fg": "prompt",
+    "bg": "over9"
+   },
+   "timing": {
+    "in": 5.5
+   }
+  },
+  "over11": {
+   "op": "over",
+   "inputs": {
+    "fg": "cursor",
+    "bg": "over10"
+   },
+   "timing": {
+    "out": 5.5
+   }
+  },
+  "over12": {
+   "op": "over",
+   "inputs": {
+    "fg": "blink",
+    "bg": "over11"
+   },
+   "timing": {
+    "in": 5.5
+   }
+  },
+  "over13": {
+   "op": "over",
+   "inputs": {
+    "fg": "dots",
+    "bg": "over12"
+   },
+   "timing": {
+    "in": 5.8
+   }
+  },
+  "over14": {
+   "op": "over",
+   "inputs": {
+    "fg": "tag",
+    "bg": "over13"
+   },
+   "timing": {
+    "in": 6.8
+   }
+  },
+  "phosphor": {
+   "op": "blur",
+   "params": {
+    "radius": 14
+   },
+   "inputs": {
+    "source": "over14"
+   }
+  },
+  "bloom": {
+   "op": "blend",
+   "params": {
+    "mode": "add",
+    "opacity": 0.9
+   },
+   "inputs": {
+    "fg": "phosphor",
+    "bg": "over14"
+   }
+  },
+  "halo": {
+   "op": "blur",
+   "params": {
+    "radius": 60
+   },
+   "inputs": {
+    "source": "bloom"
+   }
+  },
+  "halo_add": {
+   "op": "blend",
+   "params": {
+    "mode": "add",
+    "opacity": 0.35
+   },
+   "inputs": {
+    "fg": "halo",
+    "bg": "bloom"
+   }
+  },
+  "crt": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat4 shade(float2 pos, float px) {\n  float2 sz = size();\n  float2 uv = pos / sz * 2.0 - 1.0;\n  // Curved glass.\n  uv *= 1.0 + float2(0.045, 0.07) * float2(uv.y * uv.y, uv.x * uv.x);\n  float2 p = (uv * 0.5 + 0.5) * sz;\n  float2 e = abs(uv);\n  float inside = smoothstep(1.0, 0.985, max(e.x, e.y));\n  float4 c = input(0, p);\n  // Beam rows and an aperture grille.\n  float row = 0.62 + 0.38 * pow(abs(sin(pos.y * 3.14159 / 3.0)), 0.8);\n  float m = fmod(floor(pos.x), 3.0);\n  float3 grille = m < 1.0 ? float3(1.0, 0.72, 0.72) : (m < 2.0 ? float3(0.72, 1.0, 0.72) : float3(0.72, 0.72, 1.0));\n  float flick = 0.97 + 0.03 * sin(time() * 115.0) + 0.02 * sin(time() * 7.0);\n  float vig = 1.0 - 0.35 * dot(uv, uv) * 0.5;\n  c.rgb *= grille * row * flick * vig;\n  // The glass itself: a faint sheen and a dark bezel.\n  c.rgb += 0.012 * float3(0.7, 1.0, 0.8) * (1.0 - smoothstep(0.0, 1.2, length(uv - float2(-0.4, -0.5))));\n  return float4(c.rgb * inside, 1.0) + float4(float3(0.004), 1.0) * (1.0 - inside);\n}"
+   },
+   "inputs": {
+    "in0": "halo_add"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.06
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "crt"
+   }
+  }
+ }
+}

@@ -1,0 +1,1088 @@
+{
+ "version": 1,
+ "format": {
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 12.0,
+  "motion_blur": {
+   "samples": 6,
+   "shutter": 0.5
+  }
+ },
+ "output": "grained",
+ "nodes": {
+  "score": {
+   "op": "audio",
+   "params": {
+    "src": "../../out/films/hero_score.wav",
+    "start": 4.0
+   }
+  },
+  "ink": {
+   "op": "marble",
+   "params": {
+    "filaments": 0.55,
+    "veins": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "mid",
+      "range": [
+       0.2,
+       1.6
+      ],
+      "smooth": 0.25,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "ink_dim": {
+   "op": "adjust",
+   "params": {
+    "exposure": -1.6,
+    "saturation": 0.7
+   },
+   "inputs": {
+    "source": "ink"
+   }
+  },
+  "base": {
+   "op": "gradient",
+   "params": {
+    "kind": "radial",
+    "center": [
+     540.0,
+     820
+    ],
+    "radius": 1400,
+    "stops": "0:#1a1030, 0.6:#07060d, 1:#020203"
+   }
+  },
+  "ink_over": {
+   "op": "over",
+   "params": {
+    "opacity": 0.45
+   },
+   "inputs": {
+    "fg": "ink_dim",
+    "bg": "base"
+   }
+  },
+  "ring": {
+   "op": "path",
+   "params": {
+    "kind": "circle",
+    "center": [
+     540.0,
+     820
+    ],
+    "radius": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       260,
+       350
+      ],
+      "smooth": 0.1,
+      "start": 4.0
+     }
+    },
+    "stroke": 4.0,
+    "color": "#ffd2f4"
+   }
+  },
+  "ring2": {
+   "op": "path",
+   "params": {
+    "kind": "circle",
+    "center": [
+     540.0,
+     820
+    ],
+    "radius": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       330,
+       445
+      ],
+      "smooth": 0.15000000000000002,
+      "start": 4.0
+     }
+    },
+    "stroke": 3.5,
+    "color": "#ffd2f4"
+   }
+  },
+  "ring3": {
+   "op": "path",
+   "params": {
+    "kind": "circle",
+    "center": [
+     540.0,
+     820
+    ],
+    "radius": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       400,
+       540
+      ],
+      "smooth": 0.2,
+      "start": 4.0
+     }
+    },
+    "stroke": 3.0,
+    "color": "#ffd2f4"
+   }
+  },
+  "ring4": {
+   "op": "path",
+   "params": {
+    "kind": "circle",
+    "center": [
+     540.0,
+     820
+    ],
+    "radius": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       470,
+       635
+      ],
+      "smooth": 0.25,
+      "start": 4.0
+     }
+    },
+    "stroke": 2.5,
+    "color": "#ffd2f4"
+   }
+  },
+  "ring5": {
+   "op": "path",
+   "params": {
+    "kind": "circle",
+    "center": [
+     540.0,
+     820
+    ],
+    "radius": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       540,
+       730
+      ],
+      "smooth": 0.30000000000000004,
+      "start": 4.0
+     }
+    },
+    "stroke": 2.0,
+    "color": "#ffd2f4"
+   }
+  },
+  "studio": {
+   "op": "shader",
+   "params": {
+    "code": "\nfloat4 shade(float2 pos, float px) {\n  float2 uv = pos / size();\n  float y = uv.y;\n  float3 c = lerp(float3(0.5, 0.45, 0.6), float3(2.4, 2.2, 2.6), pow(saturate(y / 0.5), 2.0));\n  c = y < 0.5 ? c : lerp(float3(0.12, 0.05, 0.12), float3(0.01), smoothstep(0.5, 0.6, y));\n  c += smoothstep(0.05, 0.0, length((uv - float2(0.3, 0.35)) * float2(1.0, 2.0)) - 0.03) * float3(12.0, 3.0, 6.0);\n  c += smoothstep(0.05, 0.0, length((uv - float2(0.8, 0.4)) * float2(1.0, 2.0)) - 0.02) * float3(3.0, 6.0, 12.0);\n  return float4(c, 1.0);\n}"
+   }
+  },
+  "orb": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.0,
+       0.0,
+       0.25
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "orb2": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.125,
+       0.25,
+       0.375
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "orb3": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.25,
+       0.5,
+       0.5
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "orb4": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.375,
+       0.75,
+       0.625
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "orb5": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.5,
+       1.0,
+       0.75
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "orb6": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.625,
+       1.25,
+       0.875
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "orb7": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.75,
+       1.5,
+       1.0
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "orb8": {
+   "op": "mesh",
+   "params": {
+    "primitive": "sphere",
+    "segments": 48,
+    "color": "#f2f2f5",
+    "metallic": 1.0,
+    "roughness": 0.08,
+    "position": {
+     "oscillate": {
+      "frequency": 0.18,
+      "amplitude": [
+       2.6,
+       0.5,
+       2.6
+      ],
+      "base": [
+       0,
+       0,
+       0
+      ],
+      "phase": [
+       0.875,
+       1.75,
+       1.125
+      ]
+     }
+    },
+    "scale": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.42,
+       0.78
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    }
+   }
+  },
+  "cam": {
+   "op": "camera",
+   "params": {
+    "target": [
+     0,
+     0,
+     0
+    ],
+    "fov": 34,
+    "orbit": {
+     "keys": [
+      {
+       "t": 0,
+       "v": [
+        -20,
+        12,
+        10.5
+       ],
+       "ease": {
+        "bezier": [
+         0.83,
+         0.0,
+         0.17,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 12,
+       "v": [
+        25,
+        6,
+        9.5
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "key": {
+   "op": "light",
+   "params": {
+    "direction": [
+     0.3,
+     1.0,
+     0.5
+    ],
+    "intensity": 1.2
+   }
+  },
+  "orbs": {
+   "op": "render3d",
+   "params": {
+    "background": "#00000000",
+    "shadows": false,
+    "environment_intensity": 1.0,
+    "environment_rotation": {
+     "oscillate": {
+      "frequency": 0.05,
+      "amplitude": 60
+     }
+    },
+    "aperture": 16,
+    "focus": {
+     "oscillate": {
+      "frequency": 0.12,
+      "amplitude": 2.4,
+      "base": 10.3
+     }
+    }
+   },
+   "inputs": {
+    "environment": "studio",
+    "orb0": "orb",
+    "orb1": "orb2",
+    "orb2": "orb3",
+    "orb3": "orb4",
+    "orb4": "orb5",
+    "orb5": "orb6",
+    "orb6": "orb7",
+    "orb7": "orb8",
+    "camera": "cam",
+    "key": "key"
+   }
+  },
+  "orbs_at": {
+   "op": "transform",
+   "params": {
+    "position": [
+     540.0,
+     820
+    ],
+    "anchor": [
+     540.0,
+     960.0
+    ]
+   },
+   "inputs": {
+    "source": "orbs"
+   }
+  },
+  "word": {
+   "op": "text",
+   "params": {
+    "text": "FEEL",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "size": 150,
+    "position": {
+     "keys": [
+      {
+       "t": 0.5,
+       "v": [
+        540.0,
+        1587.5
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 1.2,
+       "v": [
+        540.0,
+        1430
+       ]
+      }
+     ]
+    },
+    "color": "#ffffff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "high",
+      "range": [
+       250,
+       900
+      ],
+      "smooth": 0.08,
+      "start": 4.0
+     }
+    },
+    "tracking": {
+     "oscillate": {
+      "frequency": 0.25,
+      "amplitude": 6,
+      "base": 2,
+      "phase": 0.0
+     }
+    }
+   }
+  },
+  "crop": {
+   "op": "crop",
+   "params": {
+    "rect": [
+     -4000,
+     1310.0,
+     9000,
+     142.5
+    ],
+    "softness": 0.0
+   },
+   "inputs": {
+    "source": "word"
+   }
+  },
+  "word2": {
+   "op": "text",
+   "params": {
+    "text": "THE",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "size": 150,
+    "position": {
+     "keys": [
+      {
+       "t": 0.75,
+       "v": [
+        540.0,
+        1757.5
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 1.45,
+       "v": [
+        540.0,
+        1600
+       ]
+      }
+     ]
+    },
+    "color": "#ffffff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "high",
+      "range": [
+       250,
+       900
+      ],
+      "smooth": 0.11,
+      "start": 4.0
+     }
+    },
+    "tracking": {
+     "oscillate": {
+      "frequency": 0.25,
+      "amplitude": 6,
+      "base": 2,
+      "phase": 0.2
+     }
+    }
+   }
+  },
+  "crop2": {
+   "op": "crop",
+   "params": {
+    "rect": [
+     -4000,
+     1480.0,
+     9000,
+     142.5
+    ],
+    "softness": 0.0
+   },
+   "inputs": {
+    "source": "word2"
+   }
+  },
+  "word3": {
+   "op": "text",
+   "params": {
+    "text": "BEAT",
+    "font": "../assets/fonts/Unbounded-VF.ttf",
+    "size": 150,
+    "position": {
+     "keys": [
+      {
+       "t": 1.0,
+       "v": [
+        540.0,
+        1927.5
+       ],
+       "ease": {
+        "bezier": [
+         0.16,
+         1.0,
+         0.3,
+         1.0
+        ]
+       }
+      },
+      {
+       "t": 1.7,
+       "v": [
+        540.0,
+        1770
+       ]
+      }
+     ]
+    },
+    "color": "#ffffff",
+    "valign": "baseline",
+    "align": "center",
+    "weight": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "high",
+      "range": [
+       250,
+       900
+      ],
+      "smooth": 0.14,
+      "start": 4.0
+     }
+    },
+    "tracking": {
+     "oscillate": {
+      "frequency": 0.25,
+      "amplitude": 6,
+      "base": 2,
+      "phase": 0.4
+     }
+    }
+   }
+  },
+  "crop3": {
+   "op": "crop",
+   "params": {
+    "rect": [
+     -4000,
+     1650.0,
+     9000,
+     142.5
+    ],
+    "softness": 0.0
+   },
+   "inputs": {
+    "source": "word3"
+   }
+  },
+  "folio": {
+   "op": "text",
+   "params": {
+    "text": "PULSE \u2014 DRIVEN BY THE SCORE",
+    "font": "../assets/fonts/GeistMono-VF.ttf",
+    "size": 26,
+    "position": [
+     540.0,
+     140
+    ],
+    "color": "#ffffffa0",
+    "valign": "baseline",
+    "align": "center",
+    "weight": 500,
+    "tracking": 4
+   }
+  },
+  "over": {
+   "op": "over",
+   "params": {
+    "opacity": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.1,
+       0.95
+      ],
+      "smooth": 0.1,
+      "start": 4.0
+     }
+    }
+   },
+   "inputs": {
+    "fg": "ring",
+    "bg": "ink_over"
+   }
+  },
+  "over2": {
+   "op": "over",
+   "params": {
+    "opacity": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.1,
+       0.83
+      ],
+      "smooth": 0.15000000000000002,
+      "start": 4.0
+     }
+    }
+   },
+   "inputs": {
+    "fg": "ring2",
+    "bg": "over"
+   }
+  },
+  "over3": {
+   "op": "over",
+   "params": {
+    "opacity": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.1,
+       0.71
+      ],
+      "smooth": 0.2,
+      "start": 4.0
+     }
+    }
+   },
+   "inputs": {
+    "fg": "ring3",
+    "bg": "over2"
+   }
+  },
+  "over4": {
+   "op": "over",
+   "params": {
+    "opacity": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.1,
+       0.59
+      ],
+      "smooth": 0.25,
+      "start": 4.0
+     }
+    }
+   },
+   "inputs": {
+    "fg": "ring4",
+    "bg": "over3"
+   }
+  },
+  "over5": {
+   "op": "over",
+   "params": {
+    "opacity": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.1,
+       0.47
+      ],
+      "smooth": 0.30000000000000004,
+      "start": 4.0
+     }
+    }
+   },
+   "inputs": {
+    "fg": "ring5",
+    "bg": "over4"
+   }
+  },
+  "over6": {
+   "op": "over",
+   "inputs": {
+    "fg": "orbs_at",
+    "bg": "over5"
+   }
+  },
+  "over7": {
+   "op": "over",
+   "inputs": {
+    "fg": "crop",
+    "bg": "over6"
+   },
+   "timing": {
+    "in": 0.5
+   }
+  },
+  "over8": {
+   "op": "over",
+   "inputs": {
+    "fg": "crop2",
+    "bg": "over7"
+   },
+   "timing": {
+    "in": 0.75
+   }
+  },
+  "over9": {
+   "op": "over",
+   "inputs": {
+    "fg": "crop3",
+    "bg": "over8"
+   },
+   "timing": {
+    "in": 1.0
+   }
+  },
+  "over10": {
+   "op": "over",
+   "inputs": {
+    "fg": "folio",
+    "bg": "over9"
+   }
+  },
+  "bloom": {
+   "op": "bloom",
+   "params": {
+    "threshold": 0.7,
+    "radius": 36,
+    "intensity": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       0.2,
+       1.1
+      ],
+      "smooth": 0.2,
+      "start": 4.0
+     }
+    },
+    "wide": 0.35
+   },
+   "inputs": {
+    "source": "over10"
+   }
+  },
+  "ca": {
+   "op": "aberration",
+   "params": {
+    "amount": {
+     "audio": {
+      "src": "../../out/films/hero_score.wav",
+      "band": "low",
+      "range": [
+       1,
+       9
+      ],
+      "smooth": 0.12,
+      "start": 4.0
+     }
+    }
+   },
+   "inputs": {
+    "source": "bloom"
+   }
+  },
+  "vignette": {
+   "op": "vignette",
+   "params": {
+    "inner": "#00000000",
+    "outer": "#000000a8"
+   },
+   "inputs": {
+    "source": "ca"
+   }
+  },
+  "grain": {
+   "op": "shader",
+   "params": {
+    "code": "float4 shade(float2 pos, float px) {\n  float2 p = floor(pos) + floor(time() * 24.0) * float2(37.0, 17.0);\n  float h = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);\n  float g = frac(sin(dot(p + 3.1, float2(39.346, 11.135))) * 24634.6345);\n  float n = (h + g) * 0.5;\n  return float4(float3(n), 1.0);\n}"
+   }
+  },
+  "grained": {
+   "op": "blend",
+   "params": {
+    "mode": "overlay",
+    "opacity": 0.07
+   },
+   "inputs": {
+    "fg": "grain",
+    "bg": "vignette"
+   }
+  }
+ }
+}

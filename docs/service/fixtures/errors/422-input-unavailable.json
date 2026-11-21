@@ -1,0 +1,10 @@
+{
+  "error": {
+    "status": 422,
+    "code": "input_unavailable",
+    "message": "generation 1760390000000002 of gs://example-renders/inputs/run_42/render_source.mp4 does not exist",
+    "retry": false,
+    "location": "gs://example-renders/inputs/run_42/render_source.mp4#1760390000000002",
+    "reason": "not_found"
+  }
+}

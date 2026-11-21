@@ -1,0 +1,8 @@
+{
+  "error": {
+    "status": 500,
+    "code": "render_failed",
+    "message": "render failed: GPU device lost (renderer rebuilt)",
+    "retry": true
+  }
+}

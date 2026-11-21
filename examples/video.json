@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "format": { "width": 1920, "height": 1080, "fps": 30, "duration": 5.0 },
+  "output": "comp",
+  "nodes": {
+    "bg": { "op": "gradient", "params": { "kind": "radial", "a": "#1e293b", "b": "#020617" } },
+    "clip": { "op": "video", "params": { "src": "assets/testsrc.mp4", "fit": "contain", "speed": 1 } },
+    "clip_round": { "op": "shape", "params": { "kind": "rect", "size": [1920, 1080], "radius": 80, "color": "#ffffff" } },
+    "clip_card": { "op": "mask", "inputs": { "source": "clip", "matte": "clip_round" } },
+    "clip_x": { "op": "transform", "inputs": { "source": "clip_card" }, "params": {
+      "scale": { "keys": [ { "t": 0, "v": [0.5], "ease": "in_out_cubic" }, { "t": 2.5, "v": [0.62], "ease": "in_out_cubic" }, { "t": 5, "v": [0.5] } ] },
+      "rotation": { "keys": [ { "t": 0, "v": [-3], "ease": "in_out_cubic" }, { "t": 5, "v": [3] } ] } } },
+    "pip": { "op": "video", "params": { "src": "assets/testsrc.mp4", "rect": [1440, 60, 400, 225], "start": 3, "speed": 0.5 } },
+    "graded": { "op": "adjust", "inputs": { "source": "pip" }, "params": { "saturation": 0 } },
+    "label": { "op": "text", "params": { "text": "two decoders, zero copies", "size": 44, "weight": 600, "position": [960, 980], "align": "center", "color": "#e2e8f0" } },
+    "l1": { "op": "over", "inputs": { "fg": "clip_x", "bg": "bg" } },
+    "l2": { "op": "over", "inputs": { "fg": "graded", "bg": "l1" } },
+    "comp": { "op": "over", "inputs": { "fg": "label", "bg": "l2" } }
+  }
+}
