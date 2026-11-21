@@ -1,7 +1,7 @@
-//! What a render will cost before it runs: rendered minutes and their
-//! price from the document's format alone, and GPU seconds measured by
-//! rendering a sample of its frames (nothing is encoded) on the renderer's
-//! own GPU, scaled to the whole range.
+//! What a render will cost before it runs: rendered minutes from the
+//! document's format alone (and their price, where a service sets one), and
+//! GPU seconds measured by rendering a sample of its frames (nothing is
+//! encoded) on the renderer's own GPU, scaled to the whole range.
 //!
 //! `uf estimate` prints it; a render service answers `POST /v1/estimate`
 //! with it, on the GPU it would render on.
@@ -10,9 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use ultrafast_graph::{Document, Format};
 use ultrafast_render::{Mode, Renderer};
-
-/// ultrafast Cloud's pay-as-you-go price of one rendered 1080p minute.
-pub const USD_PER_MINUTE: f64 = 0.03;
 
 /// How many rendered minutes one minute of output counts as at this size:
 /// 720p and below half, up to 1080p one, 4K three (and larger frames in
@@ -33,21 +30,18 @@ pub fn minute_weight(width: u32, height: u32) -> f64 {
     }
 }
 
-/// Rendered minutes and their price, from the format alone.
+/// Rendered minutes, from the format alone.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Price {
     /// Rendered minutes (output minutes weighted by size).
     pub minutes: f64,
-    pub usd: f64,
 }
 
-/// The price of rendering seconds `[from, to]` of a document of this format.
+/// What rendering seconds `[from, to]` of a document of this format counts as.
 pub fn price(format: &Format, from: f64, to: f64) -> Price {
     let seconds = (to.min(format.duration) - from.max(0.0)).max(0.0);
-    let minutes = seconds / 60.0 * minute_weight(format.width, format.height);
     Price {
-        minutes,
-        usd: minutes * USD_PER_MINUTE,
+        minutes: seconds / 60.0 * minute_weight(format.width, format.height),
     }
 }
 
@@ -59,8 +53,8 @@ pub struct Options {
     /// Frames to time, spread evenly over the range (every frame of a
     /// range with fewer than twice as many).
     pub samples: u32,
-    /// The price of a rendered minute; `None` quotes no price (a
-    /// self-hosted service that doesn't bill).
+    /// The price of a rendered minute, for a service that bills; `None`
+    /// (the default) quotes no price.
     pub usd_per_minute: Option<f64>,
     /// What the export writes (size, frame rate, quality level): priced at
     /// its size, timed with its motion blur, its frames counted at its rate
@@ -74,7 +68,7 @@ impl Default for Options {
             from: None,
             to: None,
             samples: 64,
-            usd_per_minute: Some(USD_PER_MINUTE),
+            usd_per_minute: None,
             target: None,
         }
     }
@@ -309,11 +303,10 @@ mod tests {
 
     #[test]
     fn prices_by_size() {
-        // The site's example: 12 s of 1080x1920 is 0.2 minutes, $0.006.
+        // 12 s of 1080x1920 is 0.2 minutes.
         let p = price(&fmt(1080, 1920, 12.0), 0.0, 12.0);
         assert!((p.minutes - 0.2).abs() < 1e-9);
-        assert!((p.usd - 0.006).abs() < 1e-9);
-        assert_eq!(usd_text(p.usd), "$0.006");
+        assert_eq!(usd_text(p.minutes * 0.03), "$0.006");
         assert_eq!(short(p.minutes), "0.2");
         assert_eq!(minute_weight(1280, 720), 0.5);
         assert_eq!(minute_weight(1080, 1080), 1.0);
@@ -322,7 +315,7 @@ mod tests {
         // A range prices only its seconds.
         let p = price(&fmt(1920, 1080, 60.0), 30.0, 90.0);
         assert!((p.minutes - 0.5).abs() < 1e-9);
-        assert_eq!(usd_text(10.0 * USD_PER_MINUTE), "$0.30");
+        assert_eq!(usd_text(0.3), "$0.30");
         assert_eq!(usd_text(0.0075), "$0.008");
         assert_eq!(usd_text(0.0001), "$0.001");
     }

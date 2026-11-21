@@ -117,8 +117,7 @@ up to 20 rows a call, each a download link). CLI:
 
 `ultrafast_estimate` (or `uf estimate film.json`) renders a sample of frames
 without encoding and reports rendered minutes (1080p minutes; 720p counts
-half, 4K three), the price on ultrafast Cloud, GPU seconds and the time to
-the first frame. Quote it before a long render or a big batch.
+half, 4K three), GPU seconds and the time to the first frame. Quote it before a long render or a big batch.
 
 ## Cuts on the beat
 

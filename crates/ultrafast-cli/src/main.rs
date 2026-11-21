@@ -67,10 +67,10 @@ usage:
   ultrafast profile <doc.json> [--frames N] [--from T] [--json]
                                              GPU time per render group (which nodes cost what)
   ultrafast estimate <doc.json> [--from S] [--to S] [--samples N] [--json] [export flags: --size, --quality, --fps...]
-                                             what exporting it costs: rendered minutes and their price
-                                             on ultrafast Cloud (at the output size), GPU seconds (timed
-                                             on sampled frames on this GPU, with the quality level's
-                                             motion blur) and the time to the first frame
+                                             what exporting it costs: rendered minutes (at the output
+                                             size), GPU seconds (timed on sampled frames on this GPU,
+                                             with the quality level's motion blur) and the time to the
+                                             first frame
   ultrafast bench  <doc.json> [--frames N] [--live-edits]
                                              GPU throughput, no readback
   ultrafast export <doc.json> <out> [--quality draft|standard|high|master] [--size 720p|1080p|4k|WxH | --scale S]
@@ -591,7 +591,7 @@ fn main() -> Result<()> {
             let path = doc_path()?;
             if has("--cloud") {
                 bail!(
-                    "ultrafast Cloud isn't open yet: `uf estimate {}` (without --cloud) measures the render on this GPU and prices it at Cloud's rate",
+                    "ultrafast Cloud isn't open yet: `uf estimate {}` (without --cloud) measures the render on this GPU",
                     path.display()
                 );
             }

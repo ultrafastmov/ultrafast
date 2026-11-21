@@ -43,7 +43,7 @@ looked at.
 | find | `ultrafast_inspect` (what is on screen at `t`, and which node) | `uf inspect film.json --at 2.5` |
 | change | `ultrafast_edit` (atomic edit batch) | edit the file, or `uf edit film.json edits.json` |
 | review | `ultrafast_review` (`safe: "social"` for vertical video) | `uf review film.json --safe social` |
-| cost | `ultrafast_estimate` with the export settings (rendered minutes, Cloud price, GPU seconds) | `uf estimate film.json --size 4k` |
+| cost | `ultrafast_estimate` with the export settings (rendered minutes, GPU seconds) | `uf estimate film.json --size 4k` |
 | export | `ultrafast_export` (settings below) | `uf export film.json film.mp4 --quality high` |
 | many versions | `ultrafast_batch` (one video per row of data) | `uf batch film.json --data rows.csv --out 'out/{name}.mp4'` |
 
