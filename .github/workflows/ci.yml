@@ -28,10 +28,18 @@ jobs:
   # CI needs no GPU. Slow, but the pixels are the same code path.
   test-linux:
     runs-on: ubuntu-24.04
+    env:
+      # Release speed without the release build's thin LTO and debug info,
+      # which cost most of the build time for every test binary and change
+      # no results.
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Vulkan (lavapipe) and ffmpeg
         run: |
           sudo apt-get update
@@ -61,10 +69,15 @@ jobs:
   # Metal.
   test-macos:
     runs-on: macos-15
+    env:
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Slang and ffmpeg
         run: |
           brew install ffmpeg
