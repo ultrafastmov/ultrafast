@@ -3,6 +3,7 @@
 *.png
 !examples/**/*.png
 !plugins/**/*.png
+!packaging/**/*.png
 /examples/assets/*.mp4
 /examples/assets/*.mov
 target-linux/
