@@ -163,7 +163,7 @@ float3 env_at(float3 d, float rough) {
     return lerp(sharp, soft_rgb, smoothstep(0.08, 0.45, rough)) / 8.0 * P[102];
 }
 
-// Where a world point lands on screen, in frame px.
+// Where a world point lands on screen, in the target's texels.
 float2 screen_of(float3 w) {
     float4 c = mul(mat(20), float4(w, 1.0));
     float2 ndc = c.xy / max(c.w, 1e-4);
@@ -194,7 +194,8 @@ float4 glass(VOut i, float3 n, float3 v, float4 base) {
         float acc = 0.0;
         int taps = rough > 0.02 ? 8 : 1;
         for (int k = 0; k < taps; k++) {
-            float r = sqrt((float(k) + 0.5) / float(taps)) * rough * 60.0;
+            // Frosting up to 60 frame px, in texels (P[1] frame px each).
+            float r = sqrt((float(k) + 0.5) / float(taps)) * rough * 60.0 / P[1];
             float a = float(k) * 2.39996;
             acc += scene_at(here + off + r * float2(cos(a), sin(a)))[c];
         }

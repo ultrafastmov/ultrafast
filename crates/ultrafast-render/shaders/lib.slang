@@ -57,8 +57,10 @@ float frame_time() { return P[0]; }
 bool in_rect(float2 p, float4 r) { return p.x >= r.x && p.y >= r.y && p.x <= r.z && p.y <= r.w; }
 float2 resolution() { return float2(P[2], P[3]); }
 
-// Header [1] is the size of one output texel in frame pixels: 1 normally,
-// more when a group renders at reduced resolution.
+// Header [1] is the size of one output texel in frame pixels: 1 at the
+// document's own size, less when the frame renders larger (0.5 at twice
+// its size), more when a group renders at reduced resolution. Positions
+// are always frame pixels; only the texel step changes.
 Ctx root_ctx(uint2 gid) {
     Ctx c;
     c.pos = (float2(gid) + 0.5) * P[1];
@@ -71,13 +73,14 @@ bool outside_frame(uint2 gid) {
 }
 
 // Texture access. Every input texture is *placed*: it covers the frame
-// starting at an origin (P[o], P[o+1]) and is transparent outside its own
-// extent. Frame-sized intermediates have origin (0, 0); rasterized paths and
-// text use textures sized to their bounds.
-// `load_o` is for the identity context (no resampling); `sample_o`
-// resamples at a pixel position.
+// starting at an origin (P[o], P[o+1], frame px) and is transparent outside
+// its own extent. Frame-sized intermediates have origin (0, 0); rasterized
+// paths and text use textures sized to their bounds.
+// `load_o` is for the identity context (no resampling: the input's texels
+// are the output's, P[1] frame px each, its origin on their grid);
+// `sample_o` resamples at a pixel position.
 float4 load_o(Texture2D<float4> t, uint2 gid, uint o) {
-    int2 p = int2(gid) - int2(pf2(o));
+    int2 p = int2(gid) - int2(round(pf2(o) / P[1]));
     uint w, h;
     t.GetDimensions(w, h);
     if (p.x < 0 || p.y < 0 || p.x >= int(w) || p.y >= int(h)) return float4(0.0);
@@ -89,14 +92,15 @@ float4 sample_o(Texture2D<float4> t, float2 pos, uint o) {
     return t.SampleLevel(S, (pos - pf2(o)) / float2(w, h), 0);
 }
 // A fused kernel's inputs also carry a texel size, P[o+2] (frame px per
-// texel): 1, or more for a blur kept at the resolution it was computed at,
-// which is sampled where a full-size texture would be loaded.
+// texel): the output's, or more for a blur kept at the resolution it was
+// computed at, which is sampled where a texel of the output's would be
+// loaded.
 float4 load_t(Texture2D<float4> t, uint2 gid, uint o) {
     float s = P[o + 2];
-    if (s == 1.0) return load_o(t, gid, o);
+    if (s == P[1]) return load_o(t, gid, o);
     uint w, h;
     t.GetDimensions(w, h);
-    return t.SampleLevel(S, (float2(gid) + 0.5 - pf2(o)) / (float2(w, h) * s), 0);
+    return t.SampleLevel(S, ((float2(gid) + 0.5) * P[1] - pf2(o)) / (float2(w, h) * s), 0);
 }
 float4 sample_t(Texture2D<float4> t, float2 pos, uint o) {
     uint w, h;
@@ -1253,7 +1257,7 @@ void k_fl_curl(uint3 gid: SV_DispatchThreadID) {
 // swirl around the edges of the stir image (T3, placed, origin [12..14]).
 // Params: [7] vorticity, [8] turbulence (px/s^2), [9] turbulence scale (px),
 // [10] noise time, [11] buoyancy (px/s^2 per unit dye alpha), [14] push,
-// [15] swirl, [16] stir connected.
+// [15] swirl, [16] stir connected, [17] stir texel size (frame px).
 float turb_potential(float2 q, float z) {
     return snoise(float3(q, z)) + 0.5 * snoise(float3(q * 2.03 + 11.7, z * 1.3));
 }
@@ -1289,8 +1293,8 @@ void k_fl_force(uint3 gid: SV_DispatchThreadID) {
     }
     // Stir: the edges of the stir image push the fluid out and around.
     if (P[16] > 0.5) {
-        float ax = sample_o(T3, p + float2(h, 0.0), 12).a - sample_o(T3, p - float2(h, 0.0), 12).a;
-        float ay = sample_o(T3, p + float2(0.0, h), 12).a - sample_o(T3, p - float2(0.0, h), 12).a;
+        float ax = sample_region(T3, p + float2(h, 0.0), pf2(12), P[17]).a - sample_region(T3, p - float2(h, 0.0), pf2(12), P[17]).a;
+        float ay = sample_region(T3, p + float2(0.0, h), pf2(12), P[17]).a - sample_region(T3, p - float2(0.0, h), pf2(12), P[17]).a;
         float2 ga = float2(ax, ay) * 0.5;
         f += -P[14] * ga + P[15] * float2(-ga.y, ga.x);
     }
@@ -1335,7 +1339,8 @@ void k_fl_project(uint3 gid: SV_DispatchThreadID) {
 
 // Semi-Lagrangian advection of the field T1 (texel [7]) through the
 // velocity T0 plus wind [8..10], times [12] (dissipation). With [14] set,
-// the source T2 (placed, origin [10..12]) is laid over it at rate [13]:
+// the source T2 (placed, origin [10..12], texel size [15]) is laid over it
+// at rate [13]:
 // out = src * k + field * (1 - src.a * k).
 [shader("compute")]
 [numthreads(16, 16, 1)]
@@ -1346,7 +1351,7 @@ void k_fl_advect(uint3 gid: SV_DispatchThreadID) {
     float4 f = sample_region(T1, p - P[4] * v, float2(0.0), P[7]) * P[12];
     if (P[14] > 0.5) {
         float k = P[13];
-        float4 src = sample_o(T2, p, 10);
+        float4 src = sample_region(T2, p, pf2(10), P[15]);
         f = src * k + f * (1.0 - src.a * k);
     }
     OUT.Store(gid.xy, f);

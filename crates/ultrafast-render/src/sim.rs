@@ -111,6 +111,9 @@ impl Renderer {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (doc.format.width, doc.format.height, doc.format.fps.to_bits()).hash(&mut h);
+        // The grids are the document's, but their inputs are drawn at the
+        // view's density: another size steps its own simulation.
+        (self.view.w, self.view.h, self.view.px.to_bits()).hash(&mut h);
         let mut stack = vec![root];
         let mut seen = std::collections::HashSet::new();
         while let Some(i) = stack.pop() {
@@ -359,8 +362,8 @@ impl Renderer {
                 }
             }
         }
-        // The image: the dye (fluid) or the state (feedback), upsampled;
-        // nothing while the node is outside its window.
+        // The image: the dye (fluid) or the state (feedback), resampled onto
+        // the view's grid; nothing while the node is outside its window.
         let image = match (on, node.op.as_str()) {
             (false, _) => None,
             (true, "fluid") => st.fields.get(1),
@@ -368,11 +371,11 @@ impl Renderer {
         };
         match image {
             Some(img) => {
-                let mut p = header(doc, t).to_vec();
-                p.extend([1.0, 0.0, 0.0, 0.0, 0.0, texel(doc, &img.desc()), 1.0]);
+                let mut p = header(doc, t, self.view).to_vec();
+                p.extend([self.view.px, 0.0, 0.0, 0.0, 0.0, texel(doc, &img.desc()), 1.0]);
                 list.dispatch(&self.kernels.utility("k_resample"), out, &[img], &p);
             }
-            None => list.dispatch(&self.kernels.utility("k_clear"), out, &[], &header(doc, t)),
+            None => list.dispatch(&self.kernels.utility("k_clear"), out, &[], &header(doc, t, self.view)),
         }
         self.sims.insert(id, st);
         Ok(())
@@ -439,13 +442,13 @@ impl Renderer {
             k("k_fl_advect"),
         );
         let none = self.placeholder.clone();
-        let (stir_tex, stir_origin) = match stir_in {
-            Some(p) => (p.tex.clone(), p.origin),
-            None => (none.clone(), [0.0, 0.0]),
+        let (stir_tex, stir_origin, stir_scale) = match stir_in {
+            Some(p) => (p.tex.clone(), p.origin, p.scale),
+            None => (none.clone(), [0.0, 0.0], 1.0),
         };
-        let (dye_tex, dye_origin) = match dye_in {
-            Some(p) => (p.tex.clone(), p.origin),
-            None => (none.clone(), [0.0, 0.0]),
+        let (dye_tex, dye_origin, dye_scale) = match dye_in {
+            Some(p) => (p.tex.clone(), p.origin, p.scale),
+            None => (none.clone(), [0.0, 0.0], 1.0),
         };
         for s in 0..substeps {
             let ts = t + s as f64 * dt as f64;
@@ -466,6 +469,7 @@ impl Renderer {
                 push,
                 swirl,
                 stir_in.is_some() as u8 as f32,
+                stir_scale,
             ]);
             list.dispatch(&k_force, &v, &[&st.fields[0], &curl, &st.fields[1], &stir_tex], &p);
             self.pool.give_back(curl);
@@ -492,7 +496,7 @@ impl Renderer {
             let v = self.pool.lease(&self.device, vd);
             let mut p = base(sv);
             p.extend([sv, wind[0] as f32, wind[1] as f32, 0.0, 0.0]);
-            p.extend([(-vdiss * dt as f64).exp() as f32, 0.0, 0.0]);
+            p.extend([(-vdiss * dt as f64).exp() as f32, 0.0, 0.0, 1.0]);
             list.dispatch(&k_adv, &v, &[&st.fields[0], &st.fields[0], &none], &p);
             let d = self.pool.lease(&self.device, dd);
             let mut p = base(sd);
@@ -501,6 +505,7 @@ impl Renderer {
                 (-diss * dt as f64).exp() as f32,
                 (1.0 - (-emit * dt as f64).exp()) as f32,
                 dye_in.is_some() as u8 as f32,
+                dye_scale,
             ]);
             list.dispatch(&k_adv, &d, &[&st.fields[0], &st.fields[1], &dye_tex], &p);
             let old = std::mem::replace(&mut st.fields[0], v);
@@ -573,9 +578,11 @@ impl Renderer {
             p[fp::DT] = dt as f32;
             p[fp::STEP] = (st.steps * substeps as u64 + k as u64) as f32;
             for (i, inp) in inputs.iter().enumerate() {
+                p[fp::SCALES + i] = 1.0;
                 if let Some(pl) = inp {
                     p[fp::ORIGINS + 2 * i] = pl.origin[0];
                     p[fp::ORIGINS + 2 * i + 1] = pl.origin[1];
+                    p[fp::SCALES + i] = pl.scale;
                 }
             }
             p.extend_from_slice(tables.unwrap_or_default());

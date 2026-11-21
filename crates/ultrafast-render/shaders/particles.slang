@@ -72,18 +72,18 @@ POut vs_particle(uint vid: SV_VertexID) {
     return o;
 }
 
-// The shape at `q` (px from its center, frame axes): coverage with 1 px
-// antialiasing, or the sprite's color.
+// The shape at `q` (px from its center, frame axes): coverage with one
+// texel (P[1] frame px) of antialiasing, or the sprite's color.
 float4 shape_at(float2 q, float2 sx, float2 ext, float shape) {
     float2 uv = float2(dot(q, sx), dot(q, float2(-sx.y, sx.x)));
     if (shape < 0.5 || (shape > 1.5 && shape < 2.5)) {
         // Circle / spark (ellipse): signed distance in px.
         float d = (length(uv / ext) - 1.0) * min(ext.x, ext.y);
-        return float4(saturate(0.5 - d));
+        return float4(saturate(0.5 - d / P[1]));
     }
     if (shape < 1.5) {
         float2 d = abs(uv) - ext;
-        return float4(saturate(0.5 - max(d.x, d.y)));
+        return float4(saturate(0.5 - max(d.x, d.y) / P[1]));
     }
     float2 t = uv / ext;
     if (any(abs(t) > 1.0)) return float4(0.0);

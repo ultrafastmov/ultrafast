@@ -367,16 +367,25 @@ impl Emitter<'_> {
         // One reader per kind; with a single kind, no dispatch at all.
         let mut reads: Vec<(usize, String)> = Vec::new();
         if textures {
-            let pick = self.texture_picker(identity);
+            // A layer's texture: texel size ORIGINS[3b + 2] frame px, size
+            // P[q+1..q+3] texels. Loaded texel for texel when its texels are
+            // the output's, else sampled at the frame position.
+            let sample = self.texture_picker(false);
+            let sampled = format!(
+                "{f} = {sample}(b, ({ctx}.pos - pf2(ORIGINS_BASE_ + 3 * b)) / (pf2({q} + 1) * P[ORIGINS_BASE_ + 3 * b + 2]));"
+            );
             reads.push((
                 0,
                 if identity {
+                    let load = self.texture_picker(true);
                     format!(
-                        "uint b = uint(P[{q}]); int2 p = int2(gid.xy) - int2(pf2(ORIGINS_BASE_ + 3 * b)); \
-                         if (p.x >= 0 && p.y >= 0 && p.x < int(P[{q} + 1]) && p.y < int(P[{q} + 2])) {f} = {pick}(b, p);"
+                        "uint b = uint(P[{q}]); if (P[ORIGINS_BASE_ + 3 * b + 2] == P[1]) {{ \
+                         int2 p = int2(gid.xy) - int2(round(pf2(ORIGINS_BASE_ + 3 * b) / P[1])); \
+                         if (p.x >= 0 && p.y >= 0 && p.x < int(P[{q} + 1]) && p.y < int(P[{q} + 2])) {f} = {load}(b, p); }} \
+                         else {{ {sampled} }}"
                     )
                 } else {
-                    format!("uint b = uint(P[{q}]); {f} = {pick}(b, ({ctx}.pos - pf2(ORIGINS_BASE_ + 3 * b)) / pf2({q} + 1));")
+                    format!("uint b = uint(P[{q}]); {sampled}")
                 },
             ));
         }
@@ -762,7 +771,9 @@ pub mod feedback_params {
     pub const STEP: usize = 22;
     /// Origins of in0..in3 (2 floats each).
     pub const ORIGINS: usize = 24;
-    pub const LEN: usize = 32;
+    /// Texel sizes of in0..in3 (frame px).
+    pub const SCALES: usize = 32;
+    pub const LEN: usize = 36;
 }
 
 /// Kernel for one step of a `feedback` node: `update(pos, px)` from the
@@ -774,9 +785,10 @@ pub fn feedback(code: &str, tables: bool) -> (String, String) {
     let mut cases = String::new();
     for i in 0..4 {
         cases += &format!(
-            "        case {i}: return sample_o(T{}, pos, {});\n",
+            "        case {i}: return sample_region(T{}, pos, pf2({}), P[{}]);\n",
             i + 1,
-            ORIGINS + 2 * i
+            ORIGINS + 2 * i,
+            SCALES + i
         );
     }
     let tables = if tables {

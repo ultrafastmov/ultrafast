@@ -191,6 +191,42 @@ pub struct FrameOutput<'a> {
     pub header: [f32; 4],
 }
 
+/// How a frame maps onto the textures it renders into: `px` frame pixels
+/// per device texel (1 at the document's own size, 0.5 for twice its
+/// size) and the device size. Everything in a document stays in frame
+/// pixels; only texture sizes and texel steps follow the view.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct View {
+    pub px: f32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl View {
+    /// The document at its own size.
+    pub fn native(doc: &Document) -> View {
+        View {
+            px: 1.0,
+            w: doc.format.width,
+            h: doc.format.height,
+        }
+    }
+
+    /// The document drawn at `w` x `h`: one texel step for both axes, the
+    /// finer of the two, so every texel is inside the frame.
+    pub fn sized(doc: &Document, size: Option<(u32, u32)>) -> View {
+        let (fw, fh) = (doc.format.width.max(1), doc.format.height.max(1));
+        match size {
+            Some((w, h)) if (w, h) != (fw, fh) && w > 0 && h > 0 => View {
+                px: 1.0 / (w as f32 / fw as f32).max(h as f32 / fh as f32),
+                w,
+                h,
+            },
+            _ => View::native(doc),
+        }
+    }
+}
+
 /// A texture positioned in the frame.
 #[derive(Clone)]
 struct Placed {
@@ -341,6 +377,8 @@ struct Active {
     /// Groups writing each slot (their caches die with its texture).
     slot_groups: Vec<Vec<usize>>,
     slot_desc: TextureDesc,
+    /// The view the slots are sized for.
+    view: View,
     /// Frame each group was last live in (cold raster textures are given
     /// back under the same budget).
     group_used: Vec<u64>,
@@ -509,6 +547,10 @@ pub struct Renderer {
     /// Frames are rendered once each, in order (an export): no seeking
     /// back, so simulations keep no checkpoints.
     pub(crate) sequential: bool,
+    /// The output size asked for (None: each document's own).
+    out_size: Option<(u32, u32)>,
+    /// This frame's view.
+    pub(crate) view: View,
 }
 
 /// GPU state of the 3D pass, created on first use.
@@ -627,6 +669,8 @@ impl Renderer {
             mb_off: false,
             slot_budget: 0,
             sequential: false,
+            out_size: None,
+            view: View { px: 1.0, w: 1, h: 1 },
         };
         // Slots may take a third of GPU memory, shared by ULTRAFAST_WORKERS
         // processes (ULTRAFAST_SLOT_BUDGET_MB overrides).
@@ -1629,12 +1673,22 @@ impl Renderer {
     }
 
     fn ensure_plan(&mut self, doc: &Document, chains: Option<&plan::Chains>) -> Result<bool, RenderError> {
-        if self.active.is_some() && self.seen_revision == Some((doc.instance, doc.revision)) {
+        self.view = View::sized(doc, self.out_size);
+        let view = self.view;
+        let same_view = self.active.as_ref().is_some_and(|a| a.view == view);
+        if !same_view {
+            // Geometry built for another density is not mapped to this one
+            // (outlines are flattened and glyphs drawn for their size): a
+            // size renders the same however the renderer got to it.
+            self.geometry.clear();
+            self.built.clear();
+        }
+        if same_view && self.seen_revision == Some((doc.instance, doc.revision)) {
             return Ok(false);
         }
         self.seen_revision = Some((doc.instance, doc.revision));
         let sig = plan::signature(doc, chains);
-        if self.active.as_ref().is_some_and(|a| a.plan.signature == sig) {
+        if same_view && self.active.as_ref().is_some_and(|a| a.plan.signature == sig) {
             return Ok(false);
         }
         let plan = plan::compile(doc, chains)?;
@@ -1683,8 +1737,8 @@ impl Renderer {
             }
         }
         let desc = TextureDesc {
-            width: doc.format.width,
-            height: doc.format.height,
+            width: view.w,
+            height: view.h,
             format: PixelFormat::Rgba16Float,
             cpu_readable: false,
         };
@@ -1702,6 +1756,7 @@ impl Renderer {
             slot_used: vec![0; plan.slot_count],
             slot_groups,
             slot_desc: desc,
+            view,
             group_used: vec![0; n],
             plan,
             cache: vec![None; n],
@@ -1713,6 +1768,27 @@ impl Renderer {
             low_readers: low,
         });
         Ok(true)
+    }
+
+    /// Renders the frames that follow at `size` (device pixels) instead of
+    /// each document's own size; None goes back to that. The document stays
+    /// in its own frame pixels: a 1920x1080 document at 3840x2160 is drawn
+    /// with twice the texels (text, paths, blurs, particles, 3D re-rendered
+    /// at the finer grid), not scaled up. A size of another shape keeps the
+    /// finer of the two scales and crops the last texel row or column.
+    pub fn set_output_size(&mut self, size: Option<(u32, u32)>) {
+        self.out_size = size;
+    }
+
+    /// The output size asked for (None: each document's own).
+    pub fn output_size(&self) -> Option<(u32, u32)> {
+        self.out_size
+    }
+
+    /// The size frames of `doc` render at, in device pixels.
+    pub fn frame_size(&self, doc: &Document) -> (u32, u32) {
+        let v = View::sized(doc, self.out_size);
+        (v.w, v.h)
     }
 
     fn export_texture(&mut self, w: u32, h: u32, format: PixelFormat) -> Texture {
@@ -1744,9 +1820,10 @@ impl Renderer {
         if !export {
             return self.submit_frame_with(doc, t, |_| {});
         }
-        let ex = self.export_texture(doc.format.width, doc.format.height, PixelFormat::Rgba8Unorm);
+        let (w, h) = self.frame_size(doc);
+        let ex = self.export_texture(w, h, PixelFormat::Rgba8Unorm);
         self.submit_frame_with(doc, t, |o| {
-            let mut p = header(doc, t).to_vec();
+            let mut p = o.header.to_vec();
             p.extend(o.origin);
             p.push(0.0);
             o.list
@@ -1811,17 +1888,48 @@ impl Renderer {
             );
         self.active = Some(active);
         let output = result?;
+        // Consumers get the frame in device texels: the texture at the
+        // view's density, its origin and the header's size in texels.
+        let output = self.on_device_grid(output, doc, t, &mut list);
+        let v = self.view;
         finish(FrameOutput {
             list: &mut list,
             kernels: &self.kernels,
             texture: &output.tex,
-            origin: output.origin,
-            header: header(doc, t),
+            origin: [output.origin[0] / v.px, output.origin[1] / v.px],
+            header: [t as f32, 1.0, v.w as f32, v.h as f32],
         });
         report.cpu_encode_ms = start.elapsed().as_secs_f64() * 1000.0;
         report.media_pending = self.media_pending;
         self.images.end_frame();
         Ok((list.submit(), report))
+    }
+
+    /// `p` at the view's density: as it is when it already is, else
+    /// resampled into a frame-sized texture (given back next frame).
+    fn on_device_grid(&mut self, p: Placed, doc: &Document, t: f64, list: &mut CommandList) -> Placed {
+        let v = self.view;
+        let aligned = |o: f32| (o / v.px - (o / v.px).round()).abs() < 1e-3;
+        if p.scale == v.px && aligned(p.origin[0]) && aligned(p.origin[1]) {
+            return p;
+        }
+        let desc = TextureDesc {
+            width: v.w,
+            height: v.h,
+            format: PixelFormat::Rgba16Float,
+            cpu_readable: false,
+        };
+        let tex = self.pool.lease(&self.device, desc);
+        let taps = (v.px / p.scale).ceil().max(1.0);
+        let mut prm = header(doc, t, v).to_vec();
+        prm.extend([v.px, 0.0, 0.0, p.origin[0], p.origin[1], p.scale, taps]);
+        list.dispatch(&self.kernels.utility("k_resample"), &tex, &[&p.tex], &prm);
+        self.mb_release.push(tex.clone());
+        Placed {
+            tex,
+            origin: [0.0, 0.0],
+            scale: v.px,
+        }
     }
 
     /// Keeps frame-to-frame GPU memory under the budget: while resident
@@ -2117,7 +2225,12 @@ impl Renderer {
         };
         let n = match mb.max_samples {
             Some(max) if max > mb.samples => {
-                mb.samples_for(self.motion_extent_px(&active.plan, doc, &moving, t - span / 2.0, t + span / 2.0))
+                // Motion measured in device texels: a larger view takes more
+                // samples for the same move, so it blurs as smoothly.
+                mb.samples_for(
+                    self.motion_extent_px(&active.plan, doc, &moving, t - span / 2.0, t + span / 2.0)
+                        / self.view.px as f64,
+                )
             }
             _ => mb.samples,
         };
@@ -2229,7 +2342,7 @@ impl Renderer {
             active.raster[g] = Some(Placed {
                 tex,
                 origin: [0.0, 0.0],
-                scale: 1.0,
+                scale: active.view.px,
             });
         }
         self.mb_frame = Some(MbFrame { crosses, span });
@@ -2331,8 +2444,8 @@ impl Renderer {
             acc.bounds[3].max(bounds[3]),
         ];
         let frame = TextureDesc {
-            width: doc.format.width,
-            height: doc.format.height,
+            width: self.view.w,
+            height: self.view.h,
             format: PixelFormat::Rgba16Float,
             cpu_readable: false,
         };
@@ -2349,7 +2462,7 @@ impl Renderer {
                     self.pool.lease(&self.device, frame),
                 )
             });
-            let mut p = header(doc, t).to_vec();
+            let mut p = header(doc, t, self.view).to_vec();
             p.extend([out.origin[0], out.origin[1], 1.0 / n as f32, first as u8 as f32]);
             list.dispatch(&self.kernels.utility("k_accumulate"), &spare, &[&out.tex, &sum], &p);
             acc.sum = Some((spare, sum));
@@ -2390,7 +2503,7 @@ impl Renderer {
             Placed {
                 tex: sum,
                 origin: [0.0, 0.0],
-                scale: 1.0,
+                scale: self.view.px,
             }
         } else if !acc.stash.is_empty() {
             let mut u = ops::EMPTY;
@@ -2398,11 +2511,13 @@ impl Renderer {
                 let e = extent(s);
                 u = [u[0].min(e[0]), u[1].min(e[1]), u[2].max(e[2]), u[3].max(e[3])];
             }
-            let (x0, y0) = (u[0].floor(), u[1].floor());
+            // The union on the device grid (texels of the view's size).
+            let px = self.view.px as f64;
+            let (x0, y0) = ((u[0] / px).floor(), (u[1] / px).floor());
             let bucket = |v: f64| ((v.max(1.0) as u32).div_ceil(RASTER_BUCKET) * RASTER_BUCKET).max(RASTER_BUCKET);
             let desc = TextureDesc {
-                width: bucket(u[2].ceil() - x0),
-                height: bucket(u[3].ceil() - y0),
+                width: bucket((u[2] / px).ceil() - x0),
+                height: bucket((u[3] / px).ceil() - y0),
                 format: PixelFormat::Rgba16Float,
                 cpu_readable: false,
             };
@@ -2414,8 +2529,8 @@ impl Renderer {
                     1.0,
                     desc.width as f32,
                     desc.height as f32,
-                    s.origin[0] - x0 as f32,
-                    s.origin[1] - y0 as f32,
+                    s.origin[0] / px as f32 - x0 as f32,
+                    s.origin[1] / px as f32 - y0 as f32,
                     1.0 / n as f32,
                     (i == 0) as u8 as f32,
                 ];
@@ -2428,8 +2543,8 @@ impl Renderer {
             }
             Placed {
                 tex: a,
-                origin: [x0 as f32, y0 as f32],
-                scale: 1.0,
+                origin: [(x0 * px) as f32, (y0 * px) as f32],
+                scale: px as f32,
             }
         } else {
             // Not shown during the samples: nothing to average.
@@ -2729,6 +2844,7 @@ impl Renderer {
             slot_used,
             slot_groups,
             slot_desc,
+            view: _,
             group_used,
             cache,
             raster,
@@ -2769,6 +2885,7 @@ impl Renderer {
                 }
             }
         }
+        let px = self.view.px;
         let placed_of = |raster: &Vec<Option<Placed>>, alias: &Vec<Option<usize>>, mut gi: usize| -> Placed {
             while let Some(src) = alias[gi] {
                 gi = src;
@@ -2778,7 +2895,7 @@ impl Renderer {
                 None => Placed {
                     tex: slots[plan.groups[gi].output].clone(),
                     origin: [0.0, 0.0],
-                    scale: 1.0,
+                    scale: px,
                 },
             }
         };
@@ -2851,7 +2968,7 @@ impl Renderer {
             // literal values, padding, texture origins), then the blocks of
             // the run layers showing now.
             self.scratch.clear();
-            self.scratch.extend(header(doc, t));
+            self.scratch.extend(header(doc, t, self.view));
             let mut run_headers: Vec<(usize, usize)> = Vec::new();
             for slot in &g.params {
                 match slot {
@@ -2988,7 +3105,7 @@ impl Renderer {
                     if let Some(p) = &raster[f] {
                         // A blur kept at reduced resolution is only for its own
                         // readers' kernels.
-                        return p.scale == 1.0;
+                        return p.scale == px;
                     }
                     if crossing {
                         return false;
@@ -3016,7 +3133,11 @@ impl Renderer {
             // A raster chain shows while its raster node is active; a timed
             // transform outside its window passes it through unmoved.
             let raster_geo = g.raster.as_ref().map(|rc| {
-                let outer = absorbed(plan, doc, &rc.transforms, t);
+                // Built on the device grid: the view's density times the
+                // transforms the raster absorbed (curves flattened and glyphs
+                // drawn for that size).
+                let d = 1.0 / px as f64;
+                let outer = ops::Affine::scale(d, d).mul(absorbed(plan, doc, &rc.transforms, t));
                 let rn = &plan.nodes[rc.node];
                 let (lt, on) = local_time(rn, t);
                 let key = if on {
@@ -3145,7 +3266,7 @@ impl Renderer {
                     // it moves (about every 1.5 px on screen during the
                     // shutter); samples in between reuse the last render.
                     let plan_mb = self.mb_sample.filter(|_| !self.mb_full).map(|(s, n, tc, span)| {
-                        let m = self.scene_motion_px(plan, g, doc, tc - span / 2.0, tc + span / 2.0);
+                        let m = self.scene_motion_px(plan, g, doc, tc - span / 2.0, tc + span / 2.0) / px;
                         if s == 0 && std::env::var("ULTRAFAST_DEBUG_MB").is_ok() {
                             eprintln!("t={tc:.2} group {gi}: 3D moves {m:.2} px over the shutter");
                         }
@@ -3227,7 +3348,12 @@ impl Renderer {
                                     self.pool.lease(&self.device, desc)
                                 }
                             };
-                            list.dispatch(&self.kernels.utility("k_copy"), &tex, &[&src.tex], &header(doc, t));
+                            list.dispatch(
+                                &self.kernels.utility("k_copy"),
+                                &tex,
+                                &[&src.tex],
+                                &header(doc, t, self.view),
+                            );
                             raster[gi] = Some(Placed {
                                 tex,
                                 origin: src.origin,
@@ -3265,18 +3391,19 @@ impl Renderer {
                             // Reduced resolution: render coarse texels, then
                             // upscale into the slot.
                             let r = scale.unwrap() as f32;
+                            let v = self.view;
                             let low = TextureDesc {
-                                width: ((doc.format.width as f32 * r).ceil() as u32).max(1),
-                                height: ((doc.format.height as f32 * r).ceil() as u32).max(1),
+                                width: ((v.w as f32 * r).ceil() as u32).max(1),
+                                height: ((v.h as f32 * r).ceil() as u32).max(1),
                                 format: PixelFormat::Rgba16Float,
                                 cpu_readable: false,
                             };
                             let tmp = self.pool.lease(&self.device, low);
-                            self.scratch[1] = 1.0 / r;
+                            self.scratch[1] = v.px / r;
                             list.dispatch(&k, &tmp, &in_tex, &self.scratch);
-                            self.scratch[1] = 1.0;
-                            let mut p = header(doc, t).to_vec();
-                            p.extend([1.0, 0.0, 0.0, 0.0, 0.0, 1.0 / r, 1.0]);
+                            self.scratch[1] = v.px;
+                            let mut p = header(doc, t, v).to_vec();
+                            p.extend([v.px, 0.0, 0.0, 0.0, 0.0, v.px / r, 1.0]);
                             list.dispatch(&self.kernels.utility("k_resample"), out, &[&tmp], &p);
                             self.pool.give_back(tmp);
                             report.kernels_run += 2;
@@ -3293,7 +3420,7 @@ impl Renderer {
                         }
                         KernelState::Failed(e) => {
                             self.diagnose(&plan.nodes[g.root].id.clone(), e);
-                            list.dispatch(&self.kernels.utility("k_clear"), out, &[], &header(doc, t));
+                            list.dispatch(&self.kernels.utility("k_clear"), out, &[], &header(doc, t, self.view));
                         }
                     }
                 }
@@ -3450,6 +3577,12 @@ impl Renderer {
         const SAMPLES: u32 = 4;
         const SHADOW: u32 = 2048;
         let (fw, fh) = (doc.format.width, doc.format.height);
+        // The scene draws on the device grid (the view's size); the shaders
+        // place textures and find screen positions in its texels, and every
+        // input texture is at the view's density.
+        let v = self.view;
+        let (dw, dh) = (v.w, v.h);
+        let dev = |o: [f32; 2]| [o[0] / v.px, o[1] / v.px];
         if self.three.is_none() {
             let target = if self.device.backend() == "metal" {
                 ultrafast_shaderc::Target::Metal
@@ -3571,7 +3704,7 @@ impl Renderer {
                 .iter()
                 .position(|ts| *ts == TexSource::Group(plan.group_of[si]))
         });
-        let env_origin = env.map(|i| inputs[i].origin).unwrap_or([0.0, 0.0]);
+        let env_origin = dev(env.map(|i| inputs[i].origin).unwrap_or([0.0, 0.0]));
         // A blurred copy of the environment, for rough surfaces and diffuse
         // light (a sparse disk over the sharp image would band).
         let env_soft: Option<Placed> = match env {
@@ -3585,7 +3718,7 @@ impl Renderer {
             }
             _ => None,
         };
-        let env_soft_origin = env_soft.as_ref().map(|p| p.origin).unwrap_or([0.0, 0.0]);
+        let env_soft_origin = dev(env_soft.as_ref().map(|p| p.origin).unwrap_or([0.0, 0.0]));
         // Constant depth bias, in shadow-map texels of depth.
         let shadow_bias = rp.num("shadow_bias", 1.0);
 
@@ -3668,12 +3801,12 @@ impl Renderer {
         if three
             .attachments
             .as_ref()
-            .is_none_or(|(c, _)| c.desc().width != fw || c.desc().height != fh)
+            .is_none_or(|(c, _)| c.desc().width != dw || c.desc().height != dh)
         {
             three.attachments = Some((
-                self.device.create_attachment(fw, fh, PixelFormat::Rgba16Float, SAMPLES),
+                self.device.create_attachment(dw, dh, PixelFormat::Rgba16Float, SAMPLES),
                 self.device
-                    .create_attachment(fw, fh, PixelFormat::Depth32Float, SAMPLES),
+                    .create_attachment(dw, dh, PixelFormat::Depth32Float, SAMPLES),
             ));
         }
         struct MeshDraw {
@@ -3744,8 +3877,8 @@ impl Renderer {
                     .iter()
                     .position(|ts| *ts == TexSource::Group(plan.group_of[src]))
             });
-            let origin = texture.map(|i| inputs[i].origin).unwrap_or([0.0, 0.0]);
-            let mut prm = header(doc, t).to_vec();
+            let origin = dev(texture.map(|i| inputs[i].origin).unwrap_or([0.0, 0.0]));
+            let mut prm = header(doc, t, self.view).to_vec();
             prm.extend(model.0);
             prm.extend(view_proj.0);
             prm.extend(normal.0);
@@ -3759,7 +3892,7 @@ impl Renderer {
             prm.extend([emissive[0], emissive[1], emissive[2], 0.0]);
             prm.extend([eye[0], eye[1], eye[2], lights.len() as f32]);
             prm.extend([sky[0], sky[1], sky[2], ambient, ground[0], ground[1], ground[2], 0.0]);
-            prm.extend([origin[0], origin[1], fw as f32, fh as f32]);
+            prm.extend([origin[0], origin[1], fw as f32 / v.px, fh as f32 / v.px]);
             let transmission = p.num("transmission", 0.0);
             let glass = (transmission > 0.0).then(|| {
                 [
@@ -3864,7 +3997,7 @@ impl Renderer {
             let shadow_params: Vec<Vec<f32>> = draws_params
                 .iter()
                 .map(|d| {
-                    let mut p = header(doc, t).to_vec();
+                    let mut p = header(doc, t, self.view).to_vec();
                     p.extend(d.model.0);
                     p.extend(lvp.0);
                     p
@@ -3910,24 +4043,24 @@ impl Renderer {
             if three
                 .dof
                 .as_ref()
-                .is_none_or(|(d, _, _)| d.desc().width != fw || d.desc().height != fh)
+                .is_none_or(|(d, _, _)| d.desc().width != dw || d.desc().height != dh)
             {
                 let tex = |format| TextureDesc {
-                    width: fw,
-                    height: fh,
+                    width: dw,
+                    height: dh,
                     format,
                     cpu_readable: false,
                 };
                 three.dof = Some((
                     self.device.create_texture(tex(PixelFormat::R32Float)),
-                    self.device.create_attachment(fw, fh, PixelFormat::Depth32Float, 1),
+                    self.device.create_attachment(dw, dh, PixelFormat::Depth32Float, 1),
                     self.device.create_texture(tex(PixelFormat::Rgba16Float)),
                 ));
             }
             let dist_params: Vec<Vec<f32>> = draws_params
                 .iter()
                 .map(|d| {
-                    let mut p = header(doc, t).to_vec();
+                    let mut p = header(doc, t, self.view).to_vec();
                     p.extend(d.model.0);
                     p.extend(view_proj.0);
                     p.extend(eye);
@@ -4001,31 +4134,38 @@ impl Renderer {
         if dof_on {
             let (dist, _, sharp) = three.dof.as_ref().unwrap();
             // Gather at half resolution, then mix back by each pixel's blur.
+            // Both passes work in device texels: the header's frame is the
+            // device's, and the aperture (the largest blur, frame px) is
+            // measured in its texels.
             let half = TextureDesc {
-                width: fw.div_ceil(2),
-                height: fh.div_ceil(2),
+                width: dw.div_ceil(2),
+                height: dh.div_ceil(2),
                 format: PixelFormat::Rgba16Float,
                 cpu_readable: false,
             };
             let soft = self.pool.lease(&self.device, half);
-            let mut p = header(doc, t).to_vec();
-            p[1] = 2.0;
-            p.extend([focus, aperture, (aperture * 2.5).clamp(24.0, 64.0)]);
+            let (tf, dwf, dhf) = (t as f32, dw as f32, dh as f32);
+            let ap = aperture / v.px;
+            let p = [tf, 2.0, dwf, dhf, focus, ap, (aperture * 2.5).clamp(24.0, 64.0)];
             list.dispatch(&self.kernels.utility("k_dof"), &soft, &[sharp, dist], &p);
-            let mut p = header(doc, t).to_vec();
-            p.extend([focus, aperture, 0.0, 2.0]);
+            let p = [tf, 1.0, dwf, dhf, focus, ap, 0.0, 2.0];
             list.dispatch(&self.kernels.utility("k_dof_mix"), out, &[sharp, &soft, dist], &p);
             self.pool.give_back(soft);
         }
         if active && draws_params.iter().any(|d| d.glass.is_some()) {
             let frame = TextureDesc {
-                width: fw,
-                height: fh,
+                width: dw,
+                height: dh,
                 format: PixelFormat::Rgba16Float,
                 cpu_readable: false,
             };
             let scene = self.pool.lease(&self.device, frame);
-            list.dispatch(&self.kernels.utility("k_copy"), &scene, &[out], &header(doc, t));
+            list.dispatch(
+                &self.kernels.utility("k_copy"),
+                &scene,
+                &[out],
+                &header(doc, t, self.view),
+            );
             let glass_tex = self.pool.lease(&self.device, frame);
             let three = self.three.as_ref().unwrap();
             let (color, depth) = three.attachments.as_ref().unwrap();
@@ -4056,7 +4196,7 @@ impl Renderer {
                 },
                 &glass,
             );
-            let mut p = header(doc, t).to_vec();
+            let mut p = header(doc, t, self.view).to_vec();
             p.extend([0.0, 0.0, 0.0, 0.0]);
             list.dispatch(&self.kernels.utility("k_over_frames"), out, &[&glass_tex, &scene], &p);
             self.pool.give_back(scene);
@@ -4096,8 +4236,12 @@ impl Renderer {
             ],
             [-pad, -pad, fw + pad, fh + pad],
         );
-        let (x0, y0) = (r[0].floor(), r[1].floor());
-        let (x1, y1) = (r[2].ceil().max(x0 + 1.0), r[3].ceil().max(y0 + 1.0));
+        // The region on the device grid: texels of the view's size (px
+        // frame px each), so a blur at a larger size keeps its detail.
+        let px = self.view.px;
+        let pxd = px as f64;
+        let (x0, y0) = ((r[0] / pxd).floor(), (r[1] / pxd).floor());
+        let (x1, y1) = ((r[2] / pxd).ceil().max(x0 + 1.0), (r[3] / pxd).ceil().max(y0 + 1.0));
         let (rw, rh) = ((x1 - x0) as u32, (y1 - y0) as u32);
         let bucket = |v: u32| (v.div_ceil(RASTER_BUCKET) * RASTER_BUCKET).max(RASTER_BUCKET);
         let desc = |w: u32, h: u32| TextureDesc {
@@ -4108,7 +4252,7 @@ impl Renderer {
         };
         // Downscale so each pass needs about 3 sigma of taps at >= 3 texels.
         let mut f = 1.0f32;
-        while f < 8.0 && sigma / (f * 2.0) >= 3.0 {
+        while f < 8.0 && sigma / px / (f * 2.0) >= 3.0 {
             f *= 2.0;
         }
         let out_desc = if f > 1.0 && keep_low {
@@ -4126,37 +4270,39 @@ impl Renderer {
         };
         let blur = self.kernels.utility("k_blur_region");
         let resample = self.kernels.utility("k_resample");
-        let hdr = header(doc, t);
-        let (ox, oy) = (x0 as f32, y0 as f32);
+        let hdr = header(doc, t, self.view);
+        let (ox, oy) = ((x0 * pxd) as f32, (y0 * pxd) as f32);
         let p = |v: &[f32]| {
             let mut x = hdr.to_vec();
             x.extend_from_slice(v);
             x
         };
         let si = src.scale;
+        // Texel sizes in frame px: the view's, and f of them downscaled.
+        let (t1, tf) = (px, f * px);
         let scale = if f == 1.0 {
             let tmp = self.pool.lease(&self.device, out_desc);
             list.dispatch(
                 &blur,
                 &tmp,
                 &[&src.tex],
-                &p(&[sigma, 1.0, 0.0, 1.0, ox, oy, src.origin[0], src.origin[1], si]),
+                &p(&[sigma, 1.0, 0.0, t1, ox, oy, src.origin[0], src.origin[1], si]),
             );
-            list.dispatch(&blur, &out, &[&tmp], &p(&[sigma, 0.0, 1.0, 1.0, ox, oy, ox, oy, 1.0]));
+            list.dispatch(&blur, &out, &[&tmp], &p(&[sigma, 0.0, 1.0, t1, ox, oy, ox, oy, t1]));
             self.pool.give_back(tmp);
-            1.0
+            t1
         } else if keep_low {
             let b = self.pool.lease(&self.device, out_desc);
             list.dispatch(
                 &resample,
                 &out,
                 &[&src.tex],
-                &p(&[f, ox, oy, src.origin[0], src.origin[1], si, 2.0]),
+                &p(&[tf, ox, oy, src.origin[0], src.origin[1], si, 2.0]),
             );
-            list.dispatch(&blur, &b, &[&out], &p(&[sigma, 1.0, 0.0, f, ox, oy, ox, oy, f]));
-            list.dispatch(&blur, &out, &[&b], &p(&[sigma, 0.0, 1.0, f, ox, oy, ox, oy, f]));
+            list.dispatch(&blur, &b, &[&out], &p(&[sigma, 1.0, 0.0, tf, ox, oy, ox, oy, tf]));
+            list.dispatch(&blur, &out, &[&b], &p(&[sigma, 0.0, 1.0, tf, ox, oy, ox, oy, tf]));
             self.pool.give_back(b);
-            f
+            tf
         } else {
             let low = desc(bucket(rw.div_ceil(f as u32)), bucket(rh.div_ceil(f as u32)));
             let a = self.pool.lease(&self.device, low);
@@ -4165,14 +4311,14 @@ impl Renderer {
                 &resample,
                 &a,
                 &[&src.tex],
-                &p(&[f, ox, oy, src.origin[0], src.origin[1], si, 2.0]),
+                &p(&[tf, ox, oy, src.origin[0], src.origin[1], si, 2.0]),
             );
-            list.dispatch(&blur, &b, &[&a], &p(&[sigma, 1.0, 0.0, f, ox, oy, ox, oy, f]));
-            list.dispatch(&blur, &a, &[&b], &p(&[sigma, 0.0, 1.0, f, ox, oy, ox, oy, f]));
-            list.dispatch(&resample, &out, &[&a], &p(&[1.0, ox, oy, ox, oy, f, 1.0]));
+            list.dispatch(&blur, &b, &[&a], &p(&[sigma, 1.0, 0.0, tf, ox, oy, ox, oy, tf]));
+            list.dispatch(&blur, &a, &[&b], &p(&[sigma, 0.0, 1.0, tf, ox, oy, ox, oy, tf]));
+            list.dispatch(&resample, &out, &[&a], &p(&[t1, ox, oy, ox, oy, tf, 1.0]));
             self.pool.give_back(a);
             self.pool.give_back(b);
-            1.0
+            t1
         };
         (
             Placed {
@@ -4180,7 +4326,7 @@ impl Renderer {
                 origin: [ox, oy],
                 scale,
             },
-            [x0, y0, x1, y1],
+            [x0 * pxd, y0 * pxd, x1 * pxd, y1 * pxd],
         )
     }
 
@@ -4274,13 +4420,15 @@ impl Renderer {
         } else {
             0.0
         };
-        // Region: the particles' bounds, clipped to a window around the frame.
-        let (fw, fh) = (doc.format.width as f64, doc.format.height as f64);
+        // Region: the particles' bounds, clipped to a window around the
+        // frame, in device texels (px frame px each).
+        let px = self.view.px as f64;
+        let (fw, fh) = (self.view.w as f64, self.view.h as f64);
         let b = [
-            sys.bounds[0] - reach,
-            sys.bounds[1] - reach,
-            sys.bounds[2] + reach,
-            sys.bounds[3] + reach,
+            (sys.bounds[0] - reach) / px,
+            (sys.bounds[1] - reach) / px,
+            (sys.bounds[2] + reach) / px,
+            (sys.bounds[3] + reach) / px,
         ];
         let r = if sys.count == 0 {
             [0.0, 0.0, 1.0, 1.0]
@@ -4316,12 +4464,13 @@ impl Renderer {
             self.sprites.as_mut().unwrap().2 = idx.clone();
         }
         let additive = ops::text(node, "blend") == Some("add");
-        let mut p = header(doc, t).to_vec();
+        // Region origin and size in frame px: particles are placed there.
+        let mut p = header(doc, t, self.view).to_vec();
         p.extend([
-            r[0] as f32,
-            r[1] as f32,
-            desc.width as f32,
-            desc.height as f32,
+            (r[0] * px) as f32,
+            (r[1] * px) as f32,
+            (desc.width as f64 * px) as f32,
+            (desc.height as f64 * px) as f32,
             span as f32,
         ]);
         let sprite_tex = sprite.as_ref().map(|s| &s.tex).unwrap_or(&white);
@@ -4351,8 +4500,8 @@ impl Renderer {
         );
         Ok(Placed {
             tex: out,
-            origin: [r[0] as f32, r[1] as f32],
-            scale: 1.0,
+            origin: [(r[0] * px) as f32, (r[1] * px) as f32],
+            scale: px as f32,
         })
     }
 
@@ -4363,7 +4512,7 @@ impl Renderer {
             .kernels
             .ready(&t0.key)
             .expect("tier-0 kernels are built at startup");
-        let mut p = header(doc, t).to_vec();
+        let mut p = header(doc, t, self.view).to_vec();
         p.extend([1.0, src.origin[0], src.origin[1], src.scale]);
         list.dispatch(&k, dst, &[&src.tex], &p);
     }
@@ -4405,7 +4554,7 @@ impl Renderer {
                 } else {
                     built.transformed(m.0)
                 });
-                self.bounds.insert(id.to_string(), g.bounds);
+                self.bounds.insert(id.to_string(), self.frame_bounds(g.bounds));
                 self.geometry.insert(id.to_string(), (key, content, full, g.clone()));
                 return Ok(g);
             }
@@ -4414,10 +4563,17 @@ impl Renderer {
             "text" => geom::text_node(id, node, &doc.format, t, outer, &mut self.fonts, &self.base_dir)?,
             _ => geom::path(id, node, &doc.format, t, outer)?,
         });
-        self.bounds.insert(id.to_string(), g.bounds);
+        self.bounds.insert(id.to_string(), self.frame_bounds(g.bounds));
         self.geometry.insert(id.to_string(), (key, content, full, g.clone()));
         self.built.insert(id.to_string(), (key, content, full, g.clone()));
         Ok(g)
+    }
+
+    /// Bounds of geometry built on the device grid, in frame px (what
+    /// picking, inspection and motion extents read).
+    fn frame_bounds(&self, b: [f32; 4]) -> [f32; 4] {
+        let px = self.view.px;
+        [b[0] * px, b[1] * px, b[2] * px, b[3] * px]
     }
 
     /// The color glyphs of `geo` for `k_raster_resolve`: their bitmaps put
@@ -4492,7 +4648,8 @@ impl Renderer {
         // itself when nothing downstream looks outside it (layers zoomed far
         // past the frame then cost a frame, not nine), and to the texture
         // size limit.
-        let (fw, fh) = (doc.format.width as i64, doc.format.height as i64);
+        // In device texels: the geometry was built on the view's grid.
+        let (fw, fh) = (self.view.w as i64, self.view.h as i64);
         let (wx0, wy0, wx1, wy1) = if framed {
             (0, 0, fw, fh)
         } else {
@@ -4567,7 +4724,7 @@ impl Renderer {
         let acc = self.acc.clone().unwrap();
         list.clear_buffer_range(&acc, 0, bytes);
 
-        let hdr = header(doc, t);
+        let hdr = header(doc, t, self.view);
         let n = geo.count();
         if n > 0 {
             let seg_bytes =
@@ -4631,8 +4788,8 @@ impl Renderer {
         );
         Placed {
             tex,
-            origin: [x0 as f32, y0 as f32],
-            scale: 1.0,
+            origin: [x0 as f32 * self.view.px, y0 as f32 * self.view.px],
+            scale: self.view.px,
         }
     }
 
@@ -4680,7 +4837,7 @@ impl Renderer {
                     })
                 })
                 .collect();
-            let mut p = header(doc, t).to_vec();
+            let mut p = header(doc, t, self.view).to_vec();
             let info = if ops::uses_resource(pn.def) {
                 res_info.get(pn.variant.as_str()).copied()
             } else {
@@ -4703,7 +4860,7 @@ impl Renderer {
                     Placed {
                         tex: target,
                         origin: [0.0, 0.0],
-                        scale: 1.0,
+                        scale: self.view.px,
                     },
                 );
                 continue;
@@ -4743,7 +4900,7 @@ impl Renderer {
                 Placed {
                     tex: target,
                     origin: [0.0, 0.0],
-                    scale: 1.0,
+                    scale: self.view.px,
                 },
             );
         }
@@ -4759,7 +4916,7 @@ impl Renderer {
     /// and `reference` (an RGBA8 sRGB texture of the frame's size), reduced
     /// on the GPU: only one partial sum per 16x16 tile is read back.
     pub fn frame_mse(&mut self, doc: &Document, t: f64, reference: &Texture) -> Result<f64, RenderError> {
-        let (w, h) = (doc.format.width, doc.format.height);
+        let (w, h) = self.frame_size(doc);
         let groups = (w.div_ceil(16) * h.div_ceil(16)) as usize;
         if self.diff_buf.as_ref().is_none_or(|b| b.len() < groups * 4) {
             self.diff_buf = Some(self.device.create_buffer(groups * 4, None));
@@ -4819,7 +4976,8 @@ impl Renderer {
             (_, true) => 1.0,
             (_, false) => 0.0,
         };
-        let ex = self.export_texture(doc.format.width, doc.format.height, format);
+        let (w, h) = self.frame_size(doc);
+        let ex = self.export_texture(w, h, format);
         let (sub, report) = self.submit_frame_with(doc, t, |o| {
             let mut p = o.header.to_vec();
             p.extend(o.origin);
@@ -4853,7 +5011,8 @@ impl Renderer {
             format: PixelFormat::Rgba8Unorm,
             cpu_readable: true,
         });
-        let (fw, fh) = (doc.format.width as f32, doc.format.height as f32);
+        let (fw, fh) = self.frame_size(doc);
+        let (fw, fh) = (fw as f32, fh as f32);
         let (dw, dh) = (width as f32, height as f32);
         let s = (dw / fw).min(dh / fh);
         let rect = [(dw - fw * s) / 2.0, (dh - fh * s) / 2.0, fw * s, fh * s];
@@ -4963,8 +5122,6 @@ fn expand_everywhere(
     Some((out, problems))
 }
 
-/// Kernel header: time, output texel size in frame pixels (1 at full
-/// resolution), frame width and height.
 /// Whether rendering `doc` goes through [`Renderer::flattened`].
 fn needs_flat(doc: &Document) -> bool {
     doc.needs_flatten()
@@ -4982,8 +5139,11 @@ fn needs_flat(doc: &Document) -> bool {
         || !doc.components.is_empty()
 }
 
-fn header(doc: &Document, t: f64) -> [f32; 4] {
-    [t as f32, 1.0, doc.format.width as f32, doc.format.height as f32]
+/// Kernel header: time, output texel size in frame pixels (the view's: 1
+/// at the document's own size, 0.5 at twice it), frame width and height
+/// (always the document's).
+fn header(doc: &Document, t: f64, view: View) -> [f32; 4] {
+    [t as f32, view.px, doc.format.width as f32, doc.format.height as f32]
 }
 
 /// Loudness of `pcm` in a band, 120 values per second, with an instant
@@ -5106,7 +5266,7 @@ fn placed_output(active: &Active, mut gi: usize) -> Placed {
         None => Placed {
             tex: active.slots[active.plan.groups[gi].output].clone(),
             origin: [0.0, 0.0],
-            scale: 1.0,
+            scale: active.view.px,
         },
     }
 }
