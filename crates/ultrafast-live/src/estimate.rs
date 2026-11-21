@@ -62,6 +62,10 @@ pub struct Options {
     /// The price of a rendered minute; `None` quotes no price (a
     /// self-hosted service that doesn't bill).
     pub usd_per_minute: Option<f64>,
+    /// What the export writes (size, frame rate, quality level): priced at
+    /// its size, timed with its motion blur, its frames counted at its rate
+    /// (default: the document's own).
+    pub target: Option<crate::output::Target>,
 }
 
 impl Default for Options {
@@ -71,6 +75,7 @@ impl Default for Options {
             to: None,
             samples: 64,
             usd_per_minute: Some(USD_PER_MINUTE),
+            target: None,
         }
     }
 }
@@ -101,13 +106,39 @@ pub struct Estimate {
 /// for the document's files). Leaves the renderer in the mode it found it.
 pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Result<Estimate, String> {
     let fmt = doc.format;
+    let target = opts.target.unwrap_or_else(|| crate::output::Target::of(&fmt));
+    // The quality level's motion blur, as the export renders it.
+    let tuned;
+    let mb = target.quality.motion_blur(fmt.motion_blur);
+    let doc = if mb != fmt.motion_blur.filter(|m| m.samples > 1) {
+        let mut d = doc.fork();
+        d.format.motion_blur = mb;
+        tuned = d;
+        &tuned
+    } else {
+        doc
+    };
     let from = opts.from.unwrap_or(0.0).clamp(0.0, fmt.duration);
     let to = opts.to.unwrap_or(fmt.duration).clamp(from, fmt.duration);
-    let fps = fmt.fps.max(1.0);
+    let fps = target.fps.max(1.0);
     let first = (from * fps).round() as u64;
     let last = ((to * fps).round() as u64).max(first + 1);
     let total = last - first;
-    let price = price(&fmt, from, to);
+    let time_of = |f: u64| f as f64 / fps;
+    // Priced at the size written; sound alone as the smallest.
+    let (w, h) = match target.video {
+        Some(_) => (target.width, target.height),
+        None => (1, 1),
+    };
+    let price = price(
+        &Format {
+            width: w,
+            height: h,
+            ..fmt
+        },
+        from,
+        to,
+    );
 
     let prev_mode = renderer.mode();
     renderer.set_mode(Mode::Exact);
@@ -116,7 +147,7 @@ pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Resu
         // what a caller waits before the first byte.
         let t0 = Instant::now();
         renderer
-            .submit_frame(doc, fmt.time_of(first), false)
+            .submit_frame(doc, time_of(first), false)
             .and_then(|(sub, _)| sub.wait().map_err(Into::into))
             .map_err(|e| e.to_string())?;
         let first_byte = t0.elapsed().as_secs_f64();
@@ -126,7 +157,7 @@ pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Resu
         let mut frame = first;
         while warm.elapsed().as_secs_f64() < 0.2 && frame < first + 30.min(total) {
             let (sub, _) = renderer
-                .submit_frame(doc, fmt.time_of(frame), false)
+                .submit_frame(doc, time_of(frame), false)
                 .map_err(|e| e.to_string())?;
             sub.wait().map_err(|e| e.to_string())?;
             frame += 1;
@@ -166,7 +197,7 @@ pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Resu
         };
         for (frame, timed_frame) in plan {
             let (sub, _) = renderer
-                .submit_frame(doc, fmt.time_of(frame), false)
+                .submit_frame(doc, time_of(frame), false)
                 .map_err(|e| e.to_string())?;
             inflight.push_back((sub, timed_frame));
             while inflight.len() >= IN_FLIGHT {
@@ -181,7 +212,7 @@ pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Resu
         if timed == 0 {
             // A one-frame range: its only frame was the seek.
             let (sub, _) = renderer
-                .submit_frame(doc, fmt.time_of(first), false)
+                .submit_frame(doc, time_of(first), false)
                 .map_err(|e| e.to_string())?;
             gpu_ms += sub.wait().map_err(|e| e.to_string())?.gpu_ms;
             timed = 1;
@@ -195,9 +226,9 @@ pub fn estimate(renderer: &mut Renderer, doc: &Document, opts: &Options) -> Resu
         usd: opts.usd_per_minute.map(|rate| price.minutes * rate),
         gpu_seconds: ms_per_frame * total as f64 / 1000.0,
         first_byte_s,
-        width: fmt.width,
-        height: fmt.height,
-        fps: fmt.fps,
+        width: target.width,
+        height: target.height,
+        fps: target.fps,
         seconds: to - from,
         frames: total,
         device: renderer.device().name().to_string(),

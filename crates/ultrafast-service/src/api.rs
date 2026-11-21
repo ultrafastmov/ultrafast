@@ -232,7 +232,8 @@ pub struct EstimateRequest {
     pub document: Value,
     #[serde(default)]
     pub range: Option<[f64; 2]>,
-    /// Accepted (and only `range` read) so a render request can be sent as is.
+    /// A render request's `output`, so it can be sent as is: priced at its
+    /// size and timed with its quality level and frame rate.
     #[serde(default)]
     pub output: Option<Output>,
 }

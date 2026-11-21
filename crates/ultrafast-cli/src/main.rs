@@ -65,10 +65,11 @@ usage:
                                              --point, the topmost element there
   ultrafast profile <doc.json> [--frames N] [--from T] [--json]
                                              GPU time per render group (which nodes cost what)
-  ultrafast estimate <doc.json> [--from S] [--to S] [--samples N] [--json]
+  ultrafast estimate <doc.json> [--from S] [--to S] [--samples N] [--json] [export flags: --size, --quality, --fps...]
                                              what exporting it costs: rendered minutes and their price
-                                             on ultrafast Cloud, GPU seconds (timed on sampled frames
-                                             on this GPU) and the time to the first frame
+                                             on ultrafast Cloud (at the output size), GPU seconds (timed
+                                             on sampled frames on this GPU, with the quality level's
+                                             motion blur) and the time to the first frame
   ultrafast bench  <doc.json> [--frames N] [--live-edits]
                                              GPU throughput, no readback
   ultrafast export <doc.json> <out> [--quality draft|standard|high|master] [--size 720p|1080p|4k|WxH | --scale S]
@@ -601,6 +602,12 @@ fn main() -> Result<()> {
                 from: flag("--from").map(|s| s.parse()).transpose()?,
                 to: flag("--to").map(|s| s.parse()).transpose()?,
                 samples: flag("--samples").map(|s| s.parse()).transpose()?.unwrap_or(64),
+                // Priced and timed as `export` with the same flags renders.
+                target: Some(
+                    export_settings(&flag, &has)?
+                        .resolve(None, &doc.format)
+                        .map_err(anyhow::Error::msg)?,
+                ),
                 ..Default::default()
             };
             let mut est = ultrafast_live::estimate::estimate(&mut r, &doc, &opts).map_err(anyhow::Error::msg)?;

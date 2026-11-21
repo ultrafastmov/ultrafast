@@ -336,6 +336,7 @@ pub fn estimate(r: &mut Renderer, doc: &Document, args: &Value, name: &str) -> R
         from: args.get("from").and_then(Value::as_f64),
         to: args.get("to").and_then(Value::as_f64),
         samples: args.get("samples").and_then(Value::as_u64).unwrap_or(32).clamp(1, 600) as u32,
+        target: Some(export_settings(args)?.resolve(None, &doc.format)?),
         ..Default::default()
     };
     let est = ultrafast_live::estimate::estimate(r, doc, &opts)?;

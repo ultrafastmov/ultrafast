@@ -1159,12 +1159,23 @@ impl Engine {
     /// `POST /v1/estimate`.
     pub fn estimate(&mut self, req: EstimateRequest, grants: &Grants) -> Result<Reply, ApiError> {
         let range = req.range.or(req.output.as_ref().and_then(|o| o.range));
+        let output = req.output.clone();
         let usd_per_minute = self.cfg.usd_per_minute;
         let est = self.with_document(&req.document, range, None, grants, |r, m| {
+            // Priced and timed as the render request's `output` asks.
+            let target = match &output {
+                Some(o) => Some(
+                    o.settings()
+                        .resolve(o.named_path(), &m.doc.format)
+                        .map_err(|e| ApiError::new(400, "bad_request", e))?,
+                ),
+                None => None,
+            };
             let opts = ultrafast_live::estimate::Options {
                 from: range.map(|r| r[0]),
                 to: range.map(|r| r[1]),
                 usd_per_minute,
+                target,
                 ..Default::default()
             };
             ultrafast_live::estimate::estimate(r, &m.doc, &opts)
