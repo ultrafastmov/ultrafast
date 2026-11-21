@@ -44,7 +44,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
 LABEL org.opencontainers.image.source="https://github.com/ultrafastmov/ultrafast" \
       org.opencontainers.image.url="https://ultrafast.mov" \
       org.opencontainers.image.description="The GPU video engine for agents: the ultrafast CLI and render service" \
-      org.opencontainers.image.licenses="Apache-2.0 OR MIT"
+      org.opencontainers.image.licenses="Apache-2.0 OR MIT" \
+      io.modelcontextprotocol.server.name="io.github.ultrafastmov/ultrafast"
 # tini as PID 1: forwards docker stop's SIGTERM and reaps ffmpeg children.
 ENTRYPOINT ["/usr/bin/tini", "--", "ultrafast"]
 CMD ["serve"]

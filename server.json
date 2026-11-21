@@ -1,0 +1,62 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ultrafastmov/ultrafast",
+  "title": "ultrafast",
+  "description": "The GPU video engine for agents: JSON documents in, video out.",
+  "version": "0.1.1",
+  "websiteUrl": "https://ultrafast.mov",
+  "repository": {
+    "url": "https://github.com/ultrafastmov/ultrafast",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/ultrafastmov/ultrafast/releases/download/v0.1.1/ultrafast-0.1.1-macos-arm64.mcpb",
+      "fileSha256": "51edc7ec7b1a664cfd40bba0671410d189afc0819f1dd2028eb14c1c0aed6eff",
+      "transport": { "type": "stdio" }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/ultrafastmov/ultrafast/releases/download/v0.1.1/ultrafast-0.1.1-linux-x86_64.mcpb",
+      "fileSha256": "cf8de7b0a349c3a1eba711d9422c359c4d8957ff77a12d2e1ddd672711294ea1",
+      "transport": { "type": "stdio" }
+    },
+    {
+      "registryType": "cargo",
+      "identifier": "ultrafast",
+      "version": "0.1.1",
+      "transport": { "type": "stdio" },
+      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/ultrafastmov/ultrafast:0.1.1",
+      "transport": { "type": "stdio" },
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--mount",
+          "description": "The folder documents and videos are read from and written to",
+          "value": "type=bind,src={folder},dst=/work",
+          "isRequired": true,
+          "variables": {
+            "folder": {
+              "description": "Folder on this computer for documents and videos",
+              "format": "filepath",
+              "isRequired": true
+            }
+          }
+        },
+        {
+          "type": "named",
+          "name": "--gpus",
+          "description": "GPUs to render on (needs the NVIDIA Container Toolkit; without it the image renders on the CPU)",
+          "value": "all",
+          "isRequired": false
+        }
+      ],
+      "packageArguments": [{ "type": "positional", "value": "mcp" }]
+    }
+  ]
+}

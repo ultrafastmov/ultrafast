@@ -10,6 +10,8 @@ Every install path the docs name, and what builds it:
 | `docker run --gpus all ghcr.io/ultrafastmov/ultrafast:latest info` / `serve` | `docker/Dockerfile` (from the Linux archive) | ghcr.io, tags `X.Y.Z`, `X.Y`, `latest` |
 | `pip install ultrafastmov` | `sdk/python` | PyPI, at the version in `pyproject.toml` (skipped if published) |
 | `npm install ultrafastmov` | `sdk/typescript` | npm, at the version in `package.json` (skipped if published) |
+| Claude Desktop: `ultrafast-X.Y.Z-macos-arm64.mcpb`, `-linux-x86_64.mcpb` | `mcpb/build.sh` (from the archives) | GitHub release assets |
+| the MCP Registry, `io.github.ultrafastmov/ultrafast` | `mcpb/server-json.py` (from the root `server.json`) | registry.modelcontextprotocol.io |
 
 Slang: the archives carry the compiler libraries ultrafast loads (libslang,
 libslang-compiler, slang-glslang for spirv-opt, the GLSL module; not LLVM or
@@ -33,6 +35,15 @@ packaging/homebrew/formula.sh dist file://$PWD/dist > ultrafast.rb   # needs bot
 cargo package --workspace                           # what crates.io gets, built from the packed sources
 ```
 
+MCP Bundles: `packaging/mcpb/build.sh dist/ultrafast-*-x86_64-unknown-linux-gnu.tar.gz`
+(for the macOS archive, pass a runnable `ultrafast` of the same version as
+the third argument: the manifest lists the tools it serves), then
+`packaging/mcpb/smoke.sh <bundle> [--render]` installs it the way Claude
+Desktop does and drives it. The server starts through `/bin/sh` in a
+working folder (a setting, default `~/ultrafast`) with Homebrew and
+`/usr/local` on PATH: hosts start local servers in `/` without the shell's
+PATH, and the tools resolve relative paths against the working directory.
+
 ## A release
 
 1. Set `version` in the root `Cargo.toml` (and, for a new SDK release, the
@@ -43,8 +54,8 @@ cargo package --workspace                           # what crates.io gets, built
    `info`, the quickstart and `serve`; both SDKs' tests and packages) and
    publishes nothing.
 3. Push the tag `vX.Y.Z`. The run publishes crates, the GitHub release, the
-   image, the formula and any SDK version not yet published. Nobody needs to
-   sign in or approve anything.
+   image, the formula, any SDK version not yet published, the MCP bundles
+   and the MCP Registry entry. Nobody needs to sign in or approve anything.
 
 How it signs in (set up once; nothing expires):
 
@@ -61,3 +72,10 @@ How it signs in (set up once; nothing expires):
   are signed as `ultrafastmov-release[bot]`.
 - ghcr.io: the workflow's own `GITHUB_TOKEN`. The `ultrafast` package is
   public.
+- The MCP Registry: the job's GitHub OIDC token (`mcp-publisher login
+  github-oidc`), which proves the `io.github.ultrafastmov/` namespace. Each
+  package proves itself: the bundles by their release URL and SHA-256, the
+  crate by the line `mcp-name: io.github.ultrafastmov/ultrafast` in the
+  README crates.io shows (visible text: crates.io strips HTML comments), the
+  image by its `io.modelcontextprotocol.server.name` label. `server-json.py`
+  leaves out the crate or the image if its marker is missing.
