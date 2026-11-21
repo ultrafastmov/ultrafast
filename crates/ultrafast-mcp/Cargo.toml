@@ -1,6 +1,8 @@
 [package]
-name = "ultrafast-mcp"
-description = "ultrafast as Model Context Protocol tools: the stdio server behind `uf mcp` and the Streamable HTTP server, with OAuth for connectors, that the self-hosted service mounts"
+# `ultrafast-mcp` on crates.io is an unrelated MCP library; the code still
+# imports this crate as `ultrafast_mcp`.
+name = "ultrafastmov-mcp"
+description = "ultrafast as Model Context Protocol tools: the stdio server behind `uf mcp` and the Streamable HTTP server that `uf serve` mounts at /mcp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +11,9 @@ repository.workspace = true
 homepage.workspace = true
 keywords = ["mcp", "video", "agents", "model-context-protocol"]
 categories = ["multimedia::video", "rendering"]
+
+[lib]
+name = "ultrafast_mcp"
 
 [dependencies]
 ultrafast-graph.workspace = true

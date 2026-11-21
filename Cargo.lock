@@ -2881,12 +2881,12 @@ dependencies = [
  "ultrafast-gpu",
  "ultrafast-graph",
  "ultrafast-live",
- "ultrafast-mcp",
  "ultrafast-media",
  "ultrafast-ops",
  "ultrafast-recon",
  "ultrafast-render",
  "ultrafast-service",
+ "ultrafastmov-mcp",
 ]
 
 [[package]]
@@ -2954,23 +2954,6 @@ dependencies = [
  "ultrafast-media",
  "ultrafast-render",
  "winit",
-]
-
-[[package]]
-name = "ultrafast-mcp"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "image",
- "png",
- "serde_json",
- "tiny_http",
- "ultrafast-gpu",
- "ultrafast-graph",
- "ultrafast-live",
- "ultrafast-media",
- "ultrafast-ops",
- "ultrafast-render",
 ]
 
 [[package]]
@@ -3078,6 +3061,23 @@ dependencies = [
  "libloading 0.9.0",
  "sha2",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "ultrafastmov-mcp"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "image",
+ "png",
+ "serde_json",
+ "tiny_http",
+ "ultrafast-gpu",
+ "ultrafast-graph",
+ "ultrafast-live",
+ "ultrafast-media",
+ "ultrafast-ops",
+ "ultrafast-render",
 ]
 
 [[package]]

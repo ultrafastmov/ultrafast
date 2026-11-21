@@ -110,7 +110,7 @@ To try the remote tools without the full service, the crate has a small
 development server on this machine's GPU:
 
 ```bash
-ULTRAFAST_API_KEYS=uf_test_dev cargo run --release -p ultrafast-mcp --example dev_server -- 8765
+ULTRAFAST_API_KEYS=uf_test_dev cargo run --release -p ultrafastmov-mcp --example dev_server -- 8765
 ```
 
 ## Skill and plugins
