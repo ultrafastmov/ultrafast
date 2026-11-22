@@ -4,7 +4,7 @@ Every install path the docs name, and what builds it:
 
 | Install | Built by | Published by `release.yml` to |
 |---|---|---|
-| `cargo install ultrafast` | the workspace crates (`ultrafast` is `crates/ultrafast-cli`) | crates.io |
+| `cargo install ultrafast` | the workspace crates (`ultrafast` is `crates/ultrafast-cli`, with its own README for crates.io: absolute links, no GitHub-hosted media) | crates.io |
 | prebuilt archives (macOS arm64, Linux x86_64 glibc 2.28+) | `dist.sh` | GitHub release assets |
 | `brew install ultrafastmov/tap/ultrafast` | `homebrew/formula.sh` (from the archives) | `ultrafastmov/homebrew-tap`, `Formula/ultrafast.rb` |
 | `docker run --gpus all ghcr.io/ultrafastmov/ultrafast:latest info` / `serve` | `docker/Dockerfile` (from the Linux archive) | ghcr.io, tags `X.Y.Z`, `X.Y`, `latest` |
@@ -47,8 +47,9 @@ PATH, and the tools resolve relative paths against the working directory.
 
 ## A release
 
-1. Set `version` in the root `Cargo.toml` (and, for a new SDK release, the
-   SDK's own version) and commit.
+1. `packaging/version.py set X.Y.Z` (the workspace, `Cargo.lock`, the agent
+   plugin manifests and the skill; CI and the tag check they agree), and for
+   a new SDK release the SDK's own version, then commit.
 2. Optionally run **Release** by hand with publish off: it builds and tests
    every path (archives on Linux, a clean Ubuntu 22.04 and Rocky 8; macOS;
    brew install and audit of the real formula on both; the image with

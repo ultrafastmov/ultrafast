@@ -98,6 +98,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo package --workspace --no-verify --locked
+      # One version everywhere it is written (packaging/version.py set X.Y.Z).
+      - run: python3 packaging/version.py check
+      # The MCP Registry checks the README crates.io shows for this line.
+      - name: The ultrafast crate's README names its MCP Registry entry
+        run: |
+          grep -q 'mcp-name: io.github.ultrafastmov/ultrafast' crates/ultrafast-cli/README.md
       # What crates.io refuses at upload time and `cargo package` doesn't check.
       - name: crates.io keyword limits
         run: |

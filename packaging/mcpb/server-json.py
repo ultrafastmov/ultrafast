@@ -7,7 +7,7 @@ Sets the version everywhere, points the bundles at that release's assets
 with their SHA-256, and tags the image and crate with it. Drops a package
 the registry could not verify: the crate without its `mcp-name:` line in
 the README, the image without its io.modelcontextprotocol.server.name
-label. By default it checks this checkout (README.md, the Dockerfile), for
+label. By default it checks this checkout (the crate's README, the Dockerfile), for
 a release being built; with --live it checks what is published for that
 version (the README crates.io shows, the image's labels on ghcr.io).
 """
@@ -34,7 +34,7 @@ def get(url, headers=None):
 
 def crate_has_marker(crate):
     if not live:
-        return f"mcp-name: {name}" in (root / "README.md").read_text()
+        return f"mcp-name: {name}" in (root / "crates/ultrafast-cli/README.md").read_text()
     try:
         html = get(f"https://static.crates.io/readmes/{crate}/{crate}-{version}.html").decode()
     except Exception:
@@ -66,7 +66,7 @@ def image_has_label(image):
 
 
 repo_url = server["repository"]["url"]
-where = "on crates.io" if live else "README.md"
+where = "on crates.io" if live else "crates/ultrafast-cli/README.md"
 kept = []
 for pkg in server["packages"]:
     kind = pkg["registryType"]

@@ -49,7 +49,7 @@ jobs:
       # crates.io renders a new crate's README a little after it publishes.
       - name: Wait for the crate's README on crates.io
         run: |
-          grep -q 'mcp-name: io.github.ultrafastmov/ultrafast' README.md || exit 0
+          grep -q 'mcp-name: io.github.ultrafastmov/ultrafast' crates/ultrafast-cli/README.md || exit 0
           url="https://static.crates.io/readmes/ultrafast/ultrafast-$VERSION.html"
           for _ in $(seq 60); do
             curl -fsS "$url" 2>/dev/null | grep -q 'mcp-name: io.github.ultrafastmov/ultrafast' && exit 0
