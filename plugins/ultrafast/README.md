@@ -10,15 +10,23 @@ Claude Code two things:
   `review` finds (unreadable, clipped or too-brief text, unsafe areas,
   flashing), then export: MP4, ProRes, WebM, GIF, image sequences or sound,
   at any size.
-- **The ultrafast MCP server** (`uf mcp`), 18 tools that let Claude write,
+- **The ultrafast MCP server** (`uf mcp`), 20 tools that let Claude write,
   look at, review and export videos without a shell.
 
-It needs the `uf` command on your PATH:
+The plugin starts the MCP server as `uf mcp`, so it needs the `uf` command
+on your PATH. Install ultrafast first, any one of these:
 
 ```bash
-cargo install ultrafast                    # or
-brew install ultrafastmov/tap/ultrafast    # macOS
+curl -fsSL https://ultrafast.mov/install.sh | sh   # macOS (Apple silicon), Linux x86_64
+brew install ultrafastmov/tap/ultrafast            # Homebrew, macOS and Linux
+cargo install ultrafast                            # from crates.io
 ```
+
+The installer downloads the release archive for your machine from
+[GitHub releases](https://github.com/ultrafastmov/ultrafast/releases), checks
+its SHA-256 and links `ultrafast` and `uf` into `~/.local/bin`. Check it with
+`uf info`. If `uf` isn't found, open a new terminal or add
+`~/.local/bin` to your PATH.
 
 Install the plugin:
 
