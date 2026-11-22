@@ -151,8 +151,20 @@ pub fn record(
         .arg("-r")
         .arg(format!("{fps}"))
         .args([
-            "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-pix_fmt", "yuv420p",
+            "-i",
+            "-",
+            "-vf",
+            crate::ffmpeg::BT709_FRAMES,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "16",
+            "-pix_fmt",
+            "yuv420p",
         ])
+        .args(crate::ffmpeg::BT709_TAGS)
         .arg(out)
         .stdin(std::process::Stdio::piped())
         .spawn()

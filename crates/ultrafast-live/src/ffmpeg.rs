@@ -5,6 +5,25 @@
 
 use crate::output::{AudioCodec, Container, Quality, Rate, Target, VideoCodec};
 
+/// BT.709 at limited range, which every YUV export is, set on the frames
+/// after conversion. The encoder writes the frames' own tags: newer ffmpeg
+/// (9.0) ignores `-color_primaries` and `-color_trc` when a filter has
+/// run, so files came out untagged; 4.4 and 6.1 took the options.
+pub const BT709_FRAMES: &str = "scale=out_color_matrix=bt709:out_range=tv,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709";
+
+/// The same as stream and container tags, for encoders and for stream
+/// copies (a raw stream copied in carries no frames to take tags from).
+pub const BT709_TAGS: [&str; 8] = [
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-color_range",
+    "tv",
+];
+
 /// How frames reach ffmpeg's stdin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pixels {
@@ -74,9 +93,9 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
     let mut push = |xs: &[&str]| a.extend(xs.iter().map(|s| s.to_string()));
     let yuv = !matches!(v.codec, VideoCodec::Gif | VideoCodec::Png | VideoCodec::Exr);
     if yuv {
-        // The BT.709 matrix explicitly: older ffmpeg converts with BT.601
-        // whatever the output is tagged.
-        push(&["-vf", "scale=out_color_matrix=bt709:out_range=tv"]);
+        // The BT.709 matrix explicitly (older ffmpeg converts with BT.601
+        // whatever the output is tagged), and the frames tagged with it.
+        push(&["-vf", BT709_FRAMES]);
     }
     match v.codec {
         VideoCodec::Gif => {
@@ -224,14 +243,7 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
         }
     }
     if yuv {
-        push(&[
-            "-colorspace",
-            "bt709",
-            "-color_primaries",
-            "bt709",
-            "-color_trc",
-            "bt709",
-        ]);
+        push(&BT709_TAGS);
     }
     a
 }
@@ -345,7 +357,9 @@ mod tests {
             "{a}"
         );
         assert!(
-            a.contains("out_color_matrix=bt709") && a.contains("-colorspace bt709"),
+            a.contains("out_color_matrix=bt709")
+                && a.contains("setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709")
+                && a.contains("-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv"),
             "{a}"
         );
         let t = target(r#"{"quality": "master"}"#, "f.mp4");

@@ -823,6 +823,9 @@ mod nvenc {
             // left 60 fps files playing at 1200.
             format!("setts=ts=N*{ticks}/({timescale}*TB):duration={ticks}/({timescale}*TB)"),
         ]);
+        // The stream says BT.709 (the encoder's VUI); newer ffmpeg doesn't
+        // carry that from a copied raw stream to the container.
+        args.extend(ffmpeg::BT709_TAGS.map(String::from));
         if t.container != Container::Mkv {
             args.extend(["-video_track_timescale".into(), timescale.to_string()]);
         }

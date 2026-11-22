@@ -54,6 +54,27 @@ fn probe(path: &Path) -> (u64, String) {
     (frames, rate)
 }
 
+/// The first video stream's colour tags as players read them (sorted
+/// `key=value`s).
+fn colour(path: &Path) -> String {
+    let o = Command::new("ffprobe")
+        .args(["-v", "error", "-select_streams", "v:0", "-show_entries"])
+        .args([
+            "stream=color_range,color_space,color_transfer,color_primaries",
+            "-of",
+            "default=nw=1",
+        ])
+        .arg(path)
+        .output()
+        .unwrap();
+    let mut tags: Vec<&str> = std::str::from_utf8(&o.stdout).unwrap().lines().collect();
+    tags.sort();
+    tags.join(" ")
+}
+
+/// What every YUV export is: BT.709 at limited range.
+const BT709: &str = "color_primaries=bt709 color_range=tv color_space=bt709 color_transfer=bt709";
+
 fn has_audio(path: &Path) -> bool {
     let o = Command::new("ffprobe")
         .args([
@@ -126,6 +147,10 @@ fn every_format() {
     let rep = export(&mut r, &doc, &at("b.mp4"), r#"{"fps": 60, "quality": "draft"}"#);
     assert_eq!(rep.frames, 30);
     assert_eq!(probe(&at("b.mp4")), (30, "60/1".into()));
+    // Tagged as what it is, so players don't guess (FFmpeg-based ones guess
+    // BT.601). Hardware (NVENC, VideoToolbox) or ffmpeg, whichever ran.
+    assert_eq!(colour(&at("a.mp4")), BT709, "h264 colour tags");
+    assert_eq!(colour(&at("b.mp4")), BT709, "h264 60 fps colour tags");
 
     // PNG sequence with alpha, and without (flattened).
     export(&mut r, &doc, &at("seq/"), r#"{"alpha": true}"#);
@@ -154,6 +179,8 @@ fn every_format() {
         );
         let rep = export(&mut r, &doc, &at("hq.mov"), r#"{"codec": "prores"}"#);
         assert_eq!(rep.target.codec_name(), "prores-hq");
+        assert_eq!(colour(&at("p.mov")), BT709, "prores 4444 colour tags");
+        assert_eq!(colour(&at("hq.mov")), BT709, "prores hq colour tags");
     }
 
     // VP9 WebM with alpha (libvpx decodes the alpha plane).
@@ -164,6 +191,7 @@ fn every_format() {
             close(p[0], clear, 3) && close(p[1], disc, 4) && close(p[2], half, 4),
             "webm {p:?}"
         );
+        assert_eq!(colour(&at("v.webm")), BT709, "vp9 colour tags");
     }
 
     // GIF: binary transparency, played once.
@@ -198,6 +226,7 @@ fn every_format() {
     if encoder("libsvtav1") || encoder("libaom-av1") || encoder("av1_nvenc") {
         let rep = export(&mut r, &doc, &at("c.mp4"), r#"{"codec": "av1"}"#);
         assert_eq!(rep.target.codec_name(), "av1");
+        assert_eq!(colour(&at("c.mp4")), BT709, "av1 colour tags");
         assert!(std::fs::metadata(at("c.mp4")).unwrap().len() > 0);
     }
 
