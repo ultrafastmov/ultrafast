@@ -75,6 +75,13 @@ fn colour(path: &Path) -> String {
 /// What every YUV export is: BT.709 at limited range.
 const BT709: &str = "color_primaries=bt709 color_range=tv color_space=bt709 color_transfer=bt709";
 
+/// ProRes in a MOV: QuickTime's colour atom (nclc) has no range field and
+/// ProRes is limited range by definition; ffmpeg 9 reads that as `tv`, 6.1
+/// as `unknown`, from the same file.
+fn prores_colour(path: &Path) -> String {
+    colour(path).replace("color_range=unknown", "color_range=tv")
+}
+
 fn has_audio(path: &Path) -> bool {
     let o = Command::new("ffprobe")
         .args([
@@ -179,8 +186,8 @@ fn every_format() {
         );
         let rep = export(&mut r, &doc, &at("hq.mov"), r#"{"codec": "prores"}"#);
         assert_eq!(rep.target.codec_name(), "prores-hq");
-        assert_eq!(colour(&at("p.mov")), BT709, "prores 4444 colour tags");
-        assert_eq!(colour(&at("hq.mov")), BT709, "prores hq colour tags");
+        assert_eq!(prores_colour(&at("p.mov")), BT709, "prores 4444 colour tags");
+        assert_eq!(prores_colour(&at("hq.mov")), BT709, "prores hq colour tags");
     }
 
     // VP9 WebM with alpha (libvpx decodes the alpha plane).
