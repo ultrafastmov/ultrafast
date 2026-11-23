@@ -123,8 +123,9 @@ ULTRAFAST_API_KEYS=uf_test_dev cargo run --release -p ultrafastmov-mcp --example
 - `plugins/ultrafast/`: the Claude Code plugin (the skill and `uf mcp`),
   listed by `.claude-plugin/marketplace.json`:
   `claude plugin marketplace add ultrafastmov/ultrafast`, then
-  `claude plugin install ultrafast@ultrafast`. Its copy of the skill is kept
-  in sync by `tools/sync-plugin-skill.sh` (`--check` in CI).
+  `claude plugin install ultrafast@ultrafast`. Its copies of the skill, the
+  license files and SECURITY.md are kept in sync by
+  `tools/sync-plugin-skill.sh` (`--check` in CI).
 - `gemini-extension.json`: `gemini extensions install
   https://github.com/ultrafastmov/ultrafast` adds `uf mcp` and the skill.
 
