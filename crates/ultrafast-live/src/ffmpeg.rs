@@ -1,7 +1,7 @@
 //! ffmpeg command lines for an export [`Target`]: the encoder, its rate
 //! control and speed for the quality level, the pixel format, the GIF
 //! palette, image sequences and the sound. Pure, so every format's
-//! arguments are tested without a GPU; [`encoder_opens`] is the only probe.
+//! arguments are tested without a GPU; [`encoder_opens_at`] is the only probe.
 
 use crate::output::{AudioCodec, Container, Quality, Rate, Target, VideoCodec};
 
@@ -79,10 +79,13 @@ impl Pixels {
 }
 
 /// The ffmpeg encoder a video codec uses here: the NVIDIA one when ffmpeg
-/// has it and it opens, else the software one.
+/// has it and it opens (at the output's size: NVENC has a minimum), else
+/// the software one.
 pub fn video_encoder(codec: VideoCodec, opens: &dyn Fn(&str) -> bool) -> &'static str {
     match codec {
         VideoCodec::H264 if opens("h264_nvenc") => "h264_nvenc",
+        // Builds without x264 (Fedora's ffmpeg-free) have OpenH264.
+        VideoCodec::H264 if !opens("libx264") && opens("libopenh264") => "libopenh264",
         VideoCodec::H264 => "libx264",
         VideoCodec::Hevc if opens("hevc_nvenc") => "hevc_nvenc",
         VideoCodec::Hevc => "libx265",
@@ -217,6 +220,8 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
                         push(&["-x265-params", "log-level=error"]);
                     }
                 }
+                // No constant quality: a bitrate for the size and quality.
+                "libopenh264" => push(&["-rc_mode", "quality", "-b:v", &hardware_bitrate(t).to_string()]),
                 "libsvtav1" => push(&["-preset", by_quality(q, ["10", "7", "5", "3"])]),
                 "libaom-av1" => push(&["-cpu-used", by_quality(q, ["8", "6", "4", "3"]), "-row-mt", "1"]),
                 "libvpx-vp9" => {
@@ -233,6 +238,7 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
                 _ => {}
             }
             match v.rate.expect("rate control") {
+                Rate::Crf(_) if encoder == "libopenh264" => {}
                 Rate::Crf(c) => {
                     if nvenc {
                         let cq = match v.codec {
@@ -312,21 +318,30 @@ pub fn mux_args(t: &Target, first_frame: u64) -> Vec<String> {
     a
 }
 
-/// Whether ffmpeg can open `encoder` here (one tiny frame, checked once per
-/// encoder per process). Distro builds list NVENC without an NVIDIA
-/// driver, and software encoders are optional at build time.
+/// Whether ffmpeg can open `encoder` here (one 256x256 frame); see
+/// [`encoder_opens_at`].
 pub fn encoder_opens(encoder: &str) -> bool {
+    encoder_opens_at(encoder, 256, 256)
+}
+
+/// Whether ffmpeg can open `encoder` here for frames `width` x `height`
+/// (one frame, checked once per encoder and size per process). Distro
+/// builds list NVENC without an NVIDIA driver, software encoders are
+/// optional at build time, and NVENC refuses frames below a minimum size
+/// (145x49 for H.264 on an RTX 5090).
+pub fn encoder_opens_at(encoder: &str, width: u32, height: u32) -> bool {
     use std::collections::BTreeMap;
     use std::sync::{Mutex, OnceLock};
     static SEEN: OnceLock<Mutex<BTreeMap<String, bool>>> = OnceLock::new();
     let seen = SEEN.get_or_init(Default::default);
-    if let Some(&ok) = seen.lock().unwrap().get(encoder) {
+    let key = format!("{encoder} {width}x{height}");
+    if let Some(&ok) = seen.lock().unwrap().get(&key) {
         return ok;
     }
     let ok = std::process::Command::new("ffmpeg")
         .args(["-hide_banner", "-loglevel", "quiet", "-nostdin", "-f", "lavfi", "-i"])
         .args([
-            "color=size=256x256:duration=0.04",
+            &format!("color=size={width}x{height}:duration=0.04"),
             "-frames:v",
             "1",
             "-c:v",
@@ -339,8 +354,25 @@ pub fn encoder_opens(encoder: &str) -> bool {
         .stderr(std::process::Stdio::null())
         .status()
         .is_ok_and(|s| s.success());
-    seen.lock().unwrap().insert(encoder.to_string(), ok);
+    seen.lock().unwrap().insert(key, ok);
     ok
+}
+
+/// The bitrate an encoder without constant quality is given (hardware
+/// ones, OpenH264): about 0.12 bits a pixel a frame for H.264 at standard
+/// quality, less for HEVC, scaled by the quality level.
+pub fn hardware_bitrate(t: &Target) -> u64 {
+    let bpp = match t.codec() {
+        Some(VideoCodec::Hevc) => 0.08,
+        _ => 0.12,
+    };
+    let scale = match t.quality {
+        Quality::Draft => 0.4,
+        Quality::Standard => 1.0,
+        Quality::High => 1.6,
+        Quality::Master => 2.5,
+    };
+    (t.width as f64 * t.height as f64 * t.fps * bpp * scale) as u64
 }
 
 #[cfg(test)]
@@ -372,6 +404,8 @@ mod tests {
         let all = |_: &str| true;
         assert_eq!(video_encoder(VideoCodec::H264, &none), "libx264");
         assert_eq!(video_encoder(VideoCodec::H264, &all), "h264_nvenc");
+        assert_eq!(video_encoder(VideoCodec::H264, &|e| e == "libopenh264"), "libopenh264");
+        assert_eq!(video_encoder(VideoCodec::H264, &|e| e.starts_with("lib")), "libx264");
         assert_eq!(video_encoder(VideoCodec::Av1, &none), "libaom-av1");
         assert_eq!(video_encoder(VideoCodec::Av1, &|e| e == "libsvtav1"), "libsvtav1");
     }
@@ -488,8 +522,9 @@ mod tests {
             t.width = w;
             t.height = h;
             let pixels = Pixels::for_target(&t);
-            let encoder = video_encoder(t.codec().unwrap(), &encoder_opens);
-            if !encoder_opens(encoder) {
+            let opens = |e: &str| encoder_opens_at(e, w, h);
+            let encoder = video_encoder(t.codec().unwrap(), &opens);
+            if !opens(encoder) {
                 eprintln!("{name}: {encoder} doesn't open here: skipped");
                 continue;
             }

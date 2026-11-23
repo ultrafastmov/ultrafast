@@ -299,27 +299,6 @@ fn export_frames(
     export_ffmpeg(renderer, doc, path, target, clock, opts, progress)
 }
 
-/// The bitrate a hardware encoder without constant quality is given: about
-/// 0.12 bits a pixel a frame for H.264 at standard quality, less for HEVC,
-/// scaled by the quality level.
-#[cfg_attr(
-    not(any(all(target_os = "macos", not(feature = "vulkan")), target_os = "linux", windows)),
-    allow(dead_code)
-)]
-fn hardware_bitrate(t: &Target) -> u64 {
-    let bpp = match t.codec() {
-        Some(VideoCodec::Hevc) => 0.08,
-        _ => 0.12,
-    };
-    let scale = match t.quality {
-        Quality::Draft => 0.4,
-        Quality::Standard => 1.0,
-        Quality::High => 1.6,
-        Quality::Master => 2.5,
-    };
-    (t.width as f64 * t.height as f64 * t.fps * bpp * scale) as u64
-}
-
 /// The document's sound over `from..to` seconds as a temporary 32-bit
 /// float WAV (None when it has none).
 fn audio_wav(base: &Path, doc: &Document, (from, to): (f64, f64)) -> Result<Option<PathBuf>, String> {
@@ -461,7 +440,7 @@ fn export_ffmpeg(
         .arg("-version")
         .output()
         .map_err(|e| format!("ffmpeg is required to export {}: {e}", t.codec_name()))?;
-    let encoder = ffmpeg::video_encoder(v.codec, &ffmpeg::encoder_opens);
+    let encoder = ffmpeg::video_encoder(v.codec, &|e| ffmpeg::encoder_opens_at(e, t.width, t.height));
     let out = if t.container.is_sequence() {
         let pattern = crate::output::sequence_pattern(path, t.container);
         if let Some(dir) = Path::new(&pattern).parent().filter(|d| !d.as_os_str().is_empty()) {
@@ -604,7 +583,7 @@ mod metal {
         };
         let bitrate = match v.rate {
             Some(Rate::Bitrate(b)) => b,
-            _ => hardware_bitrate(&t),
+            _ => ffmpeg::hardware_bitrate(&t),
         };
         let total = clock.total;
         let prev_mode = renderer.mode();
@@ -800,8 +779,8 @@ mod nvenc {
         let codec = t.codec().unwrap_or(VideoCodec::H264);
         let (bitrate, quality) = match t.video.and_then(|v| v.rate) {
             Some(Rate::Bitrate(b)) => (b, None),
-            Some(Rate::Crf(c)) => (hardware_bitrate(t), Some(ffmpeg::nvenc_cq(codec, c))),
-            None => (hardware_bitrate(t), None),
+            Some(Rate::Crf(c)) => (ffmpeg::hardware_bitrate(t), Some(ffmpeg::nvenc_cq(codec, c))),
+            None => (ffmpeg::hardware_bitrate(t), None),
         };
         EncodeRate {
             bitrate,
