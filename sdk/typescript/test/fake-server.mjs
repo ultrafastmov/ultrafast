@@ -28,7 +28,7 @@ const REF = /^(asset|https?|gs|s3|r2):\/\/|^data:/;
 const sha256 = (b) => createHash("sha256").update(b).digest("hex");
 const error = (status, code, message, extra = {}) => ({ error: { status, code, message, retry: status === 429 || status === 503 || status === 500, ...extra } });
 
-export async function startFakeServer({ keys = ["test-key"], secret = "whsec_test_secret" } = {}) {
+export async function startFakeServer({ keys = ["example-key"], secret = "whsec_example" } = {}) {
   const state = {
     requests: [], // { method, path, headers, body }
     uploads: new Map(), // id -> { bytes, filename, content_type }

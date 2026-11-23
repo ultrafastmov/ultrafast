@@ -4,7 +4,7 @@ import unittest
 
 from ultrafastmov import WebhookVerificationError, webhooks
 
-SECRET = "whsec_6c1f00"
+SECRET = "whsec_example"
 
 
 def delivery(sent_at):

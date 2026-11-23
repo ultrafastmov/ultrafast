@@ -64,7 +64,7 @@ before(async () => {
 after(() => server.close());
 
 test("the site's TypeScript sample works as written", async () => {
-  process.env.ULTRAFAST_API_KEY = "test-key";
+  process.env.ULTRAFAST_API_KEY = "example-key";
   process.env.ULTRAFAST_BASE_URL = server.url;
   try {
     const uf = new Ultrafast(); // ULTRAFAST_API_KEY
@@ -88,7 +88,7 @@ test("the site's TypeScript sample works as written", async () => {
 });
 
 test("local files are uploaded once and rewritten in a copy", async () => {
-  const uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  const uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url });
   const doc = await uf.load(join(dir, "film.json"));
   const before = JSON.stringify(doc);
   const uploadsBefore = server.requestsTo("POST", "/v1/uploads").length;
@@ -138,7 +138,7 @@ test("local files are uploaded once and rewritten in a copy", async () => {
 });
 
 test("a missing file is a LocalFileError before anything is sent", async () => {
-  const uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  const uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url });
   const doc = { ...film(), nodes: { clip: { op: "video", params: { src: "nope.mp4" } } }, output: "clip" };
   delete doc.components;
   delete doc.meta;
@@ -153,7 +153,7 @@ test("a missing file is a LocalFileError before anything is sent", async () => {
 });
 
 test("a spread copy of a loaded document keeps its directory", async () => {
-  const uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  const uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url });
   const doc = await uf.load(join(dir, "film.json"));
   const edited = { ...doc, format: { ...doc.format, duration: 4 } };
   const sent = await uf.prepare(edited);
@@ -163,7 +163,7 @@ test("a spread copy of a loaded document keeps its directory", async () => {
 });
 
 test("documents passed as objects resolve against the working directory", async () => {
-  const uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  const uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url });
   const cwd = process.cwd();
   process.chdir(dir);
   try {
@@ -184,7 +184,7 @@ test("findLocalFiles lists what would upload", () => {
 });
 
 test("new() and templates()", async () => {
-  const uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  const uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url });
   assert.deepEqual(await uf.templates(), ["vertical", "title", "square", "promo", "explainer", "product"]);
   const doc = await uf.new("vertical");
   assert.equal(doc.format.height, 1920);

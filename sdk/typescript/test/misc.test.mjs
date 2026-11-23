@@ -16,7 +16,7 @@ let server;
 let uf;
 before(async () => {
   server = await startFakeServer();
-  uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url });
 });
 after(() => server.close());
 
@@ -109,7 +109,7 @@ test("schema exports", () => {
 test("the CommonJS build works the same", async () => {
   const require = createRequire(import.meta.url);
   const cjs = require("../dist/cjs/index.js");
-  const c = new cjs.Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  const c = new cjs.Ultrafast({ apiKey: "example-key", baseUrl: server.url });
   assert.equal(String(await c.estimate(doc)), "8 s of 1080p, 2.1 GPU seconds");
   await assert.rejects(c.new("nope"), (e) => e instanceof cjs.NotFoundError);
   const sig = "sha256=" + (await import("node:crypto")).createHmac("sha256", "s").update("{}").digest("hex");

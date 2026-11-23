@@ -189,7 +189,7 @@ class LiveTest(unittest.TestCase):
 
     def test_06_errors(self):
         with self.assertRaises(ultrafastmov.Unauthorized):
-            Ultrafast(api_key="uf_wrong").me()
+            Ultrafast(api_key="example-wrong-key").me()
         bad = tiny()
         bad["nodes"]["comp"]["inputs"]["fg"] = "missing"
         with self.assertRaises(ultrafastmov.InvalidDocument) as cm:

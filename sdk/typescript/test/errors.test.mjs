@@ -34,7 +34,7 @@ let server;
 let uf;
 before(async () => {
   server = await startFakeServer();
-  uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url, maxRetries: 0 });
+  uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url, maxRetries: 0 });
 });
 after(() => server.close());
 
@@ -95,7 +95,7 @@ test("non-API error bodies become http_error", async () => {
 });
 
 test("429 and 503 with retry: true are retried, honoring Retry-After", async () => {
-  const r = new Ultrafast({ apiKey: "test-key", baseUrl: server.url, maxRetries: 2 });
+  const r = new Ultrafast({ apiKey: "example-key", baseUrl: server.url, maxRetries: 2 });
   const before = server.requestsTo("POST", "/v1/render").length;
   server.fail("POST", "/v1/render", { status: 429, body: fixture("errors/429-busy.json"), headers: { "retry-after": "0" } });
   server.fail("POST", "/v1/render", { status: 503, body: fixture("errors/503-unavailable.json"), headers: { "retry-after": "0" } });
@@ -107,13 +107,13 @@ test("429 and 503 with retry: true are retried, honoring Retry-After", async () 
 });
 
 test("retries stop at maxRetries and surface the last error", async () => {
-  const r = new Ultrafast({ apiKey: "test-key", baseUrl: server.url, maxRetries: 1 });
+  const r = new Ultrafast({ apiKey: "example-key", baseUrl: server.url, maxRetries: 1 });
   for (let i = 0; i < 2; i++) server.fail("POST", "/v1/sheet", { status: 429, body: fixture("errors/429-busy.json"), headers: { "retry-after": "0" } });
   await assert.rejects(r.sheet(doc), { name: "BusyError", retry: true });
 });
 
 test("non-retryable errors are not retried", async () => {
-  const r = new Ultrafast({ apiKey: "test-key", baseUrl: server.url, maxRetries: 3 });
+  const r = new Ultrafast({ apiKey: "example-key", baseUrl: server.url, maxRetries: 3 });
   const before = server.requestsTo("POST", "/v1/render").length;
   server.fail("POST", "/v1/render", { status: 500, body: fixture("errors/500-render-failed.json") });
   await assert.rejects(r.render(doc), { name: "RenderFailedError" });
@@ -121,7 +121,7 @@ test("non-retryable errors are not retried", async () => {
 });
 
 test("idempotent calls retry dropped connections", async () => {
-  const r = new Ultrafast({ apiKey: "test-key", baseUrl: server.url, maxRetries: 1 });
+  const r = new Ultrafast({ apiKey: "example-key", baseUrl: server.url, maxRetries: 1 });
   server.fail("POST", "/v1/frame", { drop: true });
   const img = await r.frame(doc, { at: 0.5, format: "jpeg" });
   assert.equal(img.contentType, "image/jpeg");

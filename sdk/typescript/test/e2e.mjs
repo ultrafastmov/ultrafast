@@ -202,7 +202,7 @@ test("jobs: webhook, wait, verify, cancel, failure", { skip }, async () => {
 });
 
 test("errors from the real server", { skip }, async () => {
-  const wrong = new Ultrafast({ apiKey: "not-a-key" });
+  const wrong = new Ultrafast({ apiKey: "example-wrong-key" });
   await assert.rejects(wrong.me(), (e) => e instanceof sdk.UnauthorizedError && e.status === 401);
   await assert.rejects(uf.jobs.get("job_does_not_exist"), (e) =>
     cloud ? e instanceof sdk.NotFoundError && e.code === "not_found" : e instanceof sdk.CloudOnlyError);

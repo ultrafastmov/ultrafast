@@ -78,7 +78,7 @@ class FakeJob:
 
 
 class FakeServer:
-    def __init__(self, key: str = "uf_test_key", secret: str = "whsec_test_secret", usd_per_minute: Optional[float] = 0.02) -> None:
+    def __init__(self, key: str = "example-key", secret: str = "whsec_example", usd_per_minute: Optional[float] = 0.02) -> None:
         self.key = key
         self.secret = secret
         self.usd_per_minute = usd_per_minute

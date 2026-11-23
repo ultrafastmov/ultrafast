@@ -28,7 +28,7 @@ let out;
 before(async () => {
   server = await startFakeServer();
   receiver = await startReceiver();
-  uf = new Ultrafast({ apiKey: "test-key", baseUrl: server.url });
+  uf = new Ultrafast({ apiKey: "example-key", baseUrl: server.url });
   out = await mkdtemp(join(tmpdir(), "ultrafastmov-out-"));
 });
 after(async () => {
@@ -56,7 +56,7 @@ test("render() stores the video and save() streams it to disk", async () => {
   assert.equal(createHash("sha256").update(bytes).digest("hex"), r.sha256);
   assert.deepEqual(new Uint8Array(await r.arrayBuffer()), new Uint8Array(bytes));
   const dl = server.requestsTo("GET", server.state.requests.at(-1).path).at(-1);
-  assert.equal(dl.headers.authorization, "Bearer test-key", "same-origin downloads carry the key");
+  assert.equal(dl.headers.authorization, "Bearer example-key", "same-origin downloads carry the key");
 });
 
 test("save() refuses a download that does not match the receipt", async () => {
