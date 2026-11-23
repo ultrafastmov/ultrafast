@@ -10,6 +10,7 @@
 <a href="#license"><img src="https://img.shields.io/badge/licence-Apache--2.0%20or%20MIT-ffe800?style=flat-square&labelColor=1d1b19" alt="Apache-2.0 or MIT"></a>
 <a href="docs/MCP.md"><img src="https://img.shields.io/badge/MCP-20%20tools-ff48b0?style=flat-square&labelColor=1d1b19" alt="MCP: 20 tools"></a>
 <a href="https://www.opensourcealternatives.to"><img src="https://www.opensourcealternatives.to/badge-osa.svg" height="20" alt="As seen on Open Source Alternatives"></a>
+<a href="https://alternativeto.net/software/ultrafast/about/?utm_source=badge&utm_medium=referral"><img src="https://alternativeto.net/static/badges/badge-wide-dark.svg" height="20" alt="You can find us on AlternativeTo"></a>
 </p>
 
 <p align="center">
