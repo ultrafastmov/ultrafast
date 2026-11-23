@@ -497,16 +497,22 @@ fn export_ffmpeg(
     let start = Instant::now();
     let mut stdin = child.stdin.take().unwrap();
     let mut timing = ExportTiming::default();
-    let result = (|| -> Result<(), String> {
+    // Why the frames stopped: ours (a frame that didn't render, the
+    // deadline), or ffmpeg's (it stopped reading them).
+    enum Stop {
+        Ours(String),
+        Pipe(String),
+    }
+    let result = (|| -> Result<(), Stop> {
         for i in 0..clock.total {
-            opts.check_deadline()?;
+            opts.check_deadline().map_err(Stop::Ours)?;
             let c0 = Instant::now();
             let (px, _) = renderer
                 .render_readback(doc, clock.time(i), readback, !v.alpha)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| Stop::Ours(e.to_string()))?;
             timing.render_cpu += c0.elapsed().as_secs_f64();
             let e0 = Instant::now();
-            stdin.write_all(&px).map_err(|e| e.to_string())?;
+            stdin.write_all(&px).map_err(|e| Stop::Pipe(e.to_string()))?;
             timing.encode += e0.elapsed().as_secs_f64();
             progress(i + 1, clock.total);
         }
@@ -519,10 +525,12 @@ fn export_ffmpeg(
     if let Some(wav) = &wav {
         let _ = std::fs::remove_file(wav);
     }
-    // A dead ffmpeg shows up first as a broken pipe: name ffmpeg instead.
     match (result, status.success()) {
-        (Err(e), true) => return Err(e),
-        (Err(e), false) => return Err(format!("ffmpeg ({encoder}) failed ({status}): {e}")),
+        // ffmpeg then fails too, on the frames it never got: not its fault.
+        (Err(Stop::Ours(e)), _) => return Err(e),
+        (Err(Stop::Pipe(e)), true) => return Err(e),
+        // A dead ffmpeg shows up first as a broken pipe: name ffmpeg instead.
+        (Err(Stop::Pipe(e)), false) => return Err(format!("ffmpeg ({encoder}) failed ({status}): {e}")),
         (Ok(()), false) => return Err(format!("ffmpeg ({encoder}) failed ({status})")),
         (Ok(()), true) => {}
     }
