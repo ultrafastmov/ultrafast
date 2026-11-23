@@ -405,24 +405,17 @@ pub fn pack(
             p.vec(out, "rect", &[0.0, 0.0, w, h]);
             p.vec(out, "softness", &[1.0]);
         }
-        "transform" => {
-            let pos = p.vecn("position", &center);
-            let anchor = p.vecn("anchor", &center);
-            let scale = p.vecn("scale", &[1.0, 1.0]);
-            let rot = p.num("rotation", 0.0).to_radians();
-            let skew = p.num("skew", 0.0).to_radians();
-            // Forward: p' = T(pos) * R * K(skew) * S * T(-anchor) * p. Pack the inverse.
-            let m = Affine::translate(pos[0], pos[1])
-                .mul(Affine::rotate(rot))
-                .mul(Affine::skew_x(skew))
-                .mul(Affine::scale(scale[0], scale[1]))
-                .mul(Affine::translate(-anchor[0], -anchor[1]));
-            let inv = m
-                .inverse()
-                .ok_or_else(|| bad(id, "scale", "transform is not invertible (zero scale)".into()))?;
-            out.extend(inv.0.iter().map(|x| *x as f32));
-            out.push(inv.det().abs().sqrt() as f32);
-        }
+        "transform" => match transform_affine(node, fmt, t).inverse() {
+            // Pack the inverse, and its footprint scale.
+            Some(inv) => {
+                out.extend(inv.0.iter().map(|x| *x as f32));
+                out.push(inv.det().abs().sqrt() as f32);
+            }
+            // At zero scale the layer has no area, so it shows nothing (a
+            // layer that grows from 0 starts unseen): every point maps far
+            // outside it, as a corner pin's points behind its projection do.
+            None => out.extend([0.0, 0.0, 0.0, 0.0, -1e9, -1e9, 1.0]),
+        },
         "corner_pin" => {
             let c = p.vecn("corners", &[0.0, 0.0, w, 0.0, w, h, 0.0, h]);
             let src = p.vecn("source_rect", &[0.0, 0.0, w, h]);
@@ -433,9 +426,6 @@ pub fn pack(
                 [src[0], src[1] + src[3]],
             ];
             let to = [[c[0], c[1]], [c[2], c[3]], [c[4], c[5]], [c[6], c[7]]];
-            // Homography dest -> source, so the shader maps output to input.
-            let hm = homography(&to, &from).ok_or_else(|| bad(id, "corners", "corners are degenerate".into()))?;
-            out.extend(hm.iter().map(|x| *x as f32));
             let area = |q: &[[f64; 2]; 4]| {
                 let mut a = 0.0;
                 for i in 0..4 {
@@ -444,7 +434,20 @@ pub fn pack(
                 }
                 (a / 2.0).abs()
             };
-            out.push((area(&from) / area(&to).max(1e-6)).sqrt() as f32);
+            // Homography dest -> source, so the shader maps output to input.
+            match homography(&to, &from) {
+                Some(hm) => {
+                    out.extend(hm.iter().map(|x| *x as f32));
+                    out.push((area(&from) / area(&to).max(1e-6)).sqrt() as f32);
+                }
+                // Corners on one point or one line: no area, so nothing
+                // shows (a pin that unfolds from a point starts unseen). An
+                // all-zero homography maps every point behind it.
+                None => {
+                    out.extend([0.0; 9]);
+                    out.push(1.0);
+                }
+            }
         }
         "wave" => {
             out.push(p.num("amplitude", 10.0) as f32);
@@ -664,10 +667,14 @@ pub fn bounds(def: &OpDef, node: &Node, fmt: &Format, t: f64, inputs: &[Rect], r
         "over" | "blend" | "mix" => union(input(0), input(1)),
         "transform" => {
             let b = input(0);
+            let m = transform_affine(node, fmt, t);
+            // At zero scale nothing shows (see `pack`), whatever the input.
+            if m.inverse().is_none() {
+                return EMPTY;
+            }
             if b[0] <= -1e8 || b[0] > b[2] {
                 return b;
             }
-            let m = transform_affine(node, fmt, t);
             let pts = [(b[0], b[1]), (b[2], b[1]), (b[0], b[3]), (b[2], b[3])].map(|(x, y)| m.apply(x, y));
             let xs = pts.map(|p| p.0);
             let ys = pts.map(|p| p.1);
@@ -1074,5 +1081,51 @@ mod tests {
         let (x, y) = m.apply(3.0, -4.0);
         let (bx, by) = m.inverse().unwrap().apply(x, y);
         assert!((bx - 3.0).abs() < 1e-9 && (by + 4.0).abs() < 1e-9);
+    }
+
+    /// A layer that grows from zero scale (or a pin that unfolds from a
+    /// point) shows nothing at that moment instead of failing the render:
+    /// every point maps far outside it, and it has no bounds.
+    #[test]
+    fn zero_scale_shows_nothing() {
+        let fmt = Format {
+            width: 64,
+            height: 32,
+            fps: 30.0,
+            duration: 1.0,
+            motion_blur: None,
+        };
+        let grows: Node = serde_json::from_str(
+            r#"{"op":"transform","params":{"scale":{"keys":[{"t":0,"v":[0,0]},{"t":1,"v":[1,1]}]}}}"#,
+        )
+        .unwrap();
+        let unfolds: Node = serde_json::from_str(
+            r#"{"op":"corner_pin","params":{"corners":{"keys":[{"t":0,"v":[9,9,9,9,9,9,9,9]},{"t":1,"v":[0,0,64,0,64,32,0,32]}]}}}"#,
+        )
+        .unwrap();
+        let shape = [10.0, 10.0, 20.0, 20.0];
+        for node in [&grows, &unfolds] {
+            let def = resolve("n", node).unwrap();
+            let mut out = Vec::new();
+            pack(def, "n", node, &fmt, 0.0, None, &mut out).unwrap();
+            assert_eq!(out.len(), def.params, "{}", def.func);
+            assert!(out.iter().all(|x| x.is_finite()), "{}: {out:?}", def.func);
+            // Grown halfway it is drawn as usual.
+            out.clear();
+            pack(def, "n", node, &fmt, 0.5, None, &mut out).unwrap();
+            assert!(out.iter().any(|x| *x != 0.0), "{}: {out:?}", def.func);
+        }
+        let mut out = Vec::new();
+        pack(resolve("n", &grows).unwrap(), "n", &grows, &fmt, 0.0, None, &mut out).unwrap();
+        let (x, y) = (
+            out[0] * 20.0 + out[2] * 7.0 + out[4],
+            out[1] * 20.0 + out[3] * 7.0 + out[5],
+        );
+        assert!(x < -1e8 && y < -1e8, "({x}, {y})");
+        let def = resolve("n", &grows).unwrap();
+        assert_eq!(bounds(def, &grows, &fmt, 0.0, &[shape], None), EMPTY);
+        assert_eq!(bounds(def, &grows, &fmt, 0.0, &[UNBOUNDED], None), EMPTY);
+        let half = bounds(def, &grows, &fmt, 0.5, &[shape], None);
+        assert!(half[0] < half[2] && half[1] < half[3], "{half:?}");
     }
 }
