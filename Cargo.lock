@@ -2876,6 +2876,7 @@ dependencies = [
  "anyhow",
  "image",
  "png",
+ "serde",
  "serde_json",
  "tiny_http",
  "ultrafast-gpu",

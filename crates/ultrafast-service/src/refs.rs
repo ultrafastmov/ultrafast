@@ -412,6 +412,191 @@ pub fn is_family_name(s: &str) -> bool {
             .any(|e| lower.ends_with(e))
 }
 
+/// What a file slot takes besides a path: a font slot also takes a family
+/// name, a `faces` slot the face track inline.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SlotKind {
+    font: bool,
+    faces: bool,
+}
+
+impl SlotKind {
+    fn of(param: &str) -> Self {
+        SlotKind {
+            font: is_font_param(param),
+            faces: param == "faces",
+        }
+    }
+
+    fn or(self, o: SlotKind) -> Self {
+        SlotKind {
+            font: self.font || o.font,
+            faces: self.faces || o.faces,
+        }
+    }
+
+    /// Whether `s` in this slot is a path rather than a name or data.
+    fn is_path(self, s: &str) -> bool {
+        !(s.is_empty()
+            || (self.font && is_family_name(s))
+            || (self.faces && ultrafast_framing::follow::faces_inline(s)))
+    }
+}
+
+/// For each component, its exposed params that reach a file slot: inside
+/// it, a file param written as `"$name"`, or a param of an inner instance
+/// that reaches one in turn.
+fn component_file_params(
+    components: &std::collections::BTreeMap<String, ultrafast_graph::Component>,
+) -> std::collections::HashMap<String, std::collections::BTreeMap<String, SlotKind>> {
+    let mut out: std::collections::HashMap<String, std::collections::BTreeMap<String, SlotKind>> = Default::default();
+    // Bindings pass through nested components: repeat until nothing is new.
+    loop {
+        let mut changed = false;
+        for (name, c) in components {
+            for node in c.nodes.values() {
+                for (k, v) in &node.params {
+                    let ultrafast_graph::Param::Text(s) = v else { continue };
+                    let Some(exposed) = s.strip_prefix('$') else { continue };
+                    let kind = if FILE_PARAMS.contains(&(node.op.as_str(), k.as_str())) {
+                        SlotKind::of(k)
+                    } else if let Some(kind) = out.get(&node.op).and_then(|m| m.get(k)) {
+                        *kind
+                    } else {
+                        continue;
+                    };
+                    let slots = out.entry(name.clone()).or_default();
+                    let before = slots.get(exposed).copied();
+                    let after = before.map_or(kind, |b| b.or(kind));
+                    if before != Some(after) {
+                        slots.insert(exposed.to_string(), after);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if !changed {
+            return out;
+        }
+    }
+}
+
+/// Rewrites a document's relative file paths, which resolve under `from`
+/// (the folder it was read from), to name the same files from `to` (the
+/// folder it will be written to): the file params of built-in ops
+/// ([`FILE_PARAMS`]), the params of a component instance that reach one
+/// (and the component's defaults for them), and audio driver sources.
+/// URLs, references, `data:` URIs, absolute paths, font family names and
+/// inline face tracks stay as they are.
+pub fn rebase_paths(doc: &mut ultrafast_graph::Document, from: &std::path::Path, to: &std::path::Path) {
+    use ultrafast_graph::{Node, Param};
+    let reach = component_file_params(&doc.components);
+    let rebase = |s: &mut String, kind: SlotKind| {
+        if kind.is_path(s)
+            && let Some(r) = rebase_path(s, from, to)
+        {
+            *s = r;
+        }
+    };
+    let nodes = |nodes: &mut std::collections::BTreeMap<String, Node>, in_component: bool| {
+        for node in nodes.values_mut() {
+            for (k, v) in node.params.iter_mut() {
+                match v {
+                    // Inside a component, `"$name"` is the instance's value.
+                    Param::Text(s)
+                    | Param::Audio {
+                        audio: ultrafast_graph::driver::AudioDriver { src: s, .. },
+                    } if in_component && s.starts_with('$') => {}
+                    Param::Audio { audio } => rebase(&mut audio.src, SlotKind::default()),
+                    Param::Text(s) => {
+                        let kind = if FILE_PARAMS.contains(&(node.op.as_str(), k.as_str())) {
+                            Some(SlotKind::of(k))
+                        } else {
+                            reach.get(&node.op).and_then(|m| m.get(k)).copied()
+                        };
+                        if let Some(kind) = kind {
+                            rebase(s, kind);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    };
+    nodes(&mut doc.nodes, false);
+    for (name, c) in doc.components.iter_mut() {
+        nodes(&mut c.nodes, true);
+        for (k, v) in c.params.iter_mut() {
+            match v {
+                Param::Audio { audio } => rebase(&mut audio.src, SlotKind::default()),
+                Param::Text(s) => {
+                    if let Some(kind) = reach.get(name).and_then(|m| m.get(k)) {
+                        rebase(s, *kind);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// `path` (relative to the folder `from`) relative to the folder `to`
+/// instead, with `/` between parts; `None` for what isn't a relative path
+/// (a URL or reference, a `data:` URI, an absolute path). Where the two
+/// folders share no root (Windows drives), the path becomes absolute.
+pub fn rebase_path(path: &str, from: &std::path::Path, to: &std::path::Path) -> Option<String> {
+    use std::path::{Component, Path, PathBuf};
+    if path.is_empty() || path.contains("://") || path.starts_with("data:") || Path::new(path).is_absolute() {
+        return None;
+    }
+    // A folder as the OS reaches it (symlinks resolved) when it exists.
+    let folder = |p: &Path| {
+        let p = if p.as_os_str().is_empty() { Path::new(".") } else { p };
+        std::fs::canonicalize(p)
+            .or_else(|_| std::path::absolute(p))
+            .unwrap_or_else(|_| p.to_path_buf())
+    };
+    // `.` and `..` folded away by name, as the path reads.
+    let normal = |p: &Path| {
+        let mut out = PathBuf::new();
+        for c in p.components() {
+            match c {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    if !out.pop() {
+                        out.push("..");
+                    }
+                }
+                c => out.push(c),
+            }
+        }
+        out
+    };
+    let target = normal(&folder(from).join(path));
+    let to = normal(&folder(to));
+    let (t, b): (Vec<Component>, Vec<Component>) = (target.components().collect(), to.components().collect());
+    let rel = if t.first() == b.first() {
+        let common = t.iter().zip(&b).take_while(|(x, y)| x == y).count();
+        let mut rel = PathBuf::new();
+        for _ in common..b.len() {
+            rel.push("..");
+        }
+        rel.extend(&t[common..]);
+        rel
+    } else {
+        target
+    };
+    let parts: Vec<String> = rel
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    Some(if rel.is_absolute() {
+        rel.to_string_lossy().into_owned()
+    } else {
+        parts.join("/")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -492,5 +677,107 @@ mod tests {
         rewrite(&mut doc, &map);
         assert_eq!(doc["nodes"]["v"]["params"]["src"], "/x/v.mp4");
         assert!(is_family_name("Inter") && !is_family_name("fonts/Inter.ttf") && !is_family_name("Inter.TTF"));
+    }
+    #[test]
+    fn rebases_relative_paths() {
+        use std::path::Path;
+        let (proj, docs) = (Path::new("no-such/proj"), Path::new("no-such/proj/docs"));
+        assert_eq!(rebase_path("a.jpg", proj, docs).as_deref(), Some("../a.jpg"));
+        assert_eq!(
+            rebase_path("./media/b.mp4", proj, docs).as_deref(),
+            Some("../media/b.mp4")
+        );
+        assert_eq!(
+            rebase_path("../shared/c.png", proj, docs).as_deref(),
+            Some("../../shared/c.png")
+        );
+        assert_eq!(rebase_path("a.jpg", proj, proj).as_deref(), Some("a.jpg"));
+        assert_eq!(
+            rebase_path("a.jpg", proj, Path::new("no-such/out/rows")).as_deref(),
+            Some("../../proj/a.jpg")
+        );
+        assert_eq!(
+            rebase_path("seq/{frame:05}.png", docs, proj).as_deref(),
+            Some("docs/seq/{frame:05}.png")
+        );
+        for kept in [
+            "",
+            "https://x.com/a.png",
+            "asset://AAAAAAAAAAAAAAAAAAAAAA",
+            "gs://b/a.png#1",
+            "data:image/png;base64,AA==",
+            "/abs/a.png",
+        ] {
+            assert_eq!(rebase_path(kept, proj, docs), None, "{kept}");
+        }
+    }
+
+    #[test]
+    fn rebases_a_documents_file_slots() {
+        use std::path::Path;
+        let mut doc = ultrafast_graph::Document::from_json(
+            &serde_json::json!({
+                "version": 1,
+                "format": {"width": 640, "height": 360, "fps": 30, "duration": 2},
+                "output": "top",
+                "nodes": {
+                    "bg": {"op": "image", "params": {"src": "bg.jpg"}},
+                    "web": {"op": "image", "params": {"src": "https://x.com/a.png"}},
+                    "t": {"op": "text", "params": {"text": "notes.txt", "font": "Inter",
+                                                     "size": {"audio": {"src": "music.wav"}}}},
+                    "t2": {"op": "text", "params": {"text": "Hi", "font": "fonts/Brand.ttf"}},
+                    "cam": {"op": "clip_camera", "params": {"src": "clip.mp4", "faces": "{\"tracks\": []}"}},
+                    "cam2": {"op": "clip_camera", "params": {"src": "clip.mp4", "faces": "faces.json"}},
+                    "ana": {"op": "card", "params": {"photo": "people/ana.jpg", "title": "Ana", "face": "Inter"}},
+                    "top": {"op": "frame", "params": {"pic": "p.jpg", "caption": "p.jpg"}}
+                },
+                "components": {
+                    "card": {
+                        "nodes": {
+                            "img": {"op": "image", "params": {"src": "$photo"}},
+                            "logo": {"op": "image", "params": {"src": "logo.png"}},
+                            "name": {"op": "text", "params": {"text": "$title", "font": "$face"}}
+                        },
+                        "params": {"photo": "default.jpg", "title": "Someone", "face": "Inter"},
+                        "output": "img"
+                    },
+                    "frame": {
+                        "nodes": {
+                            "c": {"op": "card", "params": {"photo": "$pic", "title": "$caption"}}
+                        },
+                        "params": {"pic": "", "caption": ""},
+                        "output": "c"
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        rebase_paths(&mut doc, Path::new("no-such/proj"), Path::new("no-such/proj/docs"));
+        let v: Value = serde_json::from_str(&doc.to_json()).unwrap();
+        let p = |node: &str, param: &str| v["nodes"][node]["params"][param].clone();
+        assert_eq!(p("bg", "src"), "../bg.jpg");
+        assert_eq!(p("web", "src"), "https://x.com/a.png");
+        // Words and family names are not paths; an audio driver's source is.
+        assert_eq!(p("t", "text"), "notes.txt");
+        assert_eq!(p("t", "font"), "Inter");
+        assert_eq!(p("t", "size")["audio"]["src"], "../music.wav");
+        assert_eq!(p("t2", "font"), "../fonts/Brand.ttf");
+        assert_eq!(p("cam", "src"), "../clip.mp4");
+        assert_eq!(p("cam", "faces"), "{\"tracks\": []}");
+        assert_eq!(p("cam2", "faces"), "../faces.json");
+        // A component's params that reach a file, at any depth, and their
+        // defaults; its own files; never its `$` bindings or its words.
+        assert_eq!(p("ana", "photo"), "../people/ana.jpg");
+        assert_eq!(p("ana", "title"), "Ana");
+        assert_eq!(p("ana", "face"), "Inter");
+        assert_eq!(p("top", "pic"), "../p.jpg");
+        assert_eq!(p("top", "caption"), "p.jpg");
+        let card = &v["components"]["card"];
+        assert_eq!(card["nodes"]["img"]["params"]["src"], "$photo");
+        assert_eq!(card["nodes"]["logo"]["params"]["src"], "../logo.png");
+        assert_eq!(card["params"]["photo"], "../default.jpg");
+        assert_eq!(card["params"]["title"], "Someone");
+        assert_eq!(v["components"]["frame"]["params"]["pic"], "");
     }
 }

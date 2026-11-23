@@ -91,7 +91,8 @@ usage:
                                              one document, a video per row: columns named node.param
                                              (or format.width...) set that param, other columns fill
                                              {column} in --out ({row}: the row number); --docs writes
-                                             each row's document instead of rendering
+                                             each row's document to DIR instead of rendering, its
+                                             relative file paths rewritten to resolve from there
   ultrafast batch                                exports `<doc.json> <out.mp4>` per stdin line with one
                                              warm renderer (a preview service's loop)
   ultrafast warm   <doc.json>... [--step S]      compile and cache every kernel and pipeline the documents
@@ -739,16 +740,46 @@ fn main() -> Result<()> {
                 jobs.push((d, out));
             }
             if let Some(dir) = flag("--docs") {
-                // Write each row's document instead of rendering.
+                // Write each row's document instead of rendering, as the
+                // render would read it: relative paths rewritten to resolve
+                // from DIR, and the template's `meta` (font pins, script
+                // fonts), which a Document doesn't hold, carried along.
                 let dir = PathBuf::from(dir);
                 std::fs::create_dir_all(&dir)?;
+                let from = path.parent().unwrap_or(Path::new(""));
+                let mut extra = serde_json::Map::new();
+                if let Ok(serde_json::Value::Object(top)) = serde_json::from_str(&std::fs::read_to_string(&path)?) {
+                    extra.extend(top.into_iter().filter(|(k, _)| {
+                        !["version", "format", "output", "nodes", "components"].contains(&k.as_str())
+                    }));
+                }
+                let fonts = extra
+                    .get_mut("meta")
+                    .and_then(|m| m.get_mut("fonts"))
+                    .and_then(|f| f.as_array_mut());
+                for font in fonts.into_iter().flatten() {
+                    if let Some(serde_json::Value::String(src)) = font.get_mut("src")
+                        && let Some(r) = ultrafast_service::refs::rebase_path(src, from, &dir)
+                    {
+                        *src = r;
+                    }
+                }
+                #[derive(serde::Serialize)]
+                struct Written<'a> {
+                    #[serde(flatten)]
+                    doc: &'a Document,
+                    #[serde(flatten)]
+                    extra: &'a serde_json::Map<String, serde_json::Value>,
+                }
                 for (d, out) in &jobs {
                     let name = out
                         .file_stem()
                         .map(|s| s.to_string_lossy().into_owned())
                         .unwrap_or_default();
+                    let mut d = d.clone();
+                    ultrafast_service::refs::rebase_paths(&mut d, from, &dir);
                     let p = dir.join(format!("{name}.json"));
-                    std::fs::write(&p, d.to_json())?;
+                    std::fs::write(&p, serde_json::to_string_pretty(&Written { doc: &d, extra: &extra })?)?;
                     println!("{}", p.display());
                 }
                 return Ok(());
