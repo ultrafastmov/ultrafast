@@ -50,7 +50,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: v
         run: |
           v=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
@@ -65,9 +65,11 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-linux
       - name: cargo-zigbuild
@@ -97,7 +99,7 @@ jobs:
         run: |
           docker run --rm -v "$RUNNER_TEMP/x:/x:ro" rockylinux/rockylinux:8 sh -c '
             cd /tmp && /x/ultrafast-*/uf --version && /x/ultrafast-*/uf new title t.json && /x/ultrafast-*/ultrafast ops >/dev/null'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-x86_64-unknown-linux-gnu
           path: dist/
@@ -107,9 +109,11 @@ jobs:
     needs: version
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-macos
       - run: cargo build --release --locked -p ultrafast
@@ -122,7 +126,7 @@ jobs:
           # Hosted runners are VMs; render only where Metal has a device.
           if "$uf" info; then ULTRAFAST_SLANG_FETCH=0 packaging/smoke.sh "$uf"
           else echo "::warning::no Metal device on this runner; rendering not tested"; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-aarch64-apple-darwin
           path: dist/
@@ -138,11 +142,11 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: dist-*
           path: dist
@@ -171,7 +175,7 @@ jobs:
           cat mcpb/server.json
           packaging/mcpb/get-mcp-publisher.sh "$RUNNER_TEMP/bin"
           "$RUNNER_TEMP/bin/mcp-publisher" validate mcpb/server.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mcpb
           path: mcpb/
@@ -189,8 +193,8 @@ jobs:
     env:
       HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: dist-*
           path: dist
@@ -216,8 +220,8 @@ jobs:
       IMAGE: ghcr.io/ultrafastmov/ultrafast
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: dist-x86_64-unknown-linux-gnu
           path: dist
@@ -226,9 +230,9 @@ jobs:
           mkdir -p ctx && tar -xzf "dist/ultrafast-$VERSION-x86_64-unknown-linux-gnu.tar.gz" -C ctx
           mv "ctx/ultrafast-$VERSION-x86_64-unknown-linux-gnu" ctx/ultrafast
           cp packaging/docker/Dockerfile packaging/docker/nvidia_icd.json ctx/
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ctx
           load: true
@@ -286,8 +290,10 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
       # In dependency order, skipping versions already published and waiting
       # out crates.io's new-crate rate limit. Trusted publishing: the script
       # gets a crates.io token for each crate from this job's OIDC token. A
@@ -305,12 +311,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: dist-*
           path: dist
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: mcpb
           path: dist
@@ -327,20 +333,20 @@ jobs:
     if: github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: dist-*
           path: dist
           merge-multiple: true
       - id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           owner: ultrafastmov
           repositories: homebrew-tap
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ultrafastmov/homebrew-tap
           token: ${{ steps.app.outputs.token }}
@@ -385,8 +391,8 @@ jobs:
       run:
         working-directory: sdk/python
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
       - name: Test
@@ -404,7 +410,7 @@ jobs:
           echo "version $v: PyPI answers $code"
           echo "published=$([ "$code" = 200 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - if: env.PUBLISH == 'true' && steps.out.outputs.published == 'false'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           packages-dir: sdk/python/dist
 
@@ -419,9 +425,9 @@ jobs:
       run:
         working-directory: sdk/typescript
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # Trusted publishing needs npm 11.5.1 or newer.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
