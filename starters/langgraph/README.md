@@ -5,6 +5,9 @@ graph drives ultrafast's MCP tools over Streamable HTTP: the model writes
 the document, looks at a contact sheet, runs review, fixes what it finds and
 exports; a last node downloads the video.
 
+Start `ultrafast serve` in another terminal (it prints an API key on first
+start; [docs/service/SELF_HOST.md](../../docs/service/SELF_HOST.md)), then:
+
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
@@ -35,7 +38,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 client = MultiServerMCPClient({"ultrafast": {
     "transport": "streamable_http",
-    "url": "https://mcp.ultrafast.mov",
+    "url": "http://localhost:8080/mcp",
     "headers": {"Authorization": f"Bearer {key}"},
 }})
 ```
@@ -44,8 +47,8 @@ client = MultiServerMCPClient({"ultrafast": {
 
 | Variable | Default |
 |---|---|
-| `ULTRAFAST_API_KEY` | required; sent as `Authorization: Bearer` |
-| `ULTRAFAST_MCP_URL` | `https://mcp.ultrafast.mov`; self-hosted: `http://localhost:8080/mcp` |
+| `ULTRAFAST_API_KEY` | required: the key `ultrafast serve` printed; sent as `Authorization: Bearer` |
+| `ULTRAFAST_MCP_URL` | `http://localhost:8080/mcp`, `ultrafast serve` on this machine; ultrafast Cloud's `https://mcp.ultrafast.mov` is not open yet |
 | `MODEL` | `anthropic/claude-sonnet-5-5`; any `provider/model-id` that `init_chat_model` knows, e.g. `openai/...` |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | the provider's key |
 

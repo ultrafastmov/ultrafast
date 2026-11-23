@@ -11,8 +11,16 @@ downloads the video. They use ultrafast's MCP tools over Streamable HTTP.
 | [vercel-ai-sdk](vercel-ai-sdk) | TypeScript | Vercel AI SDK |
 | [mastra](mastra) | TypeScript | Mastra |
 
-Each reads `ULTRAFAST_API_KEY` and `ULTRAFAST_MCP_URL`: ultrafast Cloud's
-`https://mcp.ultrafast.mov` by default, or your own server's
-`http://localhost:8080/mcp` (`ultrafast serve`, see
-[docs/service/SELF_HOST.md](../docs/service/SELF_HOST.md)). Every one has
-`--list-tools` to check the connection before spending model tokens.
+Each connects to `ultrafast serve` on this machine
+(`http://localhost:8080/mcp`) by default, or to the server in
+`ULTRAFAST_MCP_URL`, with `ULTRAFAST_API_KEY` as the bearer token. Start the
+server first; it prints an API key on first start
+([docs/service/SELF_HOST.md](../docs/service/SELF_HOST.md)):
+
+```bash
+ultrafast serve     # or the Docker image, with --gpus all
+```
+
+ultrafast Cloud's `https://mcp.ultrafast.mov` will work the same way once it
+opens. Every starter has `--list-tools` to check the connection before
+spending model tokens.

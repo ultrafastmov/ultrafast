@@ -5,8 +5,8 @@ import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, isStepCount, type LanguageModel } from "ai";
 
-/** The MCP endpoint: `ULTRAFAST_MCP_URL`, or ultrafast's hosted server. */
-export const mcpUrl = () => process.env.ULTRAFAST_MCP_URL ?? "https://mcp.ultrafast.mov";
+/** The MCP endpoint: `ULTRAFAST_MCP_URL`, or `ultrafast serve` on this machine. */
+export const mcpUrl = () => process.env.ULTRAFAST_MCP_URL ?? "http://localhost:8080/mcp";
 /** `MODEL` as "provider/model-id", Claude Sonnet by default. */
 export const modelId = () => process.env.MODEL ?? "anthropic/claude-sonnet-5-5";
 

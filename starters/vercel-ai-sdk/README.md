@@ -7,14 +7,13 @@ exports. The script then downloads the file.
 
 ## Setup
 
-Node 22 or later.
+Node 22 or later, and `ultrafast serve` running on this machine. It prints an
+API key on first start ([docs/service/SELF_HOST.md](../../docs/service/SELF_HOST.md)).
 
 ```bash
 npm install
 cp .env.example .env   # fill in ULTRAFAST_API_KEY and ANTHROPIC_API_KEY
 ```
-
-A `uf_test_` key renders with a watermark and is never billed.
 
 ## Run
 
@@ -31,16 +30,18 @@ video to `out/film.mp4` (or `--out`). `--max-steps` caps the model calls
 The default model is `anthropic/claude-sonnet-5-5`. For OpenAI, set
 `MODEL=openai/gpt-6.2-astra` and `OPENAI_API_KEY`.
 
-## Self-hosting
+## Another server
 
-Against your own `ultrafast serve`:
+The starter connects to `ultrafast serve` on this machine by default. For a
+server elsewhere:
 
 ```bash
-ULTRAFAST_MCP_URL=http://localhost:8080/mcp npm start -- "..."
+ULTRAFAST_MCP_URL=https://video.example.com/mcp npm start -- "..."
 ```
 
-Set `ULTRAFAST_API_KEY` to one of the server's keys. A server running without
-auth needs none.
+Set `ULTRAFAST_API_KEY` to one of that server's keys. A server running without
+auth (`ULTRAFAST_AUTH=none`) needs none. ultrafast Cloud's
+`https://mcp.ultrafast.mov` will work the same way once it opens.
 
 ## How it works
 

@@ -102,9 +102,10 @@ Cursor: `"url"` with `"headers"`. Gemini CLI: `"httpUrl"` with `"headers"`.
 Claude's and ChatGPT's connectors sign in with OAuth rather than a key, so
 they use ultrafast Cloud.
 
-ultrafast Cloud runs the same handler at `https://mcp.ultrafast.mov` and
-adds OAuth sign-in for connectors through `http::handle_with` and the
-`http::SignIn` trait (the sign-in itself is Cloud code, not in this repo).
+ultrafast Cloud (not open yet) will run the same handler at
+`https://mcp.ultrafast.mov` and add OAuth sign-in for connectors through
+`http::handle_with` and the `http::SignIn` trait (the sign-in itself is
+Cloud code, not in this repo).
 
 To try the remote tools without the full service, the crate has a small
 development server on this machine's GPU:

@@ -5,6 +5,9 @@ MCP tools over Streamable HTTP: it writes the document, looks at a contact
 sheet, runs review, fixes what it finds, exports, and this script downloads
 the video.
 
+Start `ultrafast serve` in another terminal (it prints an API key on first
+start; [docs/service/SELF_HOST.md](../../docs/service/SELF_HOST.md)), then:
+
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
@@ -26,7 +29,7 @@ from agents import Agent, Runner
 from agents.mcp import MCPServerStreamableHttp
 
 async with MCPServerStreamableHttp(params={
-    "url": "https://mcp.ultrafast.mov",
+    "url": "http://localhost:8080/mcp",
     "headers": {"Authorization": f"Bearer {key}"},
 }) as ultrafast:
     agent = Agent(
@@ -45,8 +48,8 @@ and reads the link from the `ultrafast_export` result.
 
 | Variable | Default |
 |---|---|
-| `ULTRAFAST_API_KEY` | required; sent as `Authorization: Bearer` |
-| `ULTRAFAST_MCP_URL` | `https://mcp.ultrafast.mov`; self-hosted: `http://localhost:8080/mcp` |
+| `ULTRAFAST_API_KEY` | required: the key `ultrafast serve` printed; sent as `Authorization: Bearer` |
+| `ULTRAFAST_MCP_URL` | `http://localhost:8080/mcp`, `ultrafast serve` on this machine; ultrafast Cloud's `https://mcp.ultrafast.mov` is not open yet |
 | `OPENAI_MODEL` | the Agents SDK's default model |
 | `OPENAI_API_KEY` | required by the Agents SDK |
 

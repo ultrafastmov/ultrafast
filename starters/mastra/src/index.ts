@@ -22,7 +22,7 @@ if ((!flags["list-tools"] && !brief) || !(Number.isInteger(maxSteps) && maxSteps
   process.exit(2);
 }
 if (!process.env.ULTRAFAST_API_KEY && !process.env.ULTRAFAST_MCP_URL) {
-  console.error("Set ULTRAFAST_API_KEY (see .env.example), or ULTRAFAST_MCP_URL for a self-hosted server.");
+  console.error("Set ULTRAFAST_API_KEY to the key `ultrafast serve` printed (see .env.example), or ULTRAFAST_MCP_URL for a server without auth.");
   process.exit(2);
 }
 
@@ -49,6 +49,10 @@ try {
       console.log(`Saved ${flags.out} (${(bytes / 1e6).toFixed(1)} MB)`);
     }
   }
+} catch (e) {
+  if (!(e instanceof Error && e.message.startsWith("Can't connect"))) throw e;
+  console.error(e.message);
+  process.exitCode = 1;
 } finally {
   await mcp.disconnect();
 }

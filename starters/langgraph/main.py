@@ -208,6 +208,8 @@ def explain(e: BaseException) -> str:
     text = "; ".join(dict.fromkeys(f"{type(x).__name__}: {x}" for x in leaves if str(x)))
     if "401" in text or "nauthorized" in text:
         text += " (check ULTRAFAST_API_KEY and ULTRAFAST_MCP_URL)"
+    elif "onnect" in text:  # nothing answered at the URL
+        text += " (is `ultrafast serve` running? Or set ULTRAFAST_MCP_URL to your server's /mcp)"
     return text or type(e).__name__
 
 
@@ -270,9 +272,9 @@ async def main() -> int:
 
     key = os.environ.get("ULTRAFAST_API_KEY")
     if not key:
-        print("Set ULTRAFAST_API_KEY (see .env.example).", file=sys.stderr)
+        print("Set ULTRAFAST_API_KEY to the key `ultrafast serve` printed (see .env.example).", file=sys.stderr)
         return 2
-    url = os.environ.get("ULTRAFAST_MCP_URL", "https://mcp.ultrafast.mov")
+    url = os.environ.get("ULTRAFAST_MCP_URL", "http://localhost:8080/mcp")  # `ultrafast serve` here
     try:
         return await run(args, key, url)
     except Exception as e:  # noqa: BLE001

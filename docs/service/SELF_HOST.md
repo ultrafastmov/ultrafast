@@ -120,8 +120,9 @@ claude mcp add --transport http ultrafast http://localhost:8080/mcp \
 ```
 
 Clients that can send a header connect this way. Connectors that only sign
-in with OAuth (Claude's and ChatGPT's) use ultrafast Cloud's
-`https://mcp.ultrafast.mov`; see [docs/MCP.md](../MCP.md).
+in with OAuth (Claude's and ChatGPT's) need ultrafast Cloud's
+`https://mcp.ultrafast.mov`, which is not open yet; see
+[docs/MCP.md](../MCP.md).
 
 ## Untrusted callers
 

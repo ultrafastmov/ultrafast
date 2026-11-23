@@ -3,8 +3,8 @@ import { dirname } from "node:path";
 import { Agent } from "@mastra/core/agent";
 import { MCPClient } from "@mastra/mcp";
 
-/** The MCP endpoint: `ULTRAFAST_MCP_URL`, or ultrafast's hosted server. */
-export const mcpUrl = () => process.env.ULTRAFAST_MCP_URL ?? "https://mcp.ultrafast.mov";
+/** The MCP endpoint: `ULTRAFAST_MCP_URL`, or `ultrafast serve` on this machine. */
+export const mcpUrl = () => process.env.ULTRAFAST_MCP_URL ?? "http://localhost:8080/mcp";
 /** `MODEL` as a Mastra model router id, Claude Sonnet by default. */
 export const modelId = () => process.env.MODEL ?? "anthropic/claude-sonnet-5-5";
 
@@ -37,7 +37,10 @@ export function connect(): MCPClient {
  */
 export async function listTools(mcp: MCPClient) {
   const { toolsets, errors } = await mcp.listToolsetsWithErrors();
-  if (errors.ultrafast) throw new Error(`Can't reach ${mcpUrl()}: ${errors.ultrafast.split("\n")[0]}`);
+  if (errors.ultrafast) {
+    const hint = /401|nauthorized/.test(errors.ultrafast) ? "check ULTRAFAST_API_KEY" : "is `ultrafast serve` running?";
+    throw new Error(`Can't connect to ${mcpUrl()} (${hint}): ${errors.ultrafast.split("\n")[0]}`);
+  }
   const tools = toolsets.ultrafast ?? {};
   for (const tool of Object.values(tools)) tool.toModelOutput = toModelOutput;
   return tools;
