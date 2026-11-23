@@ -311,6 +311,11 @@ fn main() -> Result<()> {
                 serde_json::to_string_pretty(&serde_json::json!({ "ok": errors == 0, "issues": issues }))?
             );
             if errors > 0 {
+                // A failed render can leave kernels compiling on the
+                // renderer's threads; `exit` skips drops and tears the
+                // process down under them (glibc aborts on a corrupted
+                // heap). Dropping the renderer joins those threads first.
+                drop(r);
                 std::process::exit(1);
             }
         }
