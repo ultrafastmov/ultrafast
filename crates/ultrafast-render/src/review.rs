@@ -138,7 +138,7 @@ impl Renderer {
         let (fw, fh) = (doc.format.width as i64, doc.format.height as i64);
         let active = self.active.take().expect("plan");
         let live = crate::live_groups(&active.plan, t);
-        let mut found: Vec<(String, Placed, f32)> = Vec::new();
+        let mut found: Vec<(String, Placed, f32, Option<Hom>)> = Vec::new();
         let plan = &active.plan;
         let mut consumers: Vec<Vec<usize>> = vec![Vec::new(); plan.nodes.len()];
         for (i, n) in plan.nodes.iter().enumerate() {
@@ -156,13 +156,16 @@ impl Renderer {
             // faded out): it is not on screen, whatever its raster holds.
             if let Some(b) = self.bounds.get(&pn.id) {
                 let rect = [b[0] as f64, b[1] as f64, b[2] as f64, b[3] as f64];
-                if !reaches_screen(plan, doc, &consumers, g.root, rect, 1.0, t, 0) {
+                if !reaches_screen(plan, doc, &consumers, g.root, rect, 1.0, t) {
                     continue;
                 }
             }
             let Some(placed) = active.raster[gi].clone() else {
                 continue;
             };
+            // Pins and transforms after the raster move its type on screen:
+            // it is measured where they put it.
+            let map = to_screen(plan, doc, &consumers, g.root, &rc.transforms, t);
             let node = &doc.nodes[&pn.id];
             let (lt, _) = local_time(pn, t);
             let outer = crate::absorbed(&active.plan, doc, &rc.transforms, t);
@@ -174,7 +177,7 @@ impl Renderer {
                 .and_then(|p| p.eval(lt))
                 .and_then(|v| v.first().copied())
                 .unwrap_or(64.0);
-            found.push((pn.id.clone(), placed, (size * scale) as f32));
+            found.push((pn.id.clone(), placed, (size * scale) as f32, map));
         }
         self.active = Some(active);
 
@@ -197,7 +200,7 @@ impl Renderer {
             (x >= 0 && y >= 0 && x < fw && y < fh).then(|| lum[(y * fw + x) as usize])
         };
         let mut probes = Vec::new();
-        for (id, placed, size_px) in found {
+        for (id, placed, raster_px, map) in found {
             let d = placed.tex.desc();
             let rgba = self.device.create_texture(TextureDesc {
                 width: d.width,
@@ -216,13 +219,37 @@ impl Renderer {
             let px = self.device.readback(&rgba);
             let (ox, oy) = (placed.origin[0] as i64, placed.origin[1] as i64);
             let (tw, th) = (d.width as usize, d.height as usize);
+            // Frame px of the raster to screen px, and how much it scales the
+            // type there (the pin's local scale at the raster's middle).
+            let to = |x: i64, y: i64| -> Option<(i64, i64)> {
+                match &map {
+                    None => Some((x, y)),
+                    Some(m) => hom_apply(m, x as f64, y as f64).map(|(x, y)| (x.round() as i64, y.round() as i64)),
+                }
+            };
+            let zoom = map
+                .as_ref()
+                .and_then(|m| {
+                    let (cx, cy) = (ox as f64 + tw as f64 / 2.0, oy as f64 + th as f64 / 2.0);
+                    let (a, b, c) = (
+                        hom_apply(m, cx, cy)?,
+                        hom_apply(m, cx + 1.0, cy)?,
+                        hom_apply(m, cx, cy + 1.0)?,
+                    );
+                    let det = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+                    Some(det.abs().sqrt())
+                })
+                .unwrap_or(1.0) as f32;
+            let size_px = raster_px * zoom;
             // Glyph texels (solid ones: edges mix with the ground) and the
-            // ground between and around them, in frame px.
+            // ground between and around them, in screen px.
             let mut solid = Vec::new();
             let mut edge = Vec::new();
             let mut ground = Vec::new();
             let mut edge_ground = Vec::new();
-            let near_r = ((size_px * 0.05).round() as i64).clamp(2, 8);
+            let near_r = ((raster_px * 0.05).round() as i64).clamp(2, 8);
+            // The ink's bounds in the raster's frame px.
+            let mut rb = [i64::MAX, i64::MAX, i64::MIN, i64::MIN];
             let mut pixels = Vec::new();
             let (mut ink, mut clipped) = (0usize, 0usize);
             let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
@@ -234,9 +261,17 @@ impl Renderer {
             for y in (0..th).step_by(STRIDE) {
                 for x in (0..tw).step_by(STRIDE) {
                     let a = cov(px[(y * tw + x) * 4 + 3]);
-                    let (fx, fy) = (ox + x as i64, oy + y as i64);
+                    let (rx, ry) = (ox + x as i64, oy + y as i64);
+                    let Some((fx, fy)) = to(rx, ry) else {
+                        if a > 128 {
+                            ink += 1;
+                            clipped += 1;
+                        }
+                        continue;
+                    };
                     if a > 128 {
                         ink += 1;
+                        rb = [rb[0].min(rx), rb[1].min(ry), rb[2].max(rx), rb[3].max(ry)];
                         b = [
                             b[0].min(fx as f32),
                             b[1].min(fy as f32),
@@ -281,17 +316,19 @@ impl Renderer {
                 continue;
             }
             let pad = (size_px * 0.15).clamp(4.0, 40.0) as i64;
-            let (x0, y0, x1, y1) = (
-                b[0] as i64 - pad,
-                b[1] as i64 - pad,
-                b[2] as i64 + pad,
-                b[3] as i64 + pad,
-            );
-            for y in (y0..=y1).step_by(STRIDE) {
-                for x in (x0..=x1).step_by(STRIDE) {
+            let (x0, y0) = (b[0] as i64 - pad, b[1] as i64 - pad);
+            // The ground past the raster's edges, out to `pad` screen px
+            // around the ink: walked in the raster's frame px, then put on
+            // screen.
+            let rpad = (pad as f32 / zoom.max(1e-3)).ceil() as i64;
+            for y in (rb[1] - rpad..=rb[3] + rpad).step_by(STRIDE) {
+                for x in (rb[0] - rpad..=rb[2] + rpad).step_by(STRIDE) {
                     let within = x >= ox && y >= oy && x < ox + tw as i64 && y < oy + th as i64;
-                    if !within && inside(x, y) {
-                        ground.push((x, y));
+                    if within {
+                        continue;
+                    }
+                    if let Some((sx, sy)) = to(x, y).filter(|&(x, y)| inside(x, y)) {
+                        ground.push((sx, sy));
                     }
                 }
             }
@@ -411,10 +448,91 @@ impl Renderer {
     }
 }
 
+/// A 3x3 projective map of frame px, row-major (`x' = (m0 x + m1 y + m2) /
+/// (m6 x + m7 y + m8)`).
+type Hom = [f64; 9];
+
+fn hom_mul(a: &Hom, b: &Hom) -> Hom {
+    let mut m = [0.0; 9];
+    for r in 0..3 {
+        for c in 0..3 {
+            m[r * 3 + c] = (0..3).map(|k| a[r * 3 + k] * b[k * 3 + c]).sum();
+        }
+    }
+    m
+}
+
+fn hom_apply(m: &Hom, x: f64, y: f64) -> Option<(f64, f64)> {
+    let w = m[6] * x + m[7] * y + m[8];
+    // Behind the pin's horizon: nowhere on screen.
+    (w > 1e-9).then(|| ((m[0] * x + m[1] * y + m[2]) / w, (m[3] * x + m[4] * y + m[5]) / w))
+}
+
+/// Where a geometric op moves frame px, active at `t`: a `transform` (an
+/// affine) or a `corner_pin` (its source rect onto its corners). None for
+/// everything else.
+fn op_map(pn: &crate::plan::PlanNode, doc: &Document, t: f64) -> Option<Hom> {
+    let node = &doc.nodes[&pn.id];
+    let (lt, on) = local_time(pn, t);
+    if !on {
+        return None;
+    }
+    match pn.def.name {
+        "transform" => {
+            let m = crate::ops::transform_affine(node, &doc.format, lt).0;
+            Some([m[0], m[2], m[4], m[1], m[3], m[5], 0.0, 0.0, 1.0])
+        }
+        "corner_pin" => {
+            let (w, h) = (doc.format.width as f64, doc.format.height as f64);
+            let vec = |k: &str, d: [f64; 8]| -> Vec<f64> {
+                node.params
+                    .get(k)
+                    .and_then(|p| p.eval(lt))
+                    .filter(|v| v.len() >= d.len().min(4))
+                    .unwrap_or_else(|| d.to_vec())
+            };
+            let c = vec("corners", [0.0, 0.0, w, 0.0, w, h, 0.0, h]);
+            let s = vec("source_rect", [0.0, 0.0, w, h, 0.0, 0.0, 0.0, 0.0]);
+            if c.len() < 8 || s.len() < 4 {
+                return None;
+            }
+            let from = [
+                [s[0], s[1]],
+                [s[0] + s[2], s[1]],
+                [s[0] + s[2], s[1] + s[3]],
+                [s[0], s[1] + s[3]],
+            ];
+            let to = [[c[0], c[1]], [c[2], c[3]], [c[4], c[5]], [c[6], c[7]]];
+            crate::ops::homography(&from, &to)
+        }
+        _ => None,
+    }
+}
+
+/// The bounding rect of `rect` mapped by `m` (None if part of it falls
+/// behind a pin's horizon).
+fn map_rect(m: &Hom, r: [f64; 4]) -> Option<[f64; 4]> {
+    let pts: Vec<(f64, f64)> = [(r[0], r[1]), (r[2], r[1]), (r[0], r[3]), (r[2], r[3])]
+        .iter()
+        .map(|&(x, y)| hom_apply(m, x, y))
+        .collect::<Option<_>>()?;
+    Some([
+        pts.iter().map(|p| p.0).fold(f64::MAX, f64::min),
+        pts.iter().map(|p| p.1).fold(f64::MAX, f64::min),
+        pts.iter().map(|p| p.0).fold(f64::MIN, f64::max),
+        pts.iter().map(|p| p.1).fold(f64::MIN, f64::max),
+    ])
+}
+
+/// Work enough for any real document's walk to its output; past it a
+/// text is taken to be on screen.
+const WALK_STEPS: usize = 200_000;
+
 /// Whether node `i`'s content, covering `rect` (frame px) at opacity
 /// `alpha`, survives the crops, fades and windows between it and the
-/// output.
-#[allow(clippy::too_many_arguments)]
+/// output, on some path to it: the rect moves with the transforms and
+/// corner pins on the way. However deep the stack (the walk once gave up
+/// after 48 levels and took the rest for visible).
 fn reaches_screen(
     plan: &crate::plan::Plan,
     doc: &Document,
@@ -423,61 +541,117 @@ fn reaches_screen(
     rect: [f64; 4],
     alpha: f64,
     t: f64,
-    depth: usize,
 ) -> bool {
-    if alpha < 0.05 || rect[0] >= rect[2] || rect[1] >= rect[3] {
-        return false;
-    }
-    if i == plan.nodes.len() - 1 || depth > 48 {
-        return true;
-    }
-    consumers[i].iter().any(|&c| {
-        let pn = &plan.nodes[c];
-        let node = &doc.nodes[&pn.id];
-        let (lt, on) = local_time(pn, t);
-        let port = pn.inputs.iter().position(|&x| x == i).unwrap_or(0);
-        if !on {
-            // An inactive node passes one input through, or nothing.
-            return crate::ops::passthrough(pn.def, pn.inputs.len()) == Some(port)
-                && reaches_screen(plan, doc, consumers, c, rect, alpha, t, depth + 1);
+    let out = plan.nodes.len() - 1;
+    // What reached each node already: a later arrival no more opaque and
+    // no larger is not walked again.
+    let mut seen: Vec<Vec<(f64, [f64; 4])>> = vec![Vec::new(); plan.nodes.len()];
+    let mut stack = vec![(i, rect, alpha)];
+    let mut steps = 0;
+    while let Some((i, r, a)) = stack.pop() {
+        if a < 0.05 || r[0] >= r[2] || r[1] >= r[3] {
+            continue;
         }
-        let num = |k: &str, d: f64| {
-            node.params
-                .get(k)
-                .and_then(|p| p.eval(lt))
-                .and_then(|v| v.first().copied())
-                .unwrap_or(d)
-        };
-        let (mut r, mut a) = (rect, alpha);
-        match pn.def.name {
-            "crop" => {
-                let cr = node.params.get("rect").and_then(|p| p.eval(lt)).unwrap_or_default();
-                if cr.len() >= 4 {
-                    r = [
-                        r[0].max(cr[0]),
-                        r[1].max(cr[1]),
-                        r[2].min(cr[0] + cr[2]),
-                        r[3].min(cr[1] + cr[3]),
-                    ];
+        if i == out {
+            return true;
+        }
+        steps += 1;
+        if steps > WALK_STEPS {
+            return true;
+        }
+        let inside = |o: &[f64; 4]| r[0] >= o[0] && r[1] >= o[1] && r[2] <= o[2] && r[3] <= o[3];
+        if seen[i].iter().any(|(sa, sr)| a <= *sa && inside(sr)) {
+            continue;
+        }
+        seen[i].push((a, r));
+        for &c in &consumers[i] {
+            let pn = &plan.nodes[c];
+            let node = &doc.nodes[&pn.id];
+            let (lt, on) = local_time(pn, t);
+            let port = pn.inputs.iter().position(|&x| x == i).unwrap_or(0);
+            if !on {
+                // An inactive node passes one input through, or nothing.
+                if crate::ops::passthrough(pn.def, pn.inputs.len()) == Some(port) {
+                    stack.push((c, r, a));
                 }
+                continue;
             }
-            "opacity" => a *= num("opacity", 1.0),
-            "over" | "blend" if port == 0 => a *= num("opacity", 1.0),
-            "transform" => {
-                let m = crate::ops::transform_affine(node, &doc.format, lt).0;
-                let pts = [(r[0], r[1]), (r[2], r[1]), (r[0], r[3]), (r[2], r[3])]
-                    .map(|(x, y)| (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]));
-                r = [
-                    pts.iter().map(|p| p.0).fold(f64::MAX, f64::min),
-                    pts.iter().map(|p| p.1).fold(f64::MAX, f64::min),
-                    pts.iter().map(|p| p.0).fold(f64::MIN, f64::max),
-                    pts.iter().map(|p| p.1).fold(f64::MIN, f64::max),
-                ];
+            let num = |k: &str, d: f64| {
+                node.params
+                    .get(k)
+                    .and_then(|p| p.eval(lt))
+                    .and_then(|v| v.first().copied())
+                    .unwrap_or(d)
+            };
+            let (mut r, mut a) = (r, a);
+            match pn.def.name {
+                "crop" => {
+                    let cr = node.params.get("rect").and_then(|p| p.eval(lt)).unwrap_or_default();
+                    if cr.len() >= 4 {
+                        r = [
+                            r[0].max(cr[0]),
+                            r[1].max(cr[1]),
+                            r[2].min(cr[0] + cr[2]),
+                            r[3].min(cr[1] + cr[3]),
+                        ];
+                    }
+                }
+                "opacity" => a *= num("opacity", 1.0),
+                "over" | "blend" if port == 0 => a *= num("opacity", 1.0),
+                "transform" | "corner_pin" => {
+                    if let Some(m) = op_map(pn, doc, t) {
+                        match map_rect(&m, r) {
+                            Some(m) => r = m,
+                            None => continue,
+                        }
+                    }
+                }
+                _ => {}
             }
-            _ => {}
+            stack.push((c, r, a));
         }
-        reaches_screen(plan, doc, consumers, c, r, a, t, depth + 1)
-    })
+    }
+    false
+}
+
+/// Where node `i`'s frame px land on screen: the transforms and corner pins
+/// between it and the output (but those in `absorbed`, already drawn into
+/// its raster), composed along its first path to the output. None when
+/// nothing on the way moves it.
+fn to_screen(
+    plan: &crate::plan::Plan,
+    doc: &Document,
+    consumers: &[Vec<usize>],
+    i: usize,
+    absorbed: &[usize],
+    t: f64,
+) -> Option<Hom> {
+    let out = plan.nodes.len() - 1;
+    let identity: Hom = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    let mut seen = vec![false; plan.nodes.len()];
+    let mut stack = vec![(i, identity, false)];
+    let mut steps = 0;
+    while let Some((i, m, moved)) = stack.pop() {
+        if i == out {
+            return moved.then_some(m);
+        }
+        steps += 1;
+        if seen[i] || steps > WALK_STEPS {
+            continue;
+        }
+        seen[i] = true;
+        // Pushed in reverse, so the first consumer is walked first.
+        for &c in consumers[i].iter().rev() {
+            let step = (!absorbed.contains(&c))
+                .then(|| op_map(&plan.nodes[c], doc, t))
+                .flatten();
+            match step {
+                Some(s) => stack.push((c, hom_mul(&s, &m), true)),
+                None => stack.push((c, m, moved)),
+            }
+        }
+    }
+    None
 }
 
 /// Visible: distinguishable from what is around it. Readable: WCAG AA for
