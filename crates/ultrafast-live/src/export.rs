@@ -195,6 +195,19 @@ pub fn export_video(
     export_target(renderer, doc, path, target, opts, progress)
 }
 
+/// Starts what exporting `target` will need on a thread of its own (on
+/// NVIDIA: the CUDA driver, NVENC and the CUDA context, about 130 ms), so
+/// it is ready by the time the renderer is. Call before making the
+/// renderer; does nothing for exports that don't use NVENC.
+pub fn prewarm(target: &Target) {
+    #[cfg(any(target_os = "linux", windows))]
+    if nvenc::takes(target) && std::env::var_os("ULTRAFAST_NVENC").is_none_or(|v| v != "0") {
+        ultrafast_media::nvenc::prewarm();
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    let _ = target;
+}
+
 /// Exports `doc` to `path` as an already resolved `target`.
 pub fn export_target(
     renderer: &mut Renderer,

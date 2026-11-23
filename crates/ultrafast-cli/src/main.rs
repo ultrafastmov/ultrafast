@@ -650,6 +650,8 @@ fn main() -> Result<()> {
                 .settings
                 .resolve(Some(&out), &doc.format)
                 .map_err(anyhow::Error::msg)?;
+            // The encoder's driver starts while the GPU does.
+            ultrafast_live::export::prewarm(&target);
             if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
                 std::fs::create_dir_all(dir)?;
             }

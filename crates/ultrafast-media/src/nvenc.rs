@@ -264,7 +264,43 @@ fn driver() -> Result<&'static Driver, String> {
         .map_err(|e| e.clone())
 }
 
+/// Starts loading the CUDA driver and NVENC and making the CUDA context on
+/// a thread of its own, so an encoder opened soon after finds them ready:
+/// they take about 130 ms, which then mostly pass while the Vulkan device
+/// starts (20 to 60 ms saved on an RTX 5090, where both wait on the GPU's
+/// firmware).
+/// Only on a machine with one CUDA device; with more, which one the Vulkan
+/// device is isn't known yet, and the encoder makes its own as before.
+pub fn prewarm() {
+    let _ = std::thread::Builder::new()
+        .name("ultrafast-nvenc-warm".into())
+        .spawn(|| {
+            let Ok(driver) = driver() else { return };
+            if let Some(uuid) = driver.only_device() {
+                let _ = driver.context(uuid);
+            }
+        });
+}
+
 impl Driver {
+    /// The UUID of the machine's CUDA device, if it has exactly one.
+    fn only_device(&self) -> Option<[u8; 16]> {
+        let cuda = &self.cuda;
+        // SAFETY: plain driver calls with valid out-pointers.
+        unsafe {
+            let mut count = 0;
+            cu((cuda.device_get_count)(&mut count), "cuDeviceGetCount").ok()?;
+            if count != 1 {
+                return None;
+            }
+            let mut d = 0;
+            cu((cuda.device_get)(&mut d, 0), "cuDeviceGet").ok()?;
+            let mut id: sys::CUuuid = zeroed();
+            cu((cuda.device_get_uuid)(&mut id, d), "cuDeviceGetUuid").ok()?;
+            Some(std::mem::transmute::<[std::ffi::c_char; 16], [u8; 16]>(id.bytes))
+        }
+    }
+
     /// The context for the CUDA device that is the Vulkan device `uuid`.
     fn context(&self, uuid: [u8; 16]) -> Result<sys::CUcontext, String> {
         let mut contexts = self.contexts.lock().unwrap();
