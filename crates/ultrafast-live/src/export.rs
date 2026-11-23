@@ -1050,7 +1050,7 @@ pub fn export_parallel(
     let base = doc_path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let workers = (workers as u64).clamp(1, clock.total.max(1));
     if workers == 1 || target.video.is_none() || target.container == Container::Gif {
-        let mut r = Renderer::new(device.fork().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+        let mut r = Renderer::new_on_demand(device.fork().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         r.set_base_dir(&base);
         return export_target(&mut r, doc, path, target, opts, progress);
     }
@@ -1091,7 +1091,7 @@ pub fn export_parallel(
             ..opts
         };
         threads.push(std::thread::spawn(move || -> Result<ExportReport, String> {
-            let mut r = Renderer::new(dev).map_err(|e| e.to_string())?;
+            let mut r = Renderer::new_on_demand(dev).map_err(|e| e.to_string())?;
             r.set_base_dir(&base);
             r.set_slot_budget(budget);
             export_target_as(

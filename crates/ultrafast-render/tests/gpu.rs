@@ -749,3 +749,33 @@ fn media_rewritten_on_disk_is_read_again() {
     assert!(b2[1] > 200, "b.png kept: {b2:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A renderer that compiles kernels on demand draws what one with every
+/// tier-0 kernel built up front draws, fused and op by op (a group's ops'
+/// tier-0 kernels then compile when it first falls back to them).
+#[test]
+fn on_demand_kernels_render_the_same() {
+    let src = r##"{"version":1,"format":{"width":64,"height":64,"fps":30,"duration":1},
+        "output":"out","nodes":{
+          "bg":{"op":"gradient","params":{"a":"#202040","b":"#40a0ff","start":[0,0],"end":[0,64]}},
+          "s":{"op":"shape","params":{"kind":"circle","size":[30,30],"center":[32,32],"color":"#ff8000"}},
+          "o":{"op":"opacity","inputs":{"source":"s"},"params":{"opacity":0.6}},
+          "x":{"op":"transform","inputs":{"source":"o"},"params":{"position":[40,30],"anchor":[32,32]}},
+          "out":{"op":"over","inputs":{"fg":"x","bg":"bg"}}}}"##;
+    let d = Document::from_json(src).unwrap();
+    let mut eager = Renderer::new(Device::new().unwrap()).unwrap();
+    let (want, _) = eager.render_rgba8(&d, 0.0).unwrap();
+    let mut lazy = Renderer::new_on_demand(Device::new().unwrap()).unwrap();
+    let (fused, _) = lazy.render_rgba8(&d, 0.0).unwrap();
+    assert_eq!(fused, want, "fused");
+    // Op by op: a fresh renderer that doesn't wait for fused kernels.
+    let mut lazy = Renderer::new_on_demand(Device::new().unwrap()).unwrap();
+    lazy.set_wait_for_fused(false);
+    let (by_op, _) = lazy.render_rgba8(&d, 0.0).unwrap();
+    let off = by_op
+        .iter()
+        .zip(&want)
+        .filter(|(a, b)| (**a as i32 - **b as i32).abs() > 2)
+        .count();
+    assert_eq!(off, 0, "op by op: {off} bytes differ");
+}

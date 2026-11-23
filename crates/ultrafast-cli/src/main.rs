@@ -1258,8 +1258,13 @@ fn parse_times(s: &str) -> Result<Vec<f64>> {
         .collect()
 }
 
+/// A renderer for a command that renders and exits: kernels compile as
+/// its frames need them (see `Renderer::new_on_demand`).
 fn renderer(doc_path: &Path) -> Result<Renderer> {
-    let mut r = Renderer::new(Device::new()?)?;
+    renderer_with(doc_path, Renderer::new_on_demand(Device::new()?)?)
+}
+
+fn renderer_with(doc_path: &Path, mut r: Renderer) -> Result<Renderer> {
     if let Some(dir) = doc_path.parent() {
         r.set_base_dir(dir);
     }
@@ -1434,7 +1439,8 @@ fn profile(path: &Path, doc: Document, frames: u64, from: f64, json: bool) -> Re
 }
 
 fn bench(path: &Path, mut doc: Document, frames: u64, live_edits: bool) -> Result<()> {
-    let mut r = renderer(path)?;
+    // Every op's kernel up front, as the live player has them.
+    let mut r = renderer_with(path, Renderer::new(Device::new()?)?)?;
     // Warm up in exact mode so the starting plan's kernels are compiled.
     r.submit_frame(&doc, 0.0, false)?.0.wait()?;
     if live_edits {

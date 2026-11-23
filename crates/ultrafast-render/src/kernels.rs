@@ -55,6 +55,9 @@ pub struct Kernels {
     /// Closed on drop, which ends the compile threads.
     tx: Option<Sender<Job>>,
     tier0: HashMap<&'static str, Tier0>,
+    /// Tier-0 kernels' code by key, for compiling one when it is first
+    /// needed ([`Kernels::on_demand`]).
+    tier0_code: HashMap<String, String>,
     workers: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -99,8 +102,24 @@ pub const UTILITY: &[&str] = &[
 ];
 
 impl Kernels {
-    /// Starts the compile thread and builds tier 0 (blocking).
+    /// Starts the compile threads and builds tier 0 (blocking): every op's
+    /// kernel, so a new structure renders op by op at once (the live
+    /// player, the render service).
     pub fn new(device: Device) -> Result<Self, String> {
+        Self::build(device, true)
+    }
+
+    /// Starts the compile threads and builds the utility kernels only;
+    /// an op's tier-0 kernel compiles when something first needs it
+    /// ([`Kernels::tier0_kernel`]). For one render that waits for its
+    /// fused kernels anyway (an export, a frame): the first run after an
+    /// install or an upgrade doesn't compile ~30 kernels it never uses
+    /// (about 0.9 s on 8 threads).
+    pub fn on_demand(device: Device) -> Result<Self, String> {
+        Self::build(device, false)
+    }
+
+    fn build(device: Device, eager: bool) -> Result<Self, String> {
         let shared = Arc::new(Shared {
             map: Mutex::new(HashMap::new()),
             cv: Condvar::new(),
@@ -163,19 +182,25 @@ impl Kernels {
                 jobs.push((g.key, g.body));
             }
         }
-        let k = Kernels {
+        let mut k = Kernels {
             shared,
             tx: Some(tx),
             tier0,
+            tier0_code: HashMap::new(),
             workers,
         };
-        k.request(jobs);
-        // Utility kernels are plain entry points in the library itself.
+        // Utility kernels are plain entry points in the library itself:
+        // first in the queue, as every render needs some.
         k.request_utility();
-        for t in k.tier0.values() {
-            if let KernelState::Failed(e) = k.wait(&t.key) {
-                return Err(format!("tier-0 kernel failed to build: {e}"));
+        if eager {
+            k.request(jobs);
+            for t in k.tier0.values() {
+                if let KernelState::Failed(e) = k.wait(&t.key) {
+                    return Err(format!("tier-0 kernel failed to build: {e}"));
+                }
             }
+        } else {
+            k.tier0_code = jobs.into_iter().collect();
         }
         for u in UTILITY {
             if let KernelState::Failed(e) = k.wait(u) {
@@ -200,6 +225,24 @@ impl Kernels {
 
     pub fn tier0(&self, func: &str) -> Option<&Tier0> {
         self.tier0.get(func)
+    }
+
+    /// The tier-0 kernel for op function `func`, compiled now if it hasn't
+    /// been (blocks until it is).
+    pub fn tier0_kernel(&self, func: &str) -> Result<Kernel, String> {
+        let t = self
+            .tier0
+            .get(func)
+            .ok_or_else(|| format!("no tier-0 kernel for {func}"))?;
+        if self.get(&t.key).is_none() {
+            let code = self.tier0_code.get(&t.key).cloned().unwrap_or_default();
+            self.request(vec![(t.key.clone(), code)]);
+        }
+        match self.wait(&t.key) {
+            KernelState::Ready(k) => Ok(k),
+            KernelState::Failed(e) => Err(format!("tier-0 kernel for {func} failed to build: {e}")),
+            KernelState::Pending => unreachable!("wait returns once a kernel is done"),
+        }
     }
 
     /// Queues kernels that are not known yet. Returns how many were queued.

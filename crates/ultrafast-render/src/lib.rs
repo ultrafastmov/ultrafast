@@ -604,6 +604,21 @@ pub fn media_path(base: &Path, src: &str) -> PathBuf {
 impl Renderer {
     pub fn new(device: Device) -> Result<Self, RenderError> {
         let kernels = Kernels::new(device.clone()).map_err(RenderError::Setup)?;
+        Self::with_kernels(device, kernels)
+    }
+
+    /// A renderer whose ops' tier-0 kernels compile only when a frame first
+    /// needs one ([`Kernels::on_demand`]), for a command that renders and
+    /// exits (an export, a frame, a check): its exact renders wait for
+    /// their fused kernels anyway. On the first run after an install or an
+    /// upgrade it starts about 0.9 s sooner. [`Renderer::new`] builds them
+    /// all first, so a live session never waits on the compiler.
+    pub fn new_on_demand(device: Device) -> Result<Self, RenderError> {
+        let kernels = Kernels::on_demand(device.clone()).map_err(RenderError::Setup)?;
+        Self::with_kernels(device, kernels)
+    }
+
+    fn with_kernels(device: Device, kernels: Kernels) -> Result<Self, RenderError> {
         let placeholder = device.create_texture(TextureDesc {
             width: 1,
             height: 1,
@@ -4506,15 +4521,19 @@ impl Renderer {
     }
 
     /// Copies a placed texture into a frame-sized one (tier-0 `opacity` at 1).
-    fn copy_placed(&self, src: &Placed, dst: &Texture, doc: &Document, t: f64, list: &mut CommandList) {
-        let t0 = self.kernels.tier0("opacity").expect("opacity tier-0 kernel");
-        let k = self
-            .kernels
-            .ready(&t0.key)
-            .expect("tier-0 kernels are built at startup");
+    fn copy_placed(
+        &self,
+        src: &Placed,
+        dst: &Texture,
+        doc: &Document,
+        t: f64,
+        list: &mut CommandList,
+    ) -> Result<(), RenderError> {
+        let k = self.kernels.tier0_kernel("opacity").map_err(RenderError::Setup)?;
         let mut p = header(doc, t, self.view).to_vec();
         p.extend([1.0, src.origin[0], src.origin[1], src.scale]);
         list.dispatch(&k, dst, &[&src.tex], &p);
+        Ok(())
     }
 
     /// Flattened geometry for a raster node, rebuilt only when its key changes.
@@ -4852,7 +4871,7 @@ impl Renderer {
             // transparent if they have none.
             if !on {
                 match ops::passthrough(pn.def, port_tex.len()) {
-                    Some(i) => self.copy_placed(&port_tex[i], &target, doc, t, list),
+                    Some(i) => self.copy_placed(&port_tex[i], &target, doc, t, list)?,
                     None => list.dispatch(&self.kernels.utility("k_clear"), &target, &[], &p),
                 }
                 value.insert(
@@ -4867,10 +4886,7 @@ impl Renderer {
             }
             match self.kernels.tier0(pn.def.func).cloned() {
                 Some(t0) => {
-                    let k = self
-                        .kernels
-                        .ready(&t0.key)
-                        .expect("tier-0 kernels are built at startup");
+                    let k = self.kernels.tier0_kernel(pn.def.func).map_err(RenderError::Setup)?;
                     let bound: Vec<Placed> = t0
                         .bindings
                         .iter()
