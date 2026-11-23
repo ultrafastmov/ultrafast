@@ -778,11 +778,21 @@ impl Inner {
 }
 
 impl Device {
+    /// The GPU with one queue: what a renderer on one thread submits to.
     pub fn new() -> Result<Self, GpuError> {
-        unsafe { Self::create() }
+        Self::with_lanes(1)
     }
 
-    unsafe fn create() -> Result<Self, GpuError> {
+    /// The GPU with up to `lanes` queues (as many as its compute family
+    /// has, at most 8), for that many renderers made with [`Device::fork`]
+    /// to run side by side. Each queue costs start-up and teardown time
+    /// (on NVIDIA a channel, about 25 ms each), so only callers that fork
+    /// ask for more than one.
+    pub fn with_lanes(lanes: usize) -> Result<Self, GpuError> {
+        unsafe { Self::create(lanes) }
+    }
+
+    unsafe fn create(lanes: usize) -> Result<Self, GpuError> {
         let entry = load_entry()?;
         let app = CString::new("ultrafast").unwrap();
         let app_info = vk::ApplicationInfo::default()
@@ -877,11 +887,12 @@ impl Device {
         if swapchain_ext {
             exts.push(ash::khr::swapchain::NAME.as_ptr());
         }
-        // Several queues when the family has them (NVIDIA: 16), one per lane.
+        // A queue per lane asked for, as far as the family has them
+        // (NVIDIA: 16).
         let family_queues = unsafe { instance.get_physical_device_queue_family_properties(pdev) }
             [queue_family as usize]
             .queue_count
-            .clamp(1, 8);
+            .clamp(1, lanes.clamp(1, 8) as u32);
         let priorities = vec![1.0f32; family_queues as usize];
         let queue_info = [vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family)

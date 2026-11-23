@@ -195,6 +195,12 @@ impl Device {
         })
     }
 
+    /// The same as [`Device::new`]: one Metal queue serves every renderer
+    /// forked from it.
+    pub fn with_lanes(_lanes: usize) -> Result<Self, GpuError> {
+        Self::new()
+    }
+
     pub fn name(&self) -> String {
         self.inner.device.name().to_string()
     }

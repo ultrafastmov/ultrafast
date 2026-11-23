@@ -662,7 +662,8 @@ fn main() -> Result<()> {
                 }
             };
             if workers > 1 {
-                let device = Device::new()?;
+                // A queue for each worker's fork, besides this handle's own.
+                let device = Device::with_lanes(workers + 1)?;
                 let rep = ultrafast_live::export::export_parallel(&device, &path, &doc, &out, opts, workers, tick)
                     .map_err(anyhow::Error::msg)?;
                 println!(

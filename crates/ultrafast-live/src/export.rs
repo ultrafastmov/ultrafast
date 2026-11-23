@@ -970,7 +970,9 @@ mod nvenc {
 /// single-threaded, so one renderer leaves the GPU idle between frames;
 /// several fill it, without the context switches separate processes cost.
 /// Simulations replay up to each run's first frame. A GIF (one palette
-/// for the whole film) and sound alone use one renderer.
+/// for the whole film) and sound alone use one renderer. Make `device`
+/// with [`ultrafast_gpu::Device::with_lanes`] (`workers + 1`) so each
+/// worker gets a queue of its own.
 pub fn export_parallel(
     device: &ultrafast_gpu::Device,
     doc_path: &Path,
