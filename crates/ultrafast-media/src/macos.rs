@@ -358,6 +358,10 @@ impl Writer {
             let media = AVMediaTypeVideo.ok_or(MediaError::Platform("AVMediaTypeVideo".into()))?;
             let input = AVAssetWriterInput::assetWriterInputWithMediaType_outputSettings(media, Some(&settings));
             input.setExpectsMediaDataInRealTime(false);
+            // Frame times on the export's own clock (1/30000 for 29.97):
+            // the default track timescale, 600, moved 29.97 fps frames
+            // onto 1/30 s steps.
+            input.setMediaTimeScale(frame_clock(fps).0);
             let attrs = bgra_buffer_attributes(Some((width as usize, height as usize)));
             let adaptor = AVAssetWriterInputPixelBufferAdaptor::assetWriterInputPixelBufferAdaptorWithAssetWriterInput_sourcePixelBufferAttributes(&input, Some(&attrs));
             if !writer.canAddInput(&input) {
@@ -443,9 +447,9 @@ impl Writer {
                 }
                 std::thread::sleep(std::time::Duration::from_micros(200));
             }
-            // Timescale chosen so common rates (23.976, 29.97, 59.94) are exact.
-            let ts = 60_000i32;
-            let pts = CMTime::new((index as f64 * ts as f64 / self.fps).round() as i64, ts);
+            // Every frame on an exact tick of the export's clock.
+            let (ts, ticks) = frame_clock(self.fps);
+            let pts = CMTime::new(index as i64 * ticks, ts);
             if !self
                 .adaptor
                 .0
@@ -576,6 +580,18 @@ fn default_bitrate(w: u32, h: u32, fps: f64, codec: Codec) -> u64 {
         Codec::Hevc => 0.08,
     };
     (w as f64 * h as f64 * fps * bpp) as u64
+}
+
+/// A clock that puts every frame of `fps` on an exact tick: (timescale,
+/// ticks per frame). 30 fps is 1/30000 with 1000 ticks a frame, 29.97 is
+/// 1/30000 with 1001 (as the other exports' MP4s count it).
+fn frame_clock(fps: f64) -> (i32, i64) {
+    let ntsc = fps * 1.001;
+    if (ntsc - ntsc.round()).abs() < 1e-3 && (fps - fps.round()).abs() > 1e-3 {
+        ((ntsc.round() * 1000.0) as i32, 1001)
+    } else {
+        ((fps * 1000.0).round() as i32, 1000)
+    }
 }
 
 /// Containers report frame rates as floats (29.999998); snap to the common
