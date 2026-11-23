@@ -925,7 +925,7 @@ impl Encoder {
                 api.nvEncLockBitstream.unwrap()(session, &mut lock),
                 "nvEncLockBitstream",
             );
-            let frame = lock.outputTimeStamp;
+            let frame = r.is_ok().then_some(lock.outputTimeStamp);
             let result = r.and_then(|_| {
                 let bytes = std::slice::from_raw_parts(
                     lock.bitstreamBufferPtr as *const u8,
@@ -933,7 +933,7 @@ impl Encoder {
                 );
                 let w = out(Packet {
                     data: bytes,
-                    frame,
+                    frame: lock.outputTimeStamp,
                     key: lock.pictureType == sys::_NV_ENC_PIC_TYPE_NV_ENC_PIC_TYPE_IDR,
                 });
                 api.nvEncUnlockBitstream.unwrap()(session, bitstream);
@@ -942,13 +942,10 @@ impl Encoder {
             Ok((result, frame))
         })?;
         // The frame this buffer holds is done; with B-frames, not
-        // necessarily the one handed over with it.
-        let i = match self.mapped.iter().position(|&(f, _)| f == frame) {
-            Some(i) if result.is_ok() => i,
-            // Nothing read: let go of the oldest.
-            _ => 0,
-        };
-        if i < self.mapped.len() {
+        // necessarily the one handed over with it. (If the buffer couldn't
+        // be read, the encoder is dropped next and lets go of every input.)
+        let done = frame.and_then(|f| self.mapped.iter().position(|&(m, _)| m == f));
+        if let Some(i) = done {
             let (_, mapped) = self.mapped.remove(i);
             let _ = self.with_ctx(|| unsafe {
                 api.nvEncUnmapInputResource.unwrap()(session, mapped);
