@@ -51,6 +51,26 @@ fn first(v: Option<&Value>) -> f64 {
     v.map(nums).and_then(|n| n.first().copied()).unwrap_or(0.0)
 }
 
+/// A stroke's width as a path's `stroke`, or None when it is 0 throughout:
+/// nothing to draw (a path's `stroke: 0` fills it instead). Keys at 0
+/// become a hairline, so the path stays a stroke at those moments.
+fn stroke_width(w: Param) -> Option<Param> {
+    const HAIRLINE: f64 = 1e-3;
+    match w {
+        Param::Number(v) if v <= 0.0 => None,
+        Param::Animated { mut keys, repeat } => {
+            if keys.iter().all(|k| k.v.iter().all(|x| *x <= 0.0)) {
+                return None;
+            }
+            for x in keys.iter_mut().flat_map(|k| k.v.iter_mut()) {
+                *x = x.max(HAIRLINE);
+            }
+            Some(Param::Animated { keys, repeat })
+        }
+        w => Some(w),
+    }
+}
+
 fn keyframes(prop: &Value) -> Option<&Vec<Value>> {
     let k = prop.get("k")?.as_array()?;
     k.first().filter(|f| f.is_object() && f.get("t").is_some()).map(|_| k)
@@ -1194,6 +1214,12 @@ impl Builder<'_> {
                         }
                         self.paint(&st, clock)
                     };
+                    if let Some(w) = paint.remove("stroke") {
+                        match stroke_width(w) {
+                            Some(w) => paint.insert("stroke".into(), w),
+                            None => continue,
+                        };
+                    }
                     if let Some((s, e)) = trim {
                         paint.insert("trim_start".into(), s.clone());
                         paint.insert("trim_end".into(), e.clone());
@@ -2270,6 +2296,33 @@ mod tests {
         assert_eq!(looped.eval(1.5), looped.eval(0.5));
         let wiggle = rotation(json!({"k": 10, "x": "var $bm_rt;\n$bm_rt = wiggle(2, 15);"}));
         assert!(matches!(wiggle, Param::Wiggle { .. }));
+    }
+
+    /// A stroke 0 wide draws nothing (as a path, `stroke: 0` would fill the
+    /// shape in the stroke's color); one keyed to 0 stays a stroke there.
+    #[test]
+    fn zero_width_strokes_draw_nothing() {
+        let strokes = |w: Value| -> Vec<Param> {
+            let lottie = json!({"v": "5.7.0", "fr": 30, "ip": 0, "op": 60, "w": 100, "h": 100, "layers": [
+                {"ty": 4, "ind": 1, "ip": 0, "op": 60, "st": 0, "ks": {"p": {"k": [50, 50]}},
+                 "shapes": [{"ty": "el", "p": {"k": [0, 0]}, "s": {"k": [40, 40]}},
+                            {"ty": "st", "c": {"k": [1, 0, 0, 1]}, "o": {"k": 100}, "w": w},
+                            {"ty": "fl", "c": {"k": [0, 0, 1, 1]}, "o": {"k": 100}}]}]});
+            let mut fonts = crate::geom::Fonts::new();
+            let imp = import(lottie.to_string().as_bytes(), None, None, &mut fonts).unwrap();
+            imp.component
+                .nodes
+                .values()
+                .filter_map(|n| n.params.get("stroke").cloned())
+                .collect()
+        };
+        assert_eq!(strokes(json!({"k": 4})).len(), 1);
+        assert!(strokes(json!({"k": 0})).is_empty());
+        assert!(strokes(json!({"a": 1, "k": [{"t": 0, "s": [0]}, {"t": 30, "s": [0]}]})).is_empty());
+        let grows = strokes(json!({"a": 1, "k": [{"t": 0, "s": [0]}, {"t": 30, "s": [6]}]}));
+        let [w] = grows.as_slice() else { panic!("{grows:?}") };
+        assert!(w.eval(0.0).unwrap()[0] > 0.0, "{w:?}");
+        assert_eq!(w.eval(1.0), Some(vec![6.0]));
     }
 
     #[test]
