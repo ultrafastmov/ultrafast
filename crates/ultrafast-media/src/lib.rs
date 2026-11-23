@@ -66,16 +66,24 @@ pub struct EncodeRate {
     pub preset: u8,
     /// A full-resolution first pass.
     pub multipass: bool,
+    /// B-frames between reference frames, as far as the encoder has them
+    /// (0: none). With them, frames come out in decode order, each saying
+    /// which frame it is.
+    pub b_frames: u8,
+    /// Frames from one key frame to the next (0: two seconds' worth).
+    pub gop: u32,
 }
 
 impl EncodeRate {
-    /// An average bitrate at the default speed.
+    /// An average bitrate at the default speed, without B-frames.
     pub fn bitrate(bitrate: u64) -> Self {
         EncodeRate {
             bitrate,
             quality: None,
-            preset: 2,
+            preset: 4,
             multipass: false,
+            b_frames: 0,
+            gop: 0,
         }
     }
 }

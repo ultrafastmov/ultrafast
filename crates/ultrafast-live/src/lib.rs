@@ -40,6 +40,7 @@ pub mod output;
 pub mod preview_audio;
 pub mod record;
 pub mod server;
+pub mod ts;
 #[cfg(all(feature = "window", any(all(target_os = "macos", not(feature = "vulkan")), windows)))]
 pub mod window;
 

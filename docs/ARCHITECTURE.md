@@ -262,15 +262,28 @@ composition is **zero readbacks and zero uploads beyond uniforms**.
   limited range from float) writes each frame into an NV12 buffer whose
   Vulkan memory is exported as an opaque fd and imported into CUDA; NVENC
   registers that pointer and encodes it in place. Three buffers keep the GPU
-  rendering ahead of the encoder; zero readbacks. `ffmpeg` only muxes the
-  stream and the AAC soundtrack. Bindings come from FFmpeg's MIT
+  rendering ahead of the encoder; zero readbacks. Each frame is encoded in
+  strips, one per encoder engine the GPU has (up to three: 0.7 ms for a
+  1080x1920 frame at P4 on an RTX 5090, against 1.7 ms whole), with three
+  B-frames. Frames come out in decode order, each naming the frame it
+  holds; a small MPEG-TS writer (`ts.rs`) gives each its presentation and
+  decoding times, and `ffmpeg` only muxes that stream (MP4, MOV or
+  Matroska, with composition offsets) and the AAC soundtrack. Runs of a
+  parallel export have no B-frames, so ffmpeg's concat demuxer joins them
+  as they are. Bindings come from FFmpeg's MIT
   nv-codec-headers; libcuda and libnvidia-encode load at runtime and the
   readback path remains as a fallback (`ULTRAFAST_NVENC=0`). The Docker image
   (packaging/docker) carries the Vulkan manifest NVIDIA containers need.
 - **Other formats** (`ultrafast-live`: `output` resolves the settings,
   `ffmpeg` builds the command lines, `export` routes): H.264 and HEVC
   without alpha take the zero-readback paths above, NVENC at constant
-  quality capped at the quality level's bits per pixel. Everything else
+  quality capped at the quality level's bits per pixel. A CRF means
+  libx264's scale (libx265's for HEVC) on every encoder: NVENC's own
+  constant quality is finer at the same number, and measured with VMAF on
+  footage, type, a chart and effects its CQ 24 matches libx264's CRF 18 and
+  CQ 28 libx265's CRF 23, so NVENC gets the CRF plus 6 (H.264) or 5 (HEVC).
+  Quality levels pick NVENC presets P1, P4, P5 and P7; key frames come every
+  250 frames, as libx264 places them. Everything else
   (ProRes, AV1, VP9, alpha, GIF, PNG and EXR sequences) is read back and
   piped to `ffmpeg` on every platform: sRGB RGBA8, or half floats for
   10-bit ProRes (sRGB) and EXR (linear, straight alpha that ffmpeg's

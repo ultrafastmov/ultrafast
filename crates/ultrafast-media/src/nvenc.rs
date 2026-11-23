@@ -117,7 +117,8 @@ const PRESETS: [sys::GUID; 7] = [
 /// faster than P4 for 0.2 dB less PSNR at the same bitrate),
 /// ULTRAFAST_NVENC_TUNING hq | ll | ull (default hq),
 /// ULTRAFAST_NVENC_MULTIPASS 0 | 1 (quarter) | 2 (full) (default: the
-/// export's, else the preset's).
+/// export's, else the preset's). ULTRAFAST_NVENC_SPLIT 1..3 sets the
+/// strips a frame is encoded in (default: one per encoder engine).
 fn knobs(rate: &EncodeRate) -> (sys::GUID, sys::NV_ENC_TUNING_INFO, Option<sys::NV_ENC_MULTI_PASS>) {
     let preset = std::env::var("ULTRAFAST_NVENC_PRESET")
         .ok()
@@ -151,6 +152,7 @@ const MAP_VER: u32 = struct_version(4);
 const BITSTREAM_VER: u32 = struct_version(1);
 const PIC_PARAMS_VER: u32 = struct_version(7) | (1 << 31);
 const LOCK_VER: u32 = struct_version(2) | (1 << 31);
+const CAPS_PARAM_VER: u32 = struct_version(1);
 const FUNCTION_LIST_VER: u32 = struct_version(2);
 /// CUDA_EXTERNAL_MEMORY_DEDICATED (cuda.h).
 const CUDA_DEDICATED: u32 = 1;
@@ -465,17 +467,46 @@ pub struct Encoder {
     /// owns one.
     owned: Option<[u8; 16]>,
     slots: Vec<Slot>,
-    /// Output buffers: frames being encoded each write their own, read back
-    /// only once DEPTH frames are queued, so the encoder works while the
-    /// GPU renders the next frames.
+    /// Output buffers, one handed over with each frame and read back only
+    /// once DEPTH frames are queued, so the encoder works while the GPU
+    /// renders the next frames. The encoder fills them in the order they
+    /// were handed over with frames in decode order: with B-frames, the
+    /// buffer handed over with a frame may hold a later one.
     bitstreams: Vec<sys::NV_ENC_OUTPUT_PTR>,
-    /// Frames submitted and not yet read back: (mapped input, bitstream).
-    pending: std::collections::VecDeque<(sys::NV_ENC_INPUT_PTR, usize)>,
+    /// Output buffers handed over and not read back yet, oldest first.
+    queued: std::collections::VecDeque<usize>,
+    /// How many of `queued`, from the front, the encoder has frames for:
+    /// all up to the last picture it took without asking for more input
+    /// (B-frames wait for the reference frame after them).
+    ready: usize,
+    /// The inputs of frames not read back yet: (frame, mapped input).
+    mapped: Vec<(u64, sys::NV_ENC_INPUT_PTR)>,
     next_bitstream: usize,
     width: u32,
     height: u32,
     pitch: u32,
     frames: u64,
+    /// B-frames between reference frames, as opened.
+    b_frames: u8,
+}
+
+/// One encoded frame, as the encoder writes them: in decode order.
+pub struct Packet<'a> {
+    /// The frame's access unit (Annex B).
+    pub data: &'a [u8],
+    /// Which frame it is: its index in display order, counting from the
+    /// first frame given to [`Encoder::encode`].
+    pub frame: u64,
+    /// A key (IDR) frame: decoding can start here.
+    pub key: bool,
+}
+
+/// Input buffers the encoder may hold at once with `rate`: frames queued
+/// before the oldest is read back, and B-frames waiting for the frame they
+/// refer to. Callers cycle through at least this many slots besides their
+/// own frames in flight.
+pub fn frames_held(rate: &EncodeRate) -> usize {
+    DEPTH + rate.b_frames as usize + 1
 }
 
 impl Encoder {
@@ -512,14 +543,26 @@ impl Encoder {
                 owned: own.then(|| device.uuid()),
                 slots: Vec::new(),
                 bitstreams: Vec::new(),
-                pending: Default::default(),
+                queued: Default::default(),
+                ready: 0,
+                mapped: Vec::new(),
                 next_bitstream: 0,
                 width,
                 height: height.next_multiple_of(2),
                 pitch: width.next_multiple_of(256),
                 frames: 0,
+                b_frames: 0,
             };
-            enc.open(codec, fps, rate)?;
+            let split = std::env::var("ULTRAFAST_NVENC_SPLIT").ok().and_then(|v| v.parse().ok());
+            if let Err(e) = enc.open(codec, fps, rate, split) {
+                // A driver that won't split this frame (size, codec,
+                // settings): the session again, whole frames.
+                if split.is_some() || enc.session.is_null() {
+                    return Err(e);
+                }
+                enc.close_session();
+                enc.open(codec, fps, rate, Some(1))?;
+            }
             for _ in 0..slots {
                 enc.add_slot(device)?;
             }
@@ -555,7 +598,9 @@ impl Encoder {
         r
     }
 
-    unsafe fn open(&mut self, codec: Codec, fps: f64, rate: EncodeRate) -> Result<(), String> {
+    /// Opens and configures the session; `split` is how many strips to
+    /// encode each frame in (None: one per encoder engine).
+    unsafe fn open(&mut self, codec: Codec, fps: f64, rate: EncodeRate, split: Option<u32>) -> Result<(), String> {
         let api = &*self.api;
         let mut open: sys::NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS = zeroed();
         open.version = OPEN_SESSION_VER;
@@ -583,11 +628,35 @@ impl Encoder {
         let mut cfg = preset.presetCfg;
         cfg.version = CONFIG_VER;
         cfg.profileGUID = profile;
-        // Two-second GOPs, no B-frames: frames come out in display order,
-        // one per input, so a raw stream muxes with constant timing.
-        let gop = (fps * 2.0).round().max(1.0) as u32;
+        let cap = |what: sys::NV_ENC_CAPS| -> i32 {
+            let mut param: sys::NV_ENC_CAPS_PARAM = zeroed();
+            param.version = CAPS_PARAM_VER;
+            param.capsToQuery = what;
+            let mut v = 0;
+            let r = unsafe { api.nvEncGetEncodeCaps.unwrap()(session, codec_guid, &mut param, &mut v) };
+            if r == sys::_NVENCSTATUS_NV_ENC_SUCCESS { v } else { 0 }
+        };
+        let gop = if rate.gop > 0 {
+            rate.gop
+        } else {
+            (fps * 2.0).round().max(1.0) as u32
+        };
         cfg.gopLength = gop;
-        cfg.frameIntervalP = 1;
+        // B-frames as far as this GPU encodes them for the codec (HEVC's
+        // came with Turing), the middle one of three a reference for the
+        // others where it can be: about a third smaller on footage. Without
+        // lookahead the pattern is fixed, and frames come out in decode
+        // order (see `Packet`).
+        let b_frames = (rate.b_frames as i32)
+            .min(cap(sys::_NV_ENC_CAPS_NV_ENC_CAPS_NUM_MAX_BFRAMES))
+            .max(0) as u8;
+        self.b_frames = b_frames;
+        cfg.frameIntervalP = b_frames as i32 + 1;
+        let b_ref = if b_frames >= 2 && cap(sys::_NV_ENC_CAPS_NV_ENC_CAPS_SUPPORT_BFRAME_REF_MODE) & 2 != 0 {
+            sys::_NV_ENC_BFRAME_REF_MODE_NV_ENC_BFRAME_REF_MODE_MIDDLE
+        } else {
+            sys::_NV_ENC_BFRAME_REF_MODE_NV_ENC_BFRAME_REF_MODE_DISABLED
+        };
         cfg.rcParams.rateControlMode = sys::_NV_ENC_PARAMS_RC_MODE_NV_ENC_PARAMS_RC_VBR;
         let bits = |b: u64| b.min(u32::MAX as u64) as u32;
         match rate.quality {
@@ -607,8 +676,8 @@ impl Encoder {
         if let Some(m) = multipass {
             cfg.rcParams.multiPass = m;
         }
-        // One bitstream out per frame in, as `encode` reads them: the slow
-        // presets' lookahead would hold frames back.
+        // No lookahead: it would hold frames back beyond the B-frames
+        // `encode` waits for, and choose their pattern itself.
         cfg.rcParams.set_enableLookahead(0);
         cfg.rcParams.lookaheadDepth = 0;
         let vui = sys::NV_ENC_CONFIG_H264_VUI_PARAMETERS {
@@ -627,12 +696,14 @@ impl Encoder {
                 h.idrPeriod = gop;
                 h.set_repeatSPSPPS(1);
                 h.h264VUIParameters = vui;
+                h.useBFramesAsRef = b_ref;
             },
             Codec::Hevc => unsafe {
                 let h = &mut cfg.encodeCodecConfig.hevcConfig;
                 h.idrPeriod = gop;
                 h.set_repeatSPSPPS(1);
                 h.hevcVUIParameters = vui;
+                h.useBFramesAsRef = b_ref;
             },
         }
         let (num, den) = if (fps - fps.round()).abs() < 1e-3 {
@@ -655,11 +726,26 @@ impl Encoder {
         init.enablePTD = 1;
         init.encodeConfig = &mut cfg;
         init.tuningInfo = tuning;
+        // Each frame in strips, one per encoder engine (up to three): as
+        // fast as the engines together, the same size and picture (on an
+        // RTX 5090 a 1080x1920 frame at P4 takes 0.7 ms in three strips,
+        // 1.7 ms whole). One engine, or none asked: the driver's choice.
+        let strips = match split {
+            Some(n) => n,
+            None => (cap(sys::_NV_ENC_CAPS_NV_ENC_CAPS_NUM_ENCODER_ENGINES).clamp(1, 3)) as u32,
+        };
+        if split.is_some() || strips >= 2 {
+            init.set_splitEncodeMode(match strips {
+                0 | 1 => sys::_NV_ENC_SPLIT_ENCODE_MODE_NV_ENC_SPLIT_DISABLE_MODE,
+                2 => sys::_NV_ENC_SPLIT_ENCODE_MODE_NV_ENC_SPLIT_TWO_FORCED_MODE,
+                _ => sys::_NV_ENC_SPLIT_ENCODE_MODE_NV_ENC_SPLIT_THREE_FORCED_MODE,
+            });
+        }
         self.call(
             unsafe { api.nvEncInitializeEncoder.unwrap()(session, &mut init) },
             "nvEncInitializeEncoder",
         )?;
-        for _ in 0..DEPTH {
+        for _ in 0..DEPTH + b_frames as usize + 1 {
             let mut bs: sys::NV_ENC_CREATE_BITSTREAM_BUFFER = zeroed();
             bs.version = BITSTREAM_VER;
             self.call(
@@ -719,13 +805,20 @@ impl Encoder {
         });
     }
 
-    /// Encodes the frame in slot `i` (the GPU must be done writing it) and
-    /// passes its compressed bytes to `out`.
-    /// Queues the frame in input buffer `i`. Encoded bytes come out through
-    /// `out` in order, up to [`DEPTH`] frames later; buffer `i` stays in use
-    /// until then (callers cycle through [`Encoder::new`]'s slots, which
-    /// must number at least their frames in flight plus `DEPTH`).
-    pub fn encode(&mut self, i: usize, out: &mut dyn FnMut(&[u8]) -> Result<(), String>) -> Result<(), String> {
+    /// B-frames between reference frames, as opened (the GPU may have
+    /// fewer than asked for): a frame comes out at most this many frames
+    /// after a later one.
+    pub fn b_frames(&self) -> u8 {
+        self.b_frames
+    }
+
+    /// Queues the frame in input buffer `i` (the GPU must be done writing
+    /// it). Encoded frames come out through `out` in decode order, up to
+    /// [`DEPTH`] frames later (and B-frames after the frame they refer to);
+    /// buffer `i` stays in use until its own frame has come out (callers
+    /// cycle through [`Encoder::new`]'s slots, which must number at least
+    /// their frames in flight plus [`frames_held`]).
+    pub fn encode(&mut self, i: usize, out: &mut dyn FnMut(Packet) -> Result<(), String>) -> Result<(), String> {
         let api = &*self.api;
         let session = self.session;
         let registered = self.slots[i].registered;
@@ -733,7 +826,7 @@ impl Encoder {
         let (w, h, pitch) = (self.width, self.height, self.pitch);
         let b = self.next_bitstream;
         let bitstream = self.bitstreams[b];
-        let mapped = self.with_ctx(|| unsafe {
+        let (mapped, held) = self.with_ctx(|| unsafe {
             let mut map: sys::NV_ENC_MAP_INPUT_RESOURCE = zeroed();
             map.version = MAP_VER;
             map.registeredResource = registered;
@@ -752,33 +845,43 @@ impl Encoder {
             pic.pictureStruct = sys::_NV_ENC_PIC_STRUCT_NV_ENC_PIC_STRUCT_FRAME;
             pic.inputTimeStamp = frame;
             pic.frameIdx = frame as u32;
-            let r = api.nvEncEncodePicture.unwrap()(session, &mut pic);
-            if r != sys::_NVENCSTATUS_NV_ENC_SUCCESS {
-                api.nvEncUnmapInputResource.unwrap()(session, map.mappedResource);
-                // P frames only: every picture produces its own output.
-                self.call(r, "nvEncEncodePicture")?;
+            match api.nvEncEncodePicture.unwrap()(session, &mut pic) {
+                sys::_NVENCSTATUS_NV_ENC_SUCCESS => Ok((map.mappedResource, false)),
+                // A B-frame: encoded once the frame after it is.
+                sys::_NVENCSTATUS_NV_ENC_ERR_NEED_MORE_INPUT => Ok((map.mappedResource, true)),
+                r => {
+                    api.nvEncUnmapInputResource.unwrap()(session, map.mappedResource);
+                    self.call(r, "nvEncEncodePicture").map(|_| (null_mut(), false))
+                }
             }
-            Ok(map.mappedResource)
         })?;
-        self.pending.push_back((mapped, b));
+        self.mapped.push((frame, mapped));
+        self.queued.push_back(b);
+        if !held {
+            self.ready = self.queued.len();
+        }
         self.next_bitstream = (b + 1) % self.bitstreams.len();
         self.frames += 1;
-        while self.pending.len() >= self.bitstreams.len() {
+        while self.queued.len() >= DEPTH && self.ready > 0 {
             self.drain_one(out)?;
         }
         Ok(())
     }
 
-    /// Reads back the oldest queued frame (blocks until the encoder is done
-    /// with it) and lets go of its input buffer.
-    fn drain_one(&mut self, out: &mut dyn FnMut(&[u8]) -> Result<(), String>) -> Result<(), String> {
-        let Some((mapped, b)) = self.pending.pop_front() else {
+    /// Reads back the oldest output buffer the encoder has a frame for
+    /// (blocks until it is done with it) and lets go of that frame's input.
+    fn drain_one(&mut self, out: &mut dyn FnMut(Packet) -> Result<(), String>) -> Result<(), String> {
+        if self.ready == 0 {
+            return Ok(());
+        }
+        let Some(b) = self.queued.pop_front() else {
             return Ok(());
         };
+        self.ready -= 1;
         let api = &*self.api;
         let session = self.session;
         let bitstream = self.bitstreams[b];
-        self.with_ctx(|| unsafe {
+        let (result, frame) = self.with_ctx(|| unsafe {
             let mut lock: sys::NV_ENC_LOCK_BITSTREAM = zeroed();
             lock.version = LOCK_VER;
             lock.outputBitstream = bitstream;
@@ -786,39 +889,77 @@ impl Encoder {
                 api.nvEncLockBitstream.unwrap()(session, &mut lock),
                 "nvEncLockBitstream",
             );
+            let frame = lock.outputTimeStamp;
             let result = r.and_then(|_| {
                 let bytes = std::slice::from_raw_parts(
                     lock.bitstreamBufferPtr as *const u8,
                     lock.bitstreamSizeInBytes as usize,
                 );
-                let w = out(bytes);
+                let w = out(Packet {
+                    data: bytes,
+                    frame,
+                    key: lock.pictureType == sys::_NV_ENC_PIC_TYPE_NV_ENC_PIC_TYPE_IDR,
+                });
                 api.nvEncUnlockBitstream.unwrap()(session, bitstream);
                 w
             });
-            api.nvEncUnmapInputResource.unwrap()(session, mapped);
-            result
-        })
+            Ok((result, frame))
+        })?;
+        // The frame this buffer holds is done; with B-frames, not
+        // necessarily the one handed over with it.
+        let i = match self.mapped.iter().position(|&(f, _)| f == frame) {
+            Some(i) if result.is_ok() => i,
+            // Nothing read: let go of the oldest.
+            _ => 0,
+        };
+        if i < self.mapped.len() {
+            let (_, mapped) = self.mapped.remove(i);
+            let _ = self.with_ctx(|| unsafe {
+                api.nvEncUnmapInputResource.unwrap()(session, mapped);
+                Ok(())
+            });
+        }
+        result
     }
 
-    /// Flushes the encoder (end of stream).
-    pub fn finish(&mut self, out: &mut dyn FnMut(&[u8]) -> Result<(), String>) -> Result<(), String> {
-        while !self.pending.is_empty() {
-            self.drain_one(out)?;
-        }
+    /// Flushes the encoder (end of stream): the frames it still holds come
+    /// out through `out`.
+    pub fn finish(&mut self, out: &mut dyn FnMut(Packet) -> Result<(), String>) -> Result<(), String> {
         let api = &*self.api;
         let session = self.session;
         self.with_ctx(|| unsafe {
             let mut pic: sys::NV_ENC_PIC_PARAMS = zeroed();
             pic.version = PIC_PARAMS_VER;
             pic.encodePicFlags = sys::_NV_ENC_PIC_FLAGS_NV_ENC_PIC_FLAG_EOS as u32;
-            // Synchronous mode without B-frames holds no frames back, so
-            // end of stream produces no output.
-            let _ = out;
             self.call(
                 api.nvEncEncodePicture.unwrap()(session, &mut pic),
                 "nvEncEncodePicture (end of stream)",
             )
-        })
+        })?;
+        // Every frame handed over has an output now.
+        self.ready = self.queued.len();
+        while !self.queued.is_empty() {
+            self.drain_one(out)?;
+        }
+        Ok(())
+    }
+
+    /// Ends a session that failed to initialize, so it can be opened again.
+    fn close_session(&mut self) {
+        let bitstreams = std::mem::take(&mut self.bitstreams);
+        if self.session.is_null() {
+            return;
+        }
+        // SAFETY: the session and its buffers were made by this encoder and
+        // nothing else refers to them yet.
+        let _ = self.with_ctx(|| unsafe {
+            for b in bitstreams {
+                self.api.nvEncDestroyBitstreamBuffer.unwrap()(self.session, b);
+            }
+            self.api.nvEncDestroyEncoder.unwrap()(self.session);
+            Ok(())
+        });
+        self.session = null_mut();
     }
 
     fn call(&self, r: sys::NVENCSTATUS, what: &str) -> Result<(), String> {
@@ -860,10 +1001,10 @@ impl Drop for Encoder {
         // the resources registered with them.
         unsafe {
             if !self.session.is_null() {
-                let pending: Vec<_> = self.pending.drain(..).collect();
+                let mapped = std::mem::take(&mut self.mapped);
                 let bitstreams = std::mem::take(&mut self.bitstreams);
                 let _ = self.with_ctx(|| {
-                    for (mapped, _) in pending {
+                    for (_, mapped) in mapped {
                         self.api.nvEncUnmapInputResource.unwrap()(self.session, mapped);
                     }
                     for b in bitstreams {

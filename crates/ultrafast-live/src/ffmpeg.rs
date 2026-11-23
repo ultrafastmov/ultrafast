@@ -24,6 +24,23 @@ pub const BT709_TAGS: [&str; 8] = [
     "tv",
 ];
 
+/// Frames from one key frame to the next in H.264 and HEVC, as libx264
+/// and libx265 make them by default.
+pub const GOP: u32 = 250;
+
+/// NVENC's constant quality for a CRF on libx264's scale (libx265's for
+/// HEVC). At the same number NVENC's is finer: measured with VMAF and PSNR
+/// on footage, type, a chart and effects at 1080p, NVENC's CQ 24 matches
+/// libx264's CRF 18 (preset medium) and CQ 28 libx265's CRF 23. So
+/// `--crf 18` means the same picture whichever encoder makes it.
+pub fn nvenc_cq(codec: VideoCodec, crf: f64) -> f64 {
+    let step = match codec {
+        VideoCodec::Hevc => 5.0,
+        _ => 6.0,
+    };
+    (crf + step).clamp(0.0, 51.0)
+}
+
 /// How frames reach ffmpeg's stdin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pixels {
@@ -180,10 +197,18 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
             let nvenc = encoder.ends_with("_nvenc");
             match encoder {
                 _ if nvenc => {
-                    let preset = by_quality(q, ["p1", "p2", "p5", "p7"]);
+                    let preset = by_quality(q, ["p1", "p4", "p5", "p7"]);
                     push(&["-preset", preset, "-tune", "hq"]);
                     if q == Quality::Master {
                         push(&["-multipass", "fullres"]);
+                    }
+                    if matches!(v.codec, VideoCodec::H264 | VideoCodec::Hevc) {
+                        push(&["-g", &GOP.to_string()]);
+                    }
+                    // B-frames, which every NVENC has for H.264 (HEVC's
+                    // came later: there ffmpeg's own choice stands).
+                    if v.codec == VideoCodec::H264 {
+                        push(&["-bf", "3"]);
                     }
                 }
                 "libx264" | "libx265" => {
@@ -209,14 +234,17 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
             }
             match v.rate.expect("rate control") {
                 Rate::Crf(c) => {
-                    let c = format!("{c}");
                     if nvenc {
-                        push(&["-rc", "vbr", "-cq", &c, "-b:v", "0"]);
+                        let cq = match v.codec {
+                            VideoCodec::H264 | VideoCodec::Hevc => nvenc_cq(v.codec, c),
+                            _ => c,
+                        };
+                        push(&["-rc", "vbr", "-cq", &format!("{cq}"), "-b:v", "0"]);
                     } else if matches!(encoder, "libvpx-vp9" | "libaom-av1") {
                         // Constant quality needs the bitrate cap off.
-                        push(&["-crf", &c, "-b:v", "0"]);
+                        push(&["-crf", &format!("{c}"), "-b:v", "0"]);
                     } else {
-                        push(&["-crf", &c]);
+                        push(&["-crf", &format!("{c}")]);
                     }
                 }
                 Rate::Bitrate(b) => {
@@ -362,12 +390,24 @@ mod tests {
                 && a.contains("-colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv"),
             "{a}"
         );
+        // NVENC's constant quality, on libx264's scale: master's CRF 12 is
+        // NVENC's 18, standard's 18 its 24.
         let t = target(r#"{"quality": "master"}"#, "f.mp4");
         let a = joined(&t, "h264_nvenc");
         assert!(
-            a.contains("-preset p7") && a.contains("-cq 12") && a.contains("-multipass fullres"),
+            a.contains("-preset p7") && a.contains("-cq 18") && a.contains("-multipass fullres"),
             "{a}"
         );
+        let t = target("{}", "f.mp4");
+        let a = joined(&t, "h264_nvenc");
+        assert!(
+            a.contains("-preset p4") && a.contains("-cq 24 ") && a.contains("-g 250") && a.contains("-bf 3"),
+            "{a}"
+        );
+        let t = target(r#"{"codec": "hevc", "crf": 23}"#, "f.mp4");
+        let a = joined(&t, "hevc_nvenc");
+        assert!(a.contains("-cq 28 ") && !a.contains("-bf "), "{a}");
+        assert_eq!(nvenc_cq(VideoCodec::H264, 50.0), 51.0);
         let t = target(r#"{"bitrate": "8M"}"#, "f.mp4");
         let a = joined(&t, "libx264");
         assert!(a.contains("-b:v 8000000 -maxrate 16000000"), "{a}");

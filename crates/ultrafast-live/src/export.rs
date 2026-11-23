@@ -202,7 +202,30 @@ pub fn export_target(
     path: &Path,
     target: Target,
     opts: ExportOptions,
+    progress: impl FnMut(u64, u64),
+) -> Result<ExportReport, String> {
+    export_target_as(renderer, doc, path, target, opts, progress, Whole::File)
+}
+
+/// What an export writes: a whole file, or one run of a parallel export
+/// that is joined to the others afterwards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Whole {
+    File,
+    /// Joined as it is by ffmpeg's concat demuxer, which lines runs up by
+    /// their decode times: no B-frames, so those are the frames' own times
+    /// (whichever encoder, NVENC or ffmpeg's, wrote each run).
+    Run,
+}
+
+fn export_target_as(
+    renderer: &mut Renderer,
+    doc: &Document,
+    path: &Path,
+    target: Target,
+    opts: ExportOptions,
     mut progress: impl FnMut(u64, u64),
+    whole: Whole,
 ) -> Result<ExportReport, String> {
     let fmt = doc.format;
     let end = opts.end.unwrap_or(fmt.duration).min(fmt.duration);
@@ -227,12 +250,13 @@ pub fn export_target(
     let own = renderer.output_size();
     let size = (!target.native_size(&fmt)).then_some((target.width, target.height));
     renderer.set_output_size(size);
-    let result = export_frames(renderer, doc, path, target, clock, opts, &mut progress);
+    let result = export_frames(renderer, doc, path, target, clock, opts, &mut progress, whole);
     renderer.set_output_size(own);
     result
 }
 
 /// The picture of an export, routed to the encoder that takes it.
+#[allow(clippy::too_many_arguments)]
 fn export_frames(
     renderer: &mut Renderer,
     doc: &Document,
@@ -241,14 +265,17 @@ fn export_frames(
     clock: Clock,
     opts: ExportOptions,
     progress: &mut dyn FnMut(u64, u64),
+    whole: Whole,
 ) -> Result<ExportReport, String> {
+    #[cfg(not(any(target_os = "linux", windows)))]
+    let _ = whole;
     #[cfg(all(target_os = "macos", not(feature = "vulkan")))]
     if metal::takes(&target, &opts.settings) {
         return metal::export(renderer, doc, path, target, clock, opts, progress);
     }
     #[cfg(any(target_os = "linux", windows))]
     if nvenc::takes(&target) && std::env::var_os("ULTRAFAST_NVENC").is_none_or(|v| v != "0") {
-        match nvenc::export(renderer, doc, path, target, clock, opts, progress) {
+        match nvenc::export(renderer, doc, path, target, clock, opts, progress, whole) {
             Ok(r) => return Ok(r),
             Err(nvenc::Error::Unavailable(e)) => {
                 eprintln!("ultrafast: NVENC unavailable ({e}); exporting through ffmpeg with readbacks")
@@ -715,7 +742,6 @@ mod metal {
 #[cfg(any(target_os = "linux", windows))]
 mod nvenc {
     use super::*;
-    use std::io::Write;
     use ultrafast_gpu::{Bindings, BufferBinding};
     use ultrafast_media::EncodeRate;
     use ultrafast_media::nvenc::Encoder;
@@ -747,26 +773,34 @@ mod nvenc {
     }
     /// Finished frames queued for the encoder thread.
     const QUEUED: usize = 2;
+    /// The first decoding time in the transport stream (90 kHz): its clock
+    /// reference runs a little ahead, and stays positive.
+    const TS_START: u64 = 90_000;
 
-    /// The quality level as NVENC's rate control: constant quality, capped
-    /// at the level's bits per pixel (standard's is the 0.12 a frame
-    /// exports always had, so a file is never larger than before and simple
-    /// motion graphics come out smaller), or the asked bitrate; P1, P2, P5
-    /// or P7; a full-resolution first pass for masters.
-    fn rate(t: &Target) -> EncodeRate {
+    /// The quality level as NVENC's rate control: constant quality on
+    /// libx264's CRF scale (see [`ffmpeg::nvenc_cq`]), capped at the
+    /// level's bits per pixel, or the asked bitrate; P1, P4, P5 or P7;
+    /// three B-frames and a key frame every 250 frames, as libx264 makes
+    /// them; a full-resolution first pass for masters. Runs of a parallel
+    /// export have no B-frames (see [`Whole::Run`]).
+    fn rate(t: &Target, whole: Whole) -> EncodeRate {
+        let codec = t.codec().unwrap_or(VideoCodec::H264);
         let (bitrate, quality) = match t.video.and_then(|v| v.rate) {
             Some(Rate::Bitrate(b)) => (b, None),
-            Some(Rate::Crf(c)) => (hardware_bitrate(t), Some(c)),
+            Some(Rate::Crf(c)) => (hardware_bitrate(t), Some(ffmpeg::nvenc_cq(codec, c))),
             None => (hardware_bitrate(t), None),
         };
         EncodeRate {
             bitrate,
             quality,
-            preset: [1, 2, 5, 7][t.quality as usize],
+            preset: [1, 4, 5, 7][t.quality as usize],
             multipass: t.quality == Quality::Master,
+            b_frames: if whole == Whole::File { 3 } else { 0 },
+            gop: ffmpeg::GOP,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn export(
         renderer: &mut Renderer,
         doc: &Document,
@@ -775,6 +809,7 @@ mod nvenc {
         clock: Clock,
         opts: ExportOptions,
         progress: &mut dyn FnMut(u64, u64),
+        whole: Whole,
     ) -> Result<ExportReport, Error> {
         let total = clock.total;
         let codec = match t.codec() {
@@ -782,26 +817,24 @@ mod nvenc {
             _ => ultrafast_media::Codec::H264,
         };
         let in_flight = in_flight();
+        let rate = rate(&t, whole);
         // Input buffers: frames on the GPU, queued, being handed over, and
         // held by the encoder until their bitstream is read.
-        let slots = in_flight + QUEUED + 1 + ultrafast_media::nvenc::DEPTH;
-        let mut enc = Encoder::new(renderer.device(), t.width, t.height, t.fps, codec, rate(&t), slots)
+        let slots = in_flight + QUEUED + 1 + ultrafast_media::nvenc::frames_held(&rate);
+        let mut enc = Encoder::new(renderer.device(), t.width, t.height, t.fps, codec, rate, slots)
             .map_err(Error::Unavailable)?;
         let failed = |e: String| Error::Failed(e);
-        // ffmpeg only muxes: the video stream is copied as NVENC wrote it.
+        // ffmpeg only muxes: the video stream is copied as NVENC wrote it,
+        // in a transport stream that gives each frame its times (with
+        // B-frames, decode order is not display order).
         let wav = if t.audio.is_some() {
             audio_wav(renderer.base_dir(), doc, clock.span()).map_err(failed)?
         } else {
             None
         };
-        let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y", "-f"]
+        let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-y", "-f", "mpegts", "-i", "-"]
             .map(String::from)
             .to_vec();
-        args.push(match codec {
-            ultrafast_media::Codec::H264 => "h264".into(),
-            ultrafast_media::Codec::Hevc => "hevc".into(),
-        });
-        args.extend(["-framerate".into(), rate_arg(t.fps), "-i".into(), "-".into()]);
         if let Some(wav) = &wav {
             args.extend(["-i".into(), wav.to_string_lossy().into_owned()]);
             // The mix is exactly as long as the frames (no -shortest: with
@@ -809,22 +842,14 @@ mod nvenc {
             args.extend(["-map", "0:v", "-map", "1:a"].map(String::from));
             args.extend(ffmpeg::audio_args(&t));
         }
-        // Exact frame timestamps on a 1/30000-style clock (what editors and
-        // stream joins expect): the raw stream's own 1.2 MHz guesses left
-        // the average rate a hair off 30/1. NVENC writes no B-frames, so
-        // decode order is display order.
-        let (timescale, ticks) = mp4_clock(t.fps);
-        args.extend([
-            "-c:v".into(),
-            "copy".into(),
-            "-bsf:v".into(),
-            // In the input's own time base (TB, the raw stream's 1.2 MHz):
-            // ffmpeg 8.1 no longer applies setts' time_base option, which
-            // left 60 fps files playing at 1200.
-            format!("setts=ts=N*{ticks}/({timescale}*TB):duration={ticks}/({timescale}*TB)"),
-        ]);
+        // Frame times on a 1/30000-style clock (what editors and stream
+        // joins expect): the 90 kHz times below land on it exactly. (No
+        // setts filter: given only a duration, ffmpeg 9 sets every
+        // packet's PTS to its DTS, which undoes the reordering.)
+        let (timescale, _) = mp4_clock(t.fps);
+        args.extend(["-c:v", "copy"].map(String::from));
         // The stream says BT.709 (the encoder's VUI); newer ffmpeg doesn't
-        // carry that from a copied raw stream to the container.
+        // carry that from a copied stream to the container.
         args.extend(ffmpeg::BT709_TAGS.map(String::from));
         if t.container != Container::Mkv {
             args.extend(["-video_track_timescale".into(), timescale.to_string()]);
@@ -839,8 +864,26 @@ mod nvenc {
             .stdin(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| failed(format!("cannot start ffmpeg to mux: {e}")))?;
-        let mut stdin = child.stdin.take().unwrap();
-        let mut write = |b: &[u8]| stdin.write_all(b).map_err(|e| format!("muxer: {e}"));
+        let stdin = child.stdin.take().unwrap();
+        let mut ts = crate::ts::TsWriter::new(
+            std::io::BufWriter::with_capacity(1 << 20, stdin),
+            match codec {
+                ultrafast_media::Codec::H264 => crate::ts::Stream::H264,
+                ultrafast_media::Codec::Hevc => crate::ts::Stream::Hevc,
+            },
+        );
+        // Frame i is shown at i and decoded in turn, shifted by the frames
+        // the encoder may reorder so decoding never comes after showing;
+        // ffmpeg starts the file at the first frame's time.
+        let step = 90_000.0 / t.fps;
+        let reorder = enc.b_frames() as f64;
+        let mut decoded = 0u64;
+        let mut write = |p: ultrafast_media::nvenc::Packet| {
+            let pts = ((p.frame as f64 + reorder) * step).round() as u64 + TS_START;
+            let dts = (decoded as f64 * step).round() as u64 + TS_START;
+            decoded += 1;
+            ts.write(p.data, pts, dts, p.key).map_err(|e| format!("muxer: {e}"))
+        };
 
         let prev_mode = renderer.mode();
         renderer.set_mode(Mode::Exact);
@@ -937,7 +980,9 @@ mod nvenc {
         renderer.set_mode(prev_mode);
         renderer.set_sequential(false);
         drop(write);
-        drop(stdin);
+        // Closing the pipe ends the stream; ffmpeg then finishes the file.
+        let flushed = ts.flush().map_err(|e| format!("muxer: {e}"));
+        drop(ts);
         let status = child.wait().map_err(|e| failed(e.to_string()))?;
         if let Some(wav) = &wav {
             let _ = std::fs::remove_file(wav);
@@ -946,6 +991,7 @@ mod nvenc {
         if !status.success() {
             return Err(failed(format!("ffmpeg (mux) failed ({status})")));
         }
+        flushed.map_err(failed)?;
         let seconds = start.elapsed().as_secs_f64();
         let stats = renderer.device().stats() - before;
         timing.media_wait = renderer.media_wait() - media0;
@@ -1035,7 +1081,15 @@ pub fn export_parallel(
             let mut r = Renderer::new(dev).map_err(|e| e.to_string())?;
             r.set_base_dir(&base);
             r.set_slot_budget(budget);
-            export_target(&mut r, &doc, &part, t, o, |d, _| counter.store(d, Ordering::Relaxed))
+            export_target_as(
+                &mut r,
+                &doc,
+                &part,
+                t,
+                o,
+                |d, _| counter.store(d, Ordering::Relaxed),
+                Whole::Run,
+            )
         }));
     }
     while threads.iter().any(|t| !t.is_finished()) {

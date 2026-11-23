@@ -345,3 +345,91 @@ fn other_sizes_draw_the_document_at_their_size() {
     assert_eq!(first_frame(&dir.join("own.mp4")).0, 320);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The grey level (0..255) of every frame as it decodes, and each frame's
+/// time in seconds.
+fn frame_levels(path: &Path) -> (Vec<f64>, Vec<f64>) {
+    let o = Command::new("ffmpeg")
+        .args(["-v", "error", "-i"])
+        .arg(path)
+        .args(["-vf", "scale=4:4,format=gray", "-f", "rawvideo", "-"])
+        .output()
+        .unwrap();
+    let levels = o
+        .stdout
+        .chunks_exact(16)
+        .map(|c| c.iter().map(|&v| v as f64).sum::<f64>() / 16.0)
+        .collect();
+    let o = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "frame=pts_time",
+        ])
+        .args(["-of", "csv=p=0"])
+        .arg(path)
+        .output()
+        .unwrap();
+    let times = String::from_utf8_lossy(&o.stdout)
+        .split_whitespace()
+        .filter_map(|t| t.parse().ok())
+        .collect();
+    (levels, times)
+}
+
+/// Frames come out in the order they're shown, each at its own time, with
+/// the encoder's B-frames (decoded in another order) and without: a grey
+/// that brightens every frame, through whichever encoder runs here.
+#[test]
+fn frames_keep_their_order_and_times() {
+    if !ffmpeg() {
+        eprintln!("no ffmpeg: skipped");
+        return;
+    }
+    const RAMP: &str = r##"{
+      "version": 1,
+      "format": { "width": 320, "height": 180, "fps": 30, "duration": 3 },
+      "output": "grey",
+      "nodes": {
+        "grey": { "op": "solid", "params": { "color": { "keys": [
+          { "t": 0, "v": [0, 0, 0, 1] }, { "t": 3, "v": [1, 1, 1, 1] } ] } } }
+      }
+    }"##;
+    let dir = std::env::temp_dir().join(format!("ultrafast-order-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let doc = Document::from_json(RAMP).unwrap();
+    let mut r = Renderer::new(Device::new().unwrap()).unwrap();
+    for (name, json, fps) in [
+        ("h264.mp4", "{}", 30.0),
+        ("ntsc.mp4", r#"{"fps": 29.97}"#, 30000.0 / 1001.0),
+        ("hevc.mp4", r#"{"codec": "hevc"}"#, 30.0),
+        ("h264.mkv", "{}", 30.0),
+    ] {
+        if name.starts_with("hevc") && !decoder("hevc") {
+            continue;
+        }
+        let path = dir.join(name);
+        let rep = export(&mut r, &doc, &path, json);
+        let (levels, times) = frame_levels(&path);
+        assert_eq!(levels.len() as u64, rep.frames, "{name}: frames decoded");
+        for (i, w) in levels.windows(2).enumerate() {
+            assert!(
+                w[1] > w[0] - 0.5,
+                "{name}: frame {} ({}) after frame {i} ({})",
+                i + 1,
+                w[1],
+                w[0]
+            );
+        }
+        // Matroska keeps milliseconds.
+        let tol = if name.ends_with(".mkv") { 1e-3 } else { 1e-6 };
+        assert_eq!(times.len(), levels.len(), "{name}: frame times");
+        for (i, t) in times.iter().enumerate() {
+            assert!((t - i as f64 / fps).abs() < tol, "{name}: frame {i} at {t}");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

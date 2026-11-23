@@ -121,7 +121,7 @@ A transparent ProRes master at 4K and 60 fps from the same document
     | `format` | `mp4`, `mov`, `mkv`, `webm`, `gif`; `png` or `exr` (an image sequence, delivered as a zip with the sound as `audio.wav`); `wav`, `mp3`, `m4a`, `flac`, `opus` (sound alone) | from `name`, else from `codec`, else `mp4` |
     | `codec` | `h264`, `hevc` (`h265`), `av1`, `vp9`, `prores` | the format's first: `h264`, `vp9` for `webm` |
     | `quality` | `draft` (a fast preview: no motion blur, the fastest encode), `standard`, `high`, `master` (twice the motion-blur samples, the slowest and best encode) | `standard` |
-    | `crf` | constant quality on the codec's scale, lower is better (H.264 and HEVC 0-51, AV1 and VP9 0-63) | the quality level's: H.264 28/18/15/12, HEVC 30/23/20/16, AV1 42/30/25/20, VP9 42/28/24/18 |
+    | `crf` | constant quality on the codec's scale, lower is better (H.264 and HEVC 0-51, as libx264 and libx265 count it on every encoder; AV1 and VP9 0-63) | the quality level's: H.264 28/18/15/12, HEVC 30/23/20/16, AV1 42/30/25/20, VP9 42/28/24/18 |
     | `bitrate` | bits per second, or text such as `"8M"`; instead of `crf` | null |
     | `prores_profile` | `proxy`, `light`, `standard`, `hq`, `4444`, `4444-xq` | `hq`; `4444` with `alpha`; `proxy` for a draft |
     | `alpha` | keep transparency: ProRes 4444, VP9, GIF (on or off per pixel), PNG, EXR | false |
@@ -134,9 +134,9 @@ A transparent ProRes master at 4K and 60 fps from the same document
     | `loops` | GIF: times it plays again after the first; 0 plays once | forever |
 
     H.264 and HEVC without alpha encode on the GPU with no readback; on
-    NVIDIA they run at constant quality capped at the level's bits per
-    pixel (standard's is 0.12, what renders always had), so a standard
-    file is never larger than before.
+    NVIDIA they run at constant quality (NVENC's equivalent of the CRF:
+    the same picture libx264 or libx265 would make) capped at the level's
+    bits per pixel (standard's is 0.12), with B-frames.
 - `attempt` (optional): `{"render_id", "attempt_id"}`, each 1 to 128
   characters of `A-Z a-z 0-9 . _ : -`. Stored on the object and echoed in
   the receipt; with `output.uri` it makes retries safe (see replays). The
