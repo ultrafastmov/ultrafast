@@ -373,9 +373,11 @@ fn frame_levels(path: &Path) -> (Vec<f64>, Vec<f64>) {
         .arg(path)
         .output()
         .unwrap();
+    // One line a frame; a frame with side data (libx264's first, its
+    // settings) has more fields after the time.
     let times = String::from_utf8_lossy(&o.stdout)
-        .split_whitespace()
-        .filter_map(|t| t.parse().ok())
+        .lines()
+        .filter_map(|l| l.split(',').next()?.trim().parse().ok())
         .collect();
     (levels, times)
 }
