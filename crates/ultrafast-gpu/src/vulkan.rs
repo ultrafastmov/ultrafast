@@ -793,6 +793,12 @@ impl Device {
     }
 
     unsafe fn create(lanes: usize) -> Result<Self, GpuError> {
+        // The loader scans the drivers in the calls below, and NVIDIA's
+        // isn't safe to scan from two threads at once (two renderers
+        // starting together crashed in its X11 probe): one device starts
+        // at a time, until its instance and GPUs are listed.
+        static LOADER: Mutex<()> = Mutex::new(());
+        let scan = LOADER.lock().unwrap_or_else(|e| e.into_inner());
         let entry = load_entry()?;
         let app = CString::new("ultrafast").unwrap();
         let app_info = vk::ApplicationInfo::default()
@@ -831,6 +837,7 @@ impl Device {
 
         // Prefer a discrete GPU with a compute queue.
         let pdevs = listed("GPUs", || unsafe { instance.enumerate_physical_devices() })?;
+        drop(scan);
         let mut best: Option<(vk::PhysicalDevice, u32, i32)> = None;
         for pd in pdevs {
             let props = unsafe { instance.get_physical_device_properties(pd) };
