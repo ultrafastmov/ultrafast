@@ -18,10 +18,12 @@ your machine's GPU (Metal on Apple silicon, Vulkan on Linux), with ffmpeg
 for video and audio. The plugin itself starts no server, has no hooks and
 sends nothing anywhere.
 
-`uf` reads the files your documents name. It goes online only for fonts: a
-font family a document names that isn't installed is downloaded once from
-Google Fonts (color emoji from Google's Noto Emoji release on GitHub) into
-a local cache. `ULTRAFAST_OFFLINE=1` turns that off. A `cargo install`
+`uf` reads the files your documents name. It goes online only to fetch
+what a render needs: media at an https URL that a document names (or that
+is sent to `uf serve`) comes from that URL, and a font family a document
+names that isn't installed is downloaded once from Google Fonts (color
+emoji from Google's Noto Emoji release on GitHub) into a local cache.
+`ULTRAFAST_OFFLINE=1` turns font downloads off. A `cargo install`
 build that can't find the Slang shader compiler downloads it once from
 Slang's GitHub releases and checks its SHA-256; the installer and Homebrew
 builds include it.
