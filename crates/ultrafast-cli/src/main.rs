@@ -295,6 +295,24 @@ fn main() -> Result<()> {
                 .into_iter()
                 .map(|i| serde_json::json!({ "node": i.node, "severity": i.severity, "message": i.message }))
                 .collect();
+            // A key written twice parses as its last value, the first lost.
+            for p in ultrafast_graph::duplicate_keys(&std::fs::read_to_string(&path)?) {
+                let (node, what) = match p.strip_prefix("nodes.").and_then(|r| r.split_once('.')) {
+                    Some((id, rest)) => (
+                        id.to_string(),
+                        match rest.strip_prefix("params.") {
+                            Some(param) => format!("param `{param}`"),
+                            None => format!("`{rest}`"),
+                        },
+                    ),
+                    None => (String::new(), format!("`{p}`")),
+                };
+                issues.push(serde_json::json!({
+                    "node": node,
+                    "severity": "warning",
+                    "message": format!("{what} is given twice: only the last one counts"),
+                }));
+            }
             // Render one frame to surface plan errors, shader compile errors
             // and missing files as well.
             let mut r = renderer(&path)?;

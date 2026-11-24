@@ -271,6 +271,87 @@ impl Document {
 
 /// The first param in a document's text (its nodes', or its components')
 /// that does not parse as a [`Param`].
+/// Keys given twice in one object of a JSON document, as paths
+/// (`nodes.title.params.position`). Parsing keeps the last of them without
+/// a word, so a param written twice loses its first value.
+pub fn duplicate_keys(json: &str) -> Vec<String> {
+    use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+    use std::cell::RefCell;
+    struct Walk<'a> {
+        path: String,
+        found: &'a RefCell<Vec<String>>,
+    }
+    impl<'de> DeserializeSeed<'de> for Walk<'_> {
+        type Value = ();
+        fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
+            d.deserialize_any(self)
+        }
+    }
+    impl<'de> Visitor<'de> for Walk<'_> {
+        type Value = ();
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("JSON")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<(), A::Error> {
+            let mut seen = std::collections::HashSet::new();
+            while let Some(k) = m.next_key::<String>()? {
+                let path = if self.path.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}.{k}", self.path)
+                };
+                if !seen.insert(k) {
+                    self.found.borrow_mut().push(path.clone());
+                }
+                m.next_value_seed(Walk {
+                    path,
+                    found: self.found,
+                })?;
+            }
+            Ok(())
+        }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut s: A) -> Result<(), A::Error> {
+            let mut i = 0;
+            while s
+                .next_element_seed(Walk {
+                    path: format!("{}[{i}]", self.path),
+                    found: self.found,
+                })?
+                .is_some()
+            {
+                i += 1;
+            }
+            Ok(())
+        }
+        fn visit_bool<E>(self, _: bool) -> Result<(), E> {
+            Ok(())
+        }
+        fn visit_i64<E>(self, _: i64) -> Result<(), E> {
+            Ok(())
+        }
+        fn visit_u64<E>(self, _: u64) -> Result<(), E> {
+            Ok(())
+        }
+        fn visit_f64<E>(self, _: f64) -> Result<(), E> {
+            Ok(())
+        }
+        fn visit_str<E>(self, _: &str) -> Result<(), E> {
+            Ok(())
+        }
+        fn visit_unit<E>(self) -> Result<(), E> {
+            Ok(())
+        }
+    }
+    let found = RefCell::new(Vec::new());
+    let mut de = serde_json::Deserializer::from_str(json);
+    let _ = Walk {
+        path: String::new(),
+        found: &found,
+    }
+    .deserialize(&mut de);
+    found.into_inner()
+}
+
 fn locate_bad_param(s: &str) -> Option<DocumentError> {
     let v: serde_json::Value = serde_json::from_str(s).ok()?;
     let bad = |at: String, nodes: &serde_json::Value| -> Option<DocumentError> {
@@ -374,6 +455,18 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keys_given_twice_are_found() {
+        let doc = r#"{"version": 1, "nodes": {"title": {"op": "text", "params": {"position": [1, 2], "text": "a",
+            "position": [3, 4]}}, "list": {"op": "path", "params": {"points": [{"x": 1, "x": 2}]}}}}"#;
+        assert_eq!(
+            duplicate_keys(doc),
+            ["nodes.title.params.position", "nodes.list.params.points[0].x"]
+        );
+        assert!(duplicate_keys(r#"{"a": {"b": 1}, "c": {"b": 2}}"#).is_empty());
+        assert!(duplicate_keys("not json").is_empty());
+    }
 
     #[test]
     fn a_bad_param_is_located() {
