@@ -168,15 +168,49 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    /// "warning" for parts of an imported file ultrafast leaves out (the rest
-    /// renders), "error" for problems that stop a node from rendering.
+    /// "warning" for parts of an imported file ultrafast leaves out and for
+    /// text that renders but not all of it shows, "error" for problems that
+    /// stop a node from rendering.
     pub fn severity(&self) -> &'static str {
-        if self.message.starts_with("lottie: ") || self.message.starts_with("svg: ") {
+        if ["lottie: ", "svg: ", "text: "]
+            .iter()
+            .any(|p| self.message.starts_with(p))
+        {
             "warning"
         } else {
             "error"
         }
     }
+}
+
+/// Why a text's keyed `reveal` never shows all of it, if it doesn't: its
+/// keys stop below the glyphs it has (a typewriter keyed for a shorter
+/// text, then edited or filled from a CSV row with a longer one).
+fn reveal_falls_short(node: &ultrafast_graph::Node, units: usize) -> Option<String> {
+    let Some(ultrafast_graph::Param::Animated { keys, .. }) = node.params.get("reveal") else {
+        return None;
+    };
+    let most = keys
+        .iter()
+        .filter_map(|k| k.v.first().copied())
+        .fold(f64::NEG_INFINITY, f64::max);
+    let softness = match node.params.get("reveal_softness") {
+        Some(ultrafast_graph::Param::Number(s)) => s.max(1e-3),
+        _ => 1.0,
+    };
+    // Glyph i shows fully once the reveal reaches i + softness.
+    let needed = units as f64 - 1.0 + softness;
+    if units == 0 || !most.is_finite() || most >= needed - 1e-6 {
+        return None;
+    }
+    let shown = ((most - softness + 1.0).max(0.0).floor() as usize).min(units);
+    let fmt = |v: f64| format!("{}", (v * 100.0).round() / 100.0);
+    Some(format!(
+        "text: its `reveal` keys stop at {} of its {units} glyphs, so the last {} never show: key it up to {}",
+        fmt(most),
+        units - shown,
+        fmt(needed)
+    ))
 }
 
 /// The final image of a frame, handed to [`Renderer::submit_frame_with`]
@@ -4582,6 +4616,9 @@ impl Renderer {
             "text" => geom::text_node(id, node, &doc.format, t, outer, &mut self.fonts, &self.base_dir)?,
             _ => geom::path(id, node, &doc.format, t, outer)?,
         });
+        if let Some(m) = reveal_falls_short(node, g.units) {
+            self.diagnose(id, m);
+        }
         self.bounds.insert(id.to_string(), self.frame_bounds(g.bounds));
         self.geometry.insert(id.to_string(), (key, content, full, g.clone()));
         self.built.insert(id.to_string(), (key, content, full, g.clone()));
@@ -5442,4 +5479,35 @@ fn extent(p: &Placed) -> ops::Rect {
 
 fn intersect(a: ops::Rect, b: ops::Rect) -> ops::Rect {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_reveal_keyed_short_of_its_text_is_flagged() {
+        let text = |reveal: &str| -> ultrafast_graph::Node {
+            serde_json::from_str(&format!(r#"{{"op":"text","params":{{"text":"x","reveal":{reveal}}}}}"#)).unwrap()
+        };
+        // The title template's subtitle: 24 glyphs typed in.
+        let typed = text(r#"{"keys":[{"t":1,"v":0},{"t":2,"v":24}]}"#);
+        assert_eq!(reveal_falls_short(&typed, 24), None);
+        assert_eq!(reveal_falls_short(&typed, 20), None);
+        let m = reveal_falls_short(&typed, 31).unwrap();
+        assert!(
+            m.starts_with("text: ") && m.contains("the last 7 never show") && m.ends_with("key it up to 31"),
+            "{m}"
+        );
+        assert_eq!(
+            Diagnostic {
+                node: "sub".into(),
+                message: m
+            }
+            .severity(),
+            "warning"
+        );
+        // A fixed reveal shows part of the text on purpose.
+        assert_eq!(reveal_falls_short(&text("5"), 31), None);
+    }
 }

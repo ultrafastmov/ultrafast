@@ -792,6 +792,9 @@ fn main() -> Result<()> {
             let mut r = renderer(&path)?;
             let t0 = Instant::now();
             let n = jobs.len();
+            // Each warning once, with the first row that has it (a row
+            // whose longer text its reveal never shows, say).
+            let mut warned = std::collections::HashSet::new();
             for (i, (d, out)) in jobs.iter().enumerate() {
                 if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
                     std::fs::create_dir_all(dir)?;
@@ -809,6 +812,12 @@ fn main() -> Result<()> {
                     rep.frames,
                     t1.elapsed().as_secs_f64()
                 );
+                for d in r.diagnostics() {
+                    if warned.insert((d.node.clone(), d.message.clone())) {
+                        eprintln!("warning: row {}: node `{}`: {}", i + 1, d.node, d.message);
+                    }
+                }
+                r.clear_diagnostics();
             }
             eprintln!("{n} videos in {:.1} s", t0.elapsed().as_secs_f64());
         }

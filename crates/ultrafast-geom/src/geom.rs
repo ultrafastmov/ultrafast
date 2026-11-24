@@ -28,6 +28,9 @@ pub struct Geometry {
     pub groups: Vec<Option<[f32; 4]>>,
     /// Color glyphs (emoji) drawn from their bitmaps over the groups.
     pub images: Vec<GlyphImage>,
+    /// A text's glyph units laid out: what its `reveal` counts (0 for
+    /// paths).
+    pub units: usize,
 }
 
 /// A color glyph's bitmap (an sbix or CBDT strike): linear premultiplied
@@ -91,6 +94,7 @@ impl Geometry {
             bounds: [f32::MAX, f32::MAX, f32::MIN, f32::MIN],
             groups: Vec::new(),
             images: Vec::new(),
+            units: 0,
         }
     }
 
@@ -2244,7 +2248,7 @@ pub fn text_paths(
     fonts: &mut Fonts,
     base: &Path,
 ) -> Result<TextPaths, GeomError> {
-    text_layout(id, node, fmt, t, outer, fonts, base).map(|(paths, _)| paths)
+    layout_text(id, node, fmt, t, outer, fonts, base).map(|(paths, _, _)| paths)
 }
 
 /// A text node's glyph outlines and colors ([`text_paths`]) and its color
@@ -2258,6 +2262,19 @@ pub fn text_layout(
     fonts: &mut Fonts,
     base: &Path,
 ) -> Result<(TextPaths, Vec<GlyphImage>), GeomError> {
+    layout_text(id, node, fmt, t, outer, fonts, base).map(|(paths, images, _)| (paths, images))
+}
+
+/// [`text_layout`], and the glyph units laid out (what `reveal` counts).
+fn layout_text(
+    id: &str,
+    node: &Node,
+    fmt: &Format,
+    t: f64,
+    outer: Affine,
+    fonts: &mut Fonts,
+    base: &Path,
+) -> Result<(TextPaths, Vec<GlyphImage>, usize), GeomError> {
     let r = Reader { id, node, t };
     // Counters change digits, they do not move: read the number on the
     // frame (motion-blur samples share it), so digits never smear.
@@ -2606,7 +2623,7 @@ pub fn text_layout(
     if groups.len() == 1 && groups[0].is_none() {
         groups.clear();
     }
-    Ok(((out, groups), images))
+    Ok(((out, groups), images, unit_base))
 }
 
 /// Decoding text: characters settle into place in a shuffled order as
@@ -2842,11 +2859,12 @@ pub fn text_node(
     base: &Path,
 ) -> Result<Geometry, GeomError> {
     let mut g = Geometry::empty();
-    let ((paths, groups), images) = text_layout(id, node, fmt, t, outer, fonts, base)?;
+    let ((paths, groups), images, units) = layout_text(id, node, fmt, t, outer, fonts, base)?;
     for (path, w, group) in paths {
         flatten_closed(&path, w, group, &mut g);
     }
     g.groups = groups;
+    g.units = units;
     for im in images {
         g.push_image(im);
     }
@@ -2892,6 +2910,7 @@ impl Geometry {
             ];
         }
         out.groups = self.groups.clone();
+        out.units = self.units;
         for im in &self.images {
             let x = im.xf;
             let mut im = im.clone();
@@ -2933,6 +2952,7 @@ impl Geometry {
             bounds: [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy],
             groups: self.groups.clone(),
             images,
+            units: self.units,
         }
     }
 }
@@ -3026,6 +3046,8 @@ mod tests {
         let mut fonts = Fonts::new();
         let g = text_node("t", &n, &fmt, 0.0, Affine::IDENTITY, &mut fonts, Path::new(".")).unwrap();
         assert!(g.count() > 20, "{}", g.count());
+        // Every letter and the space: what `reveal` counts.
+        assert_eq!(g.units, 8);
         assert!(
             g.bounds[0] >= 10.0 && g.bounds[1] >= 10.0 && g.bounds[2] < 400.0,
             "{:?}",
