@@ -62,8 +62,10 @@ claude mcp add ultrafast -- uf mcp      # Claude Code
 codex mcp add ultrafast -- uf mcp       # Codex
 ```
 
-Cursor, Claude Desktop and other clients take
-`{"command": "uf", "args": ["mcp"]}`. Every client and tool is in
+For `codex exec`, also put `default_tools_approval_mode = "approve"` under
+`[mcp_servers.ultrafast]` in `~/.codex/config.toml`: with no one to ask, it
+refuses the tools that write files. Cursor, Claude Desktop and other clients
+take `{"command": "uf", "args": ["mcp"]}`. Every client and tool is in
 [docs/MCP.md](https://github.com/ultrafastmov/ultrafast/blob/main/docs/MCP.md);
 the skill is `npx skills add ultrafastmov/ultrafast`.
 

@@ -29,7 +29,14 @@ Codex (`~/.codex/config.toml`):
 command = "uf"
 args = ["mcp"]
 tool_timeout_sec = 300   # exports of long films outlast the 60 s default
+default_tools_approval_mode = "approve"   # or codex exec refuses edit and export
 ```
+
+`codex exec` runs with no one to ask, so it refuses tools that change files
+(`ultrafast_edit` and `ultrafast_export` say they do) unless the server's
+tools are approved as above; `-c
+mcp_servers.ultrafast.default_tools_approval_mode="approve"` does the same for
+one run.
 
 Cursor (`.cursor/mcp.json`), Gemini CLI (`~/.gemini/settings.json`) and
 Claude Desktop (`claude_desktop_config.json`):
@@ -143,5 +150,5 @@ What was run against these servers (November 2026):
 | MCP TypeScript SDK 1.32 | HTTP, OAuth (Cloud's sign-in, tested before it moved out of this repo) | 401 → metadata → DCR, and separately CIMD with Claude Code's published client document → sign-in page → PKCE token → every tool |
 | Gemini CLI 0.70 | stdio and HTTP (`httpUrl` + header) | connected (`gemini mcp list`); no model run (no Gemini sign-in) |
 | Cursor CLI 2026.11.19 | stdio (`.cursor/mcp.json`) | ready, all 20 tools listed (`agent mcp list-tools`); no model run (no Cursor sign-in) |
-| Codex 0.169 | stdio | not run: Codex's sign-in on this machine had expired |
+| Codex 0.169 + skill, `codex exec` | stdio | a model run (GPT-6-Luna) from a one-line request used ops, check, sheet, review, inspect and export, then made a square cut in a second turn; without `default_tools_approval_mode = "approve"` Codex refused edit and export, and the model rendered with FFmpeg instead |
 | Claude Desktop | stdio | not run |

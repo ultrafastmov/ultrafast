@@ -34,6 +34,11 @@ Codex:
 codex mcp add ultrafast -- uf mcp
 ```
 
+`codex exec` has no one to ask, so it refuses the tools that write files
+(`ultrafast_edit`, `ultrafast_export`) unless they are approved: add
+`default_tools_approval_mode = "approve"` to the `[mcp_servers.ultrafast]`
+table in `~/.codex/config.toml`.
+
 Gemini CLI (`--scope user` adds it for every project):
 
 ```bash

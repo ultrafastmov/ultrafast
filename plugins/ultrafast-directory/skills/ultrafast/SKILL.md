@@ -20,7 +20,9 @@ looked at.
 ## Pick the surface
 
 1. **MCP tools** (`ultrafast_new`, `ultrafast_check`, `ultrafast_sheet`, ...)
-   are available: use them.
+   are available: use them, even with a shell at hand. A sandboxed shell
+   (Codex's, for one) may not see the GPU, and `uf` there renders on the
+   CPU, many times slower.
    - Local server (`uf mcp`): tools take a document `path` on this machine.
      Edit with `ultrafast_edit` or by writing the file; the server reloads it.
    - Remote server (HTTP): tools take the whole `document` inline. Pass the
@@ -60,6 +62,10 @@ Rules:
   keep one deliberately, say which one and why.
 - **Report what you made**: the file or link, size, duration and the review
   result. Show a frame or the sheet when the person can see images.
+- **A refused export stops the job.** When a tool call is refused (an
+  approval policy, or the person said no), say which one and why, and stop.
+  Don't make the video some other way (FFmpeg, a script): it skips check and
+  review, and it isn't what was asked for.
 - **Many variants** (a name, a price, a language per file): make one
   document, review it, then batch it with one row per video, instead of
   writing many documents. Each row sets `node.param` keys (and

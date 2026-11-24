@@ -196,6 +196,10 @@ codex mcp add ultrafast -- uf mcp       # Codex
 gemini extensions install https://github.com/ultrafastmov/ultrafast   # Gemini CLI
 ```
 
+For `codex exec`, also put `default_tools_approval_mode = "approve"` under
+`[mcp_servers.ultrafast]` in `~/.codex/config.toml`: with no one to ask, it
+refuses the tools that write files.
+
 Cursor, Claude Desktop and the rest take `{"command": "uf", "args": ["mcp"]}`;
 the Claude Code plugin is `claude plugin marketplace add ultrafastmov/ultrafast`
 then `claude plugin install ultrafast@ultrafast`. Every client and tool is in
