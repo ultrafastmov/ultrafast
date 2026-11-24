@@ -150,13 +150,19 @@ fn baseline(b: &mut Builder, k: &Look, left: f64, y: f64) -> Result<(), String> 
     Ok(())
 }
 
-/// Category labels centered under x positions, every `step`-th one.
+/// Category labels centered under x positions. Past 9 they thin to every
+/// `step`-th and the last, counting only labels that aren't blank: a list
+/// thinned by hand ("2015,,,,,2020,,,,,2025") shows every one it names.
 fn x_labels(b: &mut Builder, k: &Look, labels: &[String], xs: &[f64], y: f64, times: &[f64]) -> Result<(), String> {
-    let step = labels.len().div_ceil(9).max(1);
-    for (i, (label, &x)) in labels.iter().zip(xs).enumerate() {
-        if i % step != 0 && i + 1 != labels.len() || label.is_empty() {
+    let named: Vec<usize> = (0..labels.len().min(xs.len()))
+        .filter(|&i| !labels[i].is_empty())
+        .collect();
+    let step = named.len().div_ceil(9).max(1);
+    for (j, &i) in named.iter().enumerate() {
+        if j % step != 0 && j + 1 != named.len() {
             continue;
         }
+        let (label, x) = (&labels[i], xs[i]);
         let l = b.line(
             "label",
             json!({"text": label, "font": k.mono, "size": 24.0 * k.s, "weight": 500, "tracking": 1.0 * k.s, "color": k.muted}),
@@ -534,4 +540,55 @@ pub(crate) fn donut(b: &mut Builder, node: &Node, k: &Look) -> Result<(), String
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::geom::Fonts;
+    use std::path::Path;
+    use ultrafast_graph::{Format, Node};
+
+    /// The x labels a chart sets, left to right.
+    fn x_labels(kind: &str, values: usize, labels: &str) -> Vec<String> {
+        let node: Node = serde_json::from_value(serde_json::json!({
+            "op": "block",
+            "params": {"kind": kind, "values": vec![1.0; values], "labels": labels},
+        }))
+        .unwrap();
+        let fmt = Format {
+            width: 1920,
+            height: 1080,
+            fps: 30.0,
+            duration: 6.0,
+            motion_blur: None,
+        };
+        let c = crate::blocks::build(&node, &fmt, &mut Fonts::new(), Path::new(".")).unwrap();
+        let mut ids: Vec<(usize, &str)> = c
+            .nodes
+            .iter()
+            .filter_map(|(id, n)| Some((id.strip_prefix("label")?.parse().ok()?, n)))
+            .filter_map(|(i, n)| match n.params.get("text") {
+                Some(ultrafast_graph::Param::Text(t)) => Some((i, t.as_str())),
+                _ => None,
+            })
+            .collect();
+        ids.sort();
+        ids.into_iter().map(|(_, t)| t.to_string()).collect()
+    }
+
+    #[test]
+    fn blank_labels_do_not_count_toward_thinning() {
+        // Thinned by hand: every label it names shows.
+        for kind in ["line_chart", "bar_chart"] {
+            assert_eq!(x_labels(kind, 11, "2015,,,,,2020,,,,,2025"), ["2015", "2020", "2025"]);
+        }
+        // Twelve named: every other one, and the last.
+        let months = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec";
+        assert_eq!(
+            x_labels("line_chart", 12, months),
+            ["Jan", "Mar", "May", "Jul", "Sep", "Nov", "Dec"]
+        );
+        // Nine or fewer: all of them.
+        assert_eq!(x_labels("bar_chart", 3, "a, b, c"), ["a", "b", "c"]);
+    }
 }
