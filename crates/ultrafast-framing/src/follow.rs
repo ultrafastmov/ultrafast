@@ -133,7 +133,7 @@ fn inputs(
         width: fmt.width as f64,
         height: fmt.height as f64,
     };
-    let faces = Faces::from_json(faces, fps, cfg.cinematic_zoom_max);
+    let faces = Faces::from_json(faces, fps, cfg.cinematic_zoom_max).map(|f| f.at_fps(fps));
     Ok((faces, clip, cfg))
 }
 
@@ -463,6 +463,35 @@ mod tests {
         let r = with[119].0.layers[0].source;
         let cx = r.x + 0.8 * r.width;
         assert!((0.0..1080.0).contains(&cx), "{cx}");
+    }
+
+    #[test]
+    fn a_cut_lands_where_the_source_shows_it_at_another_frame_rate() {
+        // 25 fps footage cut at 4.0 s (frame 100): face 1 on the left
+        // before, face 2 on the right after. A 30 fps clip from 2.0 s shows
+        // the cut on its frame 60.
+        let frames: Vec<Value> = (0..200)
+            .step_by(5)
+            .map(|k| {
+                let (id, x) = if k < 100 { (1, 0.15) } else { (2, 0.75) };
+                serde_json::json!({"frame": k, "faces": [{"id": id, "x": x, "y": 0.3, "w": 0.1, "h": 0.2, "talk": 1.0}]})
+            })
+            .collect();
+        let faces = serde_json::json!({"sourceWidth": 1920, "sourceHeight": 1080, "fps": 25, "frames": frames,
+            "shots": [{"startFrame": 0, "endFrame": 100}, {"startFrame": 100, "endFrame": 200}]});
+        let fmt = Format {
+            width: 1080,
+            height: 1920,
+            fps: 30.0,
+            duration: 4.0,
+            motion_blur: None,
+        };
+        let named: Vec<Option<i64>> = subjects(&faces, None, 2.0, 4.0, &fmt)
+            .unwrap()
+            .into_iter()
+            .map(|(_, s)| s)
+            .collect();
+        assert_eq!(&named[55..65], &[[Some(1); 5], [Some(2); 5]].concat()[..], "{named:?}");
     }
 
     #[test]

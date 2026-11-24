@@ -251,6 +251,32 @@ impl Faces {
     }
 }
 
+impl Faces {
+    /// The same tracks numbered in frames of a composition at `fps`: each
+    /// face sample and shot boundary on the first composition frame that
+    /// shows its source frame. The camera counts the composition's frames,
+    /// a face worker the source's; with the rates apart (a 29.97 fps episode
+    /// in a 30 fps clip) a cut would otherwise land a frame early for every
+    /// 33 s into the source.
+    pub fn at_fps(mut self, fps: f64) -> Self {
+        if !(fps > 0.0 && self.fps > 0.0) || (self.fps - fps).abs() < 1e-6 {
+            return self;
+        }
+        let r = fps / self.fps;
+        let map = |f: i64| (f as f64 * r - 1e-6).ceil() as i64;
+        for fr in &mut self.frames {
+            fr.frame = map(fr.frame);
+        }
+        self.frames.dedup_by_key(|f| f.frame);
+        for s in &mut self.shots {
+            s.start_frame = map(s.start_frame);
+            s.end_frame = map(s.end_frame).max(s.start_frame + 1);
+        }
+        self.fps = fps;
+        self
+    }
+}
+
 fn parse_face(f: &Value) -> FaceBox {
     let n = |k: &str| f.get(k).and_then(Value::as_f64);
     FaceBox {

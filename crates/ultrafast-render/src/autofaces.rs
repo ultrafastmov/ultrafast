@@ -1,14 +1,15 @@
 //! Face tracks for `clip_camera` from the footage itself, when a document
 //! gives no `faces`: the clip is decoded at ten frames a second through
 //! the same decoder the `video` op uses, and [`ultrafast_framing::faces`]
-//! finds, tracks and scores the faces. Results are cached per file and
-//! range in the user cache (`.../ultrafast/faces/`), so a clip is analysed
-//! once.
+//! finds the cuts, tracks and scores the faces. Around each cut the frames
+//! between the two samples are decoded too, so the shot starts on the
+//! cut's own frame. Results are cached per file and range in the user
+//! cache (`.../ultrafast/faces/`), so a clip is analysed once.
 
 use crate::{Mode, Renderer};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
-use ultrafast_framing::faces::{Gray, Sample, VERSION, analyze};
+use ultrafast_framing::faces::{Cut, Gray, Sample, VERSION, analyze_with, cut_within, cuts, frame_at};
 use ultrafast_gpu::Device;
 use ultrafast_graph::Document;
 
@@ -92,5 +93,34 @@ fn track_uncached(device: &Device, path: &Path, from: f64, to: f64) -> Result<Va
         });
         k += 1;
     }
-    Ok(analyze(&samples, info.fps, info.width as f64, info.height as f64))
+    // Each cut to its frame: decode the frames between the samples either
+    // side (shown at the times the clip's frames are) and find the step
+    // that holds the change; a change spread over them is no hard cut.
+    let fps = info.fps;
+    let mut exact = Vec::new();
+    for i in cuts(&samples) {
+        let (before, after) = (frame_at(samples[i - 1].t, fps), frame_at(samples[i].t, fps));
+        let mut between = Vec::new();
+        for f in before + 1..after {
+            let (px, _) = r.render_rgba8(&doc, f as f64 / fps).map_err(|e| e.to_string())?;
+            between.push(Gray::from_rgba(w as usize, h as usize, &px));
+        }
+        let frames: Vec<&Gray> = std::iter::once(&samples[i - 1].frame)
+            .chain(&between)
+            .chain(std::iter::once(&samples[i].frame))
+            .collect();
+        if let Some(k) = cut_within(&frames) {
+            exact.push(Cut {
+                sample: i,
+                frame: before + k as i64,
+            });
+        }
+    }
+    Ok(analyze_with(
+        &samples,
+        &exact,
+        fps,
+        info.width as f64,
+        info.height as f64,
+    ))
 }
