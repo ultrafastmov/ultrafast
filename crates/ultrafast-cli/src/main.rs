@@ -18,7 +18,7 @@ usage:
   ultrafast info                                 show GPU device
   ultrafast mcp                                  serve ultrafast to agents over MCP (stdio): ops, new, check,
                                              frame and sheet (as images), edit, export, measure, outline
-  ultrafast new    <vertical|title|square|promo|explainer> <out.json>
+  ultrafast new    <vertical|title|square|promo|explainer|product> <out.json>
                                              start a document from a template (edit, check, sheet, export)
   ultrafast ops                                  op vocabulary (JSON): ports, params, types, defaults
   ultrafast schema                               the document format as JSON Schema (draft 2020-12),
