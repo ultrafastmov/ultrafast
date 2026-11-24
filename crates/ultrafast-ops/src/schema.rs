@@ -1321,7 +1321,7 @@ const SCHEMAS: &[OpSchema] = &[
     },
     OpSchema {
         name: "svg",
-        summary: "an SVG file (logo, icon, illustration) as vector paths: fills, strokes, gradients, text as outlines; `ultrafast import-svg` gives the same as editable nodes",
+        summary: "an SVG file (logo, icon, illustration) as vector paths: fills, strokes, gradients, blend modes, and text as outlines in the fonts the text op finds; `ultrafast import-svg` gives the same as editable nodes. It composites in sRGB, like a browser: put it on the film with an `over` in `srgb` space to match one there too",
         ports: &[],
         params: &[
             ("src", "text", "", ".svg file (relative to the document)"),

@@ -107,6 +107,9 @@ that return frames and contact sheets as images ([MCP.md](MCP.md)).
   `stroke_outline` so they read on light scenes.
 - **Logos and icons**: an `svg` node places an SVG file as sharp vector
   artwork; `ultrafast import-svg` turns it into named, animatable parts.
+  Its text is set in the fonts the `text` op finds, and its blend modes
+  and translucency composite in sRGB, as in a browser. To match a browser
+  over the film as well, place it with an `over` whose `space` is `"srgb"`.
 - **Simulations**: `fluid` turns any layer into ink, smoke or fire (feed
   it as `dye`, push with `stir`); `feedback` runs your Slang on its own
   last frame (trails, echo tunnels, reaction-diffusion growth). They are

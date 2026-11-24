@@ -576,7 +576,7 @@ animated captions from word timings (karaoke, pop, reveal): pages laid out to fi
 - `opacity`: number = 1 - 0..1
 
 ## svg
-an SVG file (logo, icon, illustration) as vector paths: fills, strokes, gradients, text as outlines; `ultrafast import-svg` gives the same as editable nodes
+an SVG file (logo, icon, illustration) as vector paths: fills, strokes, gradients, blend modes, and text as outlines in the fonts the text op finds; `ultrafast import-svg` gives the same as editable nodes. It composites in sRGB, like a browser: put it on the film with an `over` in `srgb` space to match one there too
 - `src`: text - .svg file (relative to the document)
 - `size`: vec2|number = the SVG's own size - fit inside [w, h] px, keeping its aspect
 - `position`: vec2 = [0,0] - where the anchor lands, px

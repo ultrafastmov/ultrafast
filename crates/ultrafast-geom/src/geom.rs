@@ -461,6 +461,70 @@ pub fn bundled_fonts() -> &'static [&'static [u8]] {
     BUNDLED
 }
 
+/// The faces text is set from: the system's fonts, ultrafast's bundled
+/// faces, and CSS's generic families mapped to faces this machine has.
+/// The text op and SVG import both start from it.
+pub fn base_database() -> fontdb::Database {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    // Bundled faces (SIL Open Font License): the same type on every
+    // machine, servers included, by family name.
+    for data in BUNDLED {
+        db.load_font_data(data.to_vec());
+    }
+    // CSS generic families resolve to faces this machine has
+    // (fontdb's defaults, Arial and friends, are missing on servers):
+    // on Linux what Chrome's fontconfig picks (Liberation, metric
+    // twins of Arial, Times New Roman and Courier New), on a Mac what
+    // Safari and Chrome show.
+    let pick = |db: &fontdb::Database, names: &[&str]| {
+        names
+            .iter()
+            .find(|n| db.faces().any(|f| f.families.iter().any(|(fam, _)| fam == *n)))
+            .map(|n| n.to_string())
+    };
+    let mac = cfg!(target_os = "macos");
+    let sans: &[&str] = if mac {
+        &["Helvetica", "Arial", "Geist"]
+    } else {
+        &["Liberation Sans", "Arial", "DejaVu Sans", "Noto Sans", "Geist"]
+    };
+    let serif: &[&str] = if mac {
+        &["Times", "Times New Roman", "Instrument Serif"]
+    } else {
+        &[
+            "Liberation Serif",
+            "Times New Roman",
+            "DejaVu Serif",
+            "Noto Serif",
+            "Instrument Serif",
+        ]
+    };
+    let mono: &[&str] = if mac {
+        &["Courier", "Courier New", "Menlo", "Geist Mono"]
+    } else {
+        &[
+            "Liberation Mono",
+            "Courier New",
+            "DejaVu Sans Mono",
+            "Noto Sans Mono",
+            "Geist Mono",
+        ]
+    };
+    if let Some(f) = pick(&db, sans) {
+        db.set_sans_serif_family(f.clone());
+        db.set_cursive_family(f.clone());
+        db.set_fantasy_family(f);
+    }
+    if let Some(f) = pick(&db, serif) {
+        db.set_serif_family(f);
+    }
+    if let Some(f) = pick(&db, mono) {
+        db.set_monospace_family(f);
+    }
+    db
+}
+
 impl Fonts {
     pub fn new() -> Self {
         Self {
@@ -711,66 +775,7 @@ impl Fonts {
     }
 
     fn db(&mut self) -> &mut fontdb::Database {
-        self.db.get_or_insert_with(|| {
-            let mut db = fontdb::Database::new();
-            db.load_system_fonts();
-            // Bundled faces (SIL Open Font License): the same type on every
-            // machine, servers included, by family name.
-            for data in BUNDLED {
-                db.load_font_data(data.to_vec());
-            }
-            // CSS generic families resolve to faces this machine has
-            // (fontdb's defaults, Arial and friends, are missing on servers):
-            // on Linux what Chrome's fontconfig picks (Liberation, metric
-            // twins of Arial, Times New Roman and Courier New), on a Mac what
-            // Safari and Chrome show.
-            let pick = |db: &fontdb::Database, names: &[&str]| {
-                names
-                    .iter()
-                    .find(|n| db.faces().any(|f| f.families.iter().any(|(fam, _)| fam == *n)))
-                    .map(|n| n.to_string())
-            };
-            let mac = cfg!(target_os = "macos");
-            let sans: &[&str] = if mac {
-                &["Helvetica", "Arial", "Geist"]
-            } else {
-                &["Liberation Sans", "Arial", "DejaVu Sans", "Noto Sans", "Geist"]
-            };
-            let serif: &[&str] = if mac {
-                &["Times", "Times New Roman", "Instrument Serif"]
-            } else {
-                &[
-                    "Liberation Serif",
-                    "Times New Roman",
-                    "DejaVu Serif",
-                    "Noto Serif",
-                    "Instrument Serif",
-                ]
-            };
-            let mono: &[&str] = if mac {
-                &["Courier", "Courier New", "Menlo", "Geist Mono"]
-            } else {
-                &[
-                    "Liberation Mono",
-                    "Courier New",
-                    "DejaVu Sans Mono",
-                    "Noto Sans Mono",
-                    "Geist Mono",
-                ]
-            };
-            if let Some(f) = pick(&db, sans) {
-                db.set_sans_serif_family(f.clone());
-                db.set_cursive_family(f.clone());
-                db.set_fantasy_family(f);
-            }
-            if let Some(f) = pick(&db, serif) {
-                db.set_serif_family(f);
-            }
-            if let Some(f) = pick(&db, mono) {
-                db.set_monospace_family(f);
-            }
-            db
-        })
+        self.db.get_or_insert_with(base_database)
     }
 
     /// Resolves a font from a family name, a CSS family list (`"Poppins",

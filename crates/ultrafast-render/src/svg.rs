@@ -303,26 +303,60 @@ impl Builder {
         layers.extend(ordered.into_iter().flatten());
     }
 
+    /// The layers of `g`'s children in paint order, each with the blend mode
+    /// it composites with. A group without effects of its own (opacity,
+    /// clip, mask, filter, blend mode, isolation) is no layer: its children
+    /// join the list, so a blend mode among them blends with everything
+    /// under the group, as in a browser. Paths carry their full transform.
+    fn layers_of(&mut self, g: &usvg::Group, gid: &str, layers: &mut Vec<(String, usvg::BlendMode)>) {
+        for child in g.children() {
+            // Text as outlines, named after the text element.
+            let (c, cid) = match child {
+                usvg::Node::Group(c) => (c.as_ref(), if c.id().is_empty() { gid } else { c.id() }),
+                usvg::Node::Text(t) => (t.flattened(), if t.id().is_empty() { gid } else { t.id() }),
+                usvg::Node::Path(p) => {
+                    let mut own = Vec::new();
+                    self.path(p, gid, &mut own);
+                    layers.extend(own.into_iter().map(|l| (l, usvg::BlendMode::Normal)));
+                    continue;
+                }
+                usvg::Node::Image(_) => {
+                    self.warn("embedded images are skipped".into());
+                    continue;
+                }
+            };
+            if c.should_isolate() {
+                layers.extend(self.group(c, cid).map(|l| (l, c.blend_mode())));
+            } else {
+                self.layers_of(c, cid, layers);
+            }
+        }
+    }
+
     /// Layers of a group's children, composited; returns the node id.
     fn group(&mut self, g: &usvg::Group, fallback: &str) -> Option<String> {
         let gid = if g.id().is_empty() { fallback } else { g.id() };
         let mut layers = Vec::new();
-        for child in g.children() {
-            match child {
-                usvg::Node::Group(c) => layers.extend(self.group(c, gid)),
-                usvg::Node::Path(p) => self.path(p, gid, &mut layers),
-                // Text as outlines, named after the text element.
-                usvg::Node::Text(t) => layers.extend(self.group(t.flattened(), t.id())),
-                usvg::Node::Image(_) => self.warn("embedded images are skipped".into()),
-            }
-        }
-        let mut acc = layers.first()?.clone();
-        for l in &layers[1..] {
-            let name = self.name(gid, "_over");
+        self.layers_of(g, gid, &mut layers);
+        let mut acc = layers.first()?.0.clone();
+        // Composited in sRGB, as browsers do: a red circle at 50% over white
+        // is (255, 128, 128), not linear light's (255, 188, 188).
+        for (l, mode) in &layers[1..] {
+            let (op, mut params) = match blend_mode(*mode) {
+                Some(m) => {
+                    let mut p = BTreeMap::new();
+                    p.insert("mode".to_string(), text_param(m));
+                    ("blend", p)
+                }
+                None => ("over", BTreeMap::new()),
+            };
+            params.insert("space".to_string(), text_param("srgb"));
+            let name = self.name(gid, if op == "blend" { "_blend" } else { "_over" });
             self.nodes.insert(
                 name.clone(),
                 Node {
-                    op: "over".into(),
+                    op: op.into(),
+                    params,
                     inputs: [("fg".to_string(), l.clone()), ("bg".to_string(), acc)].into(),
                     ..Default::default()
                 },
@@ -476,6 +510,29 @@ impl Builder {
     }
 }
 
+/// The `blend` op's mode for an SVG `mix-blend-mode` (`None`: normal).
+fn blend_mode(m: usvg::BlendMode) -> Option<&'static str> {
+    use usvg::BlendMode as B;
+    Some(match m {
+        B::Normal => return None,
+        B::Multiply => "multiply",
+        B::Screen => "screen",
+        B::Overlay => "overlay",
+        B::Darken => "darken",
+        B::Lighten => "lighten",
+        B::ColorDodge => "color_dodge",
+        B::ColorBurn => "color_burn",
+        B::HardLight => "hard_light",
+        B::SoftLight => "soft_light",
+        B::Difference => "difference",
+        B::Exclusion => "exclusion",
+        B::Hue => "hue",
+        B::Saturation => "saturation",
+        B::Color => "color",
+        B::Luminosity => "luminosity",
+    })
+}
+
 fn stops(s: &[usvg::Stop], opacity: f32) -> String {
     // ultrafast gradients take up to 8 stops: keep the ends and spread the rest.
     let idx: Vec<usize> = if s.len() <= 8 {
@@ -520,12 +577,69 @@ pub fn import(data: &[u8], resources: Option<&Path>, fit: Option<[f64; 2]>) -> R
             resolve_string: Box::new(|_, _| None),
         };
     }
-    // Text becomes outlines, shaped with the system's fonts (loaded only
-    // when there is text: without fonts usvg drops it while parsing).
+    // Text becomes outlines, set from the faces the text op uses: installed
+    // and bundled ones, generic families mapped to faces this machine has,
+    // and a family it lacks fetched from Google Fonts. (Loaded only when
+    // there is text: without fonts usvg drops it while parsing.)
+    let substituted = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     if data.windows(5).any(|w| w == b"<text") {
-        let mut db = usvg::fontdb::Database::new();
-        db.load_system_fonts();
-        opt.fontdb = std::sync::Arc::new(db);
+        static BASE: std::sync::OnceLock<usvg::fontdb::Database> = std::sync::OnceLock::new();
+        opt.fontdb = std::sync::Arc::new(BASE.get_or_init(crate::geom::base_database).clone());
+        let notes = substituted.clone();
+        let select = usvg::FontResolver::default_font_selector();
+        opt.font_resolver = usvg::FontResolver {
+            select_font: Box::new(move |font, db| {
+                let has = |db: &usvg::fontdb::Database, name: &str| {
+                    db.faces()
+                        .any(|f| f.families.iter().any(|(n, _)| n.eq_ignore_ascii_case(name)))
+                };
+                // As in CSS, the first family in the list this machine has
+                // (or can fetch) is the one; a generic family always is.
+                let mut missing = Vec::new();
+                for family in font.families() {
+                    let usvg::FontFamily::Named(name) = family else {
+                        break;
+                    };
+                    if !has(db, name) {
+                        let files = crate::fontfetch::fetch(name);
+                        if !files.is_empty() {
+                            let db = std::sync::Arc::make_mut(db);
+                            for f in files {
+                                let _ = db.load_font_file(f);
+                            }
+                        }
+                    }
+                    if has(db, name) {
+                        missing.clear();
+                        break;
+                    }
+                    missing.push(format!("`{name}`"));
+                }
+                let id = select(font, db);
+                if !missing.is_empty() {
+                    let set = id
+                        .and_then(|id| db.face(id))
+                        .and_then(|f| f.families.first())
+                        .map(|(n, _)| format!("is set in `{n}`"))
+                        .unwrap_or_else(|| "is left out".into());
+                    let note = format!(
+                        "text in {} {set}: {} on this machine or Google Fonts",
+                        missing.join(", "),
+                        if missing.len() == 1 {
+                            "that font isn't"
+                        } else {
+                            "none of them is"
+                        }
+                    );
+                    let mut notes = notes.lock().unwrap();
+                    if !notes.contains(&note) {
+                        notes.push(note);
+                    }
+                }
+                id
+            }),
+            select_fallback: usvg::FontResolver::default_fallback_selector(),
+        };
     }
     let tree = usvg::Tree::from_data(data, &opt).map_err(|e| format!("SVG: {e}"))?;
     let (w, h) = (tree.size().width() as f64, tree.size().height() as f64);
@@ -536,7 +650,7 @@ pub fn import(data: &[u8], resources: Option<&Path>, fit: Option<[f64; 2]>) -> R
     let mut b = Builder {
         nodes: BTreeMap::new(),
         used: Default::default(),
-        warnings: Vec::new(),
+        warnings: std::mem::take(&mut *substituted.lock().unwrap()),
         fit: Transform::from_scale(k as f32, k as f32),
         n: 0,
     };
