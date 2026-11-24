@@ -140,12 +140,8 @@ impl Renderer {
         let live = crate::live_groups(&active.plan, t);
         let mut found: Vec<(String, Placed, f32, Option<Hom>)> = Vec::new();
         let plan = &active.plan;
-        let mut consumers: Vec<Vec<usize>> = vec![Vec::new(); plan.nodes.len()];
-        for (i, n) in plan.nodes.iter().enumerate() {
-            for &s in &n.inputs {
-                consumers[s].push(i);
-            }
-        }
+        let consumers = consumers(plan);
+        let opaque = crate::opaque_rects(plan, doc, t);
         for (gi, g) in active.plan.groups.iter().enumerate() {
             let Some(rc) = &g.raster else { continue };
             let pn = &active.plan.nodes[rc.node];
@@ -153,10 +149,11 @@ impl Renderer {
                 continue;
             }
             // Skip type hidden on its way to the output (cropped away,
-            // faded out): it is not on screen, whatever its raster holds.
+            // faded out, under an opaque layer): it is not on screen,
+            // whatever its raster holds.
             if let Some(b) = self.bounds.get(&pn.id) {
                 let rect = [b[0] as f64, b[1] as f64, b[2] as f64, b[3] as f64];
-                if !reaches_screen(plan, doc, &consumers, g.root, rect, 1.0, t) {
+                if !reaches_screen(plan, doc, &consumers, &opaque, g.root, rect, 1.0, 0.05, t) {
                     continue;
                 }
             }
@@ -472,7 +469,7 @@ fn hom_apply(m: &Hom, x: f64, y: f64) -> Option<(f64, f64)> {
 /// affine) or a `corner_pin` (its source rect onto its corners). None for
 /// everything else.
 fn op_map(pn: &crate::plan::PlanNode, doc: &Document, t: f64) -> Option<Hom> {
-    let node = &doc.nodes[&pn.id];
+    let node = doc.nodes.get(&pn.id)?;
     let (lt, on) = local_time(pn, t);
     if !on {
         return None;
@@ -528,18 +525,33 @@ fn map_rect(m: &Hom, r: [f64; 4]) -> Option<[f64; 4]> {
 /// text is taken to be on screen.
 const WALK_STEPS: usize = 200_000;
 
+/// Each plan node's consumers.
+pub(crate) fn consumers(plan: &crate::plan::Plan) -> Vec<Vec<usize>> {
+    let mut out: Vec<Vec<usize>> = vec![Vec::new(); plan.nodes.len()];
+    for (i, n) in plan.nodes.iter().enumerate() {
+        for &s in &n.inputs {
+            out[s].push(i);
+        }
+    }
+    out
+}
+
 /// Whether node `i`'s content, covering `rect` (frame px) at opacity
-/// `alpha`, survives the crops, fades and windows between it and the
-/// output, on some path to it: the rect moves with the transforms and
-/// corner pins on the way. However deep the stack (the walk once gave up
-/// after 48 levels and took the rest for visible).
-fn reaches_screen(
+/// `alpha`, survives the crops, fades, windows and opaque layers between
+/// it and the output, on some path to it: the rect moves with the
+/// transforms and corner pins on the way, and a path ends where it fades
+/// below `floor` or passes under a layer `opaque` (per node, see
+/// [`crate::opaque_rects`]) says covers all of it. However deep the stack
+/// (the walk once gave up after 48 levels and took the rest for visible).
+pub(crate) fn reaches_screen(
     plan: &crate::plan::Plan,
     doc: &Document,
     consumers: &[Vec<usize>],
+    opaque: &[crate::ops::Rect],
     i: usize,
     rect: [f64; 4],
     alpha: f64,
+    floor: f64,
     t: f64,
 ) -> bool {
     let out = plan.nodes.len() - 1;
@@ -549,7 +561,7 @@ fn reaches_screen(
     let mut stack = vec![(i, rect, alpha)];
     let mut steps = 0;
     while let Some((i, r, a)) = stack.pop() {
-        if a < 0.05 || r[0] >= r[2] || r[1] >= r[3] {
+        if a < floor || r[0] >= r[2] || r[1] >= r[3] {
             continue;
         }
         if i == out {
@@ -566,7 +578,6 @@ fn reaches_screen(
         seen[i].push((a, r));
         for &c in &consumers[i] {
             let pn = &plan.nodes[c];
-            let node = &doc.nodes[&pn.id];
             let (lt, on) = local_time(pn, t);
             let port = pn.inputs.iter().position(|&x| x == i).unwrap_or(0);
             if !on {
@@ -574,6 +585,17 @@ fn reaches_screen(
                 if crate::ops::passthrough(pn.def, pn.inputs.len()) == Some(port) {
                     stack.push((c, r, a));
                 }
+                continue;
+            }
+            let Some(node) = doc.nodes.get(&pn.id) else {
+                stack.push((c, r, a));
+                continue;
+            };
+            // Drawn under an opaque layer that covers all of it.
+            if port == 1
+                && pn.inputs.len() == 2
+                && crate::ops::contains(crate::ops::hidden_bg(pn.def, node, lt, opaque[pn.inputs[0]]), r)
+            {
                 continue;
             }
             let num = |k: &str, d: f64| {

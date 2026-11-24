@@ -105,3 +105,81 @@ fn follows_type_up_deep_stacks() {
     let k = kinds(&doc);
     assert!(!k.iter().any(|(_, n)| n == "label"), "{k:?}");
 }
+
+/// Two cards, "every" on pink and "cut" on `paper1` (its node JSON; a
+/// `strip` of a `solid1` is there to move), the second cut in over the
+/// first by `cut` (the output's node JSON).
+fn cards(paper1: &str, cut: &str) -> String {
+    format!(
+        r##"{{"version":1,"format":{{"width":480,"height":270,"fps":30,"duration":3}},"output":"out","nodes":{{
+          "paper0":{{"op":"solid","params":{{"color":"#ff5c7a"}}}},
+          "word0":{{"op":"text","params":{{"text":"every","font":"{FONT}","size":80,"position":[240,135],"align":"center","valign":"middle","color":"#14121c"}}}},
+          "card0":{{"op":"over","inputs":{{"fg":"word0","bg":"paper0"}}}},
+          "solid1":{{"op":"solid","params":{{"color":"#f6f3ee"}}}},
+          "strip":{{"op":"crop","inputs":{{"source":"solid1"}},"params":{{"rect":[0,0,260,270]}}}},
+          "paper1":{paper1},
+          "word1":{{"op":"text","params":{{"text":"cut","font":"{FONT}","size":80,"position":[240,135],"align":"center","valign":"middle","color":"#14121c"}}}},
+          "card1":{{"op":"over","inputs":{{"fg":"word1","bg":"paper1"}}}},
+          "out":{cut}}}}}"##
+    )
+}
+
+/// The type `inspect` lists at `t`, and what the reviewer measures there.
+fn on_screen(r: &mut Renderer, doc: &str, t: f64) -> (Vec<String>, Vec<String>) {
+    let d = Document::from_json(doc).unwrap();
+    let (_, probes) = r.probe_texts(&d, t).unwrap();
+    r.render_rgba8(&d, t).unwrap();
+    let mut listed: Vec<String> = r
+        .visible(&d, t)
+        .into_iter()
+        .filter(|v| v.text.is_some())
+        .map(|v| v.element.node)
+        .collect();
+    let mut probed: Vec<String> = probes.into_iter().map(|p| p.node).collect();
+    listed.sort();
+    probed.sort();
+    (listed, probed)
+}
+
+/// Type under an opaque card cut in over it is not on screen: `inspect`
+/// doesn't list it and the reviewer doesn't measure it (it once read the
+/// card's own word through it as dim type). What shows through a card
+/// (translucent, faded, blended, or not covering all of it) still counts.
+#[test]
+fn type_under_an_opaque_card_is_not_on_screen() {
+    let mut r = Renderer::new(Device::new().unwrap()).unwrap();
+    r.set_base_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+    let solid = r##"{"op":"solid","params":{"color":"#f6f3ee"}}"##;
+    let over = r#"{"op":"over","inputs":{"fg":"card1","bg":"card0"},"timing":{"in":1,"out":2}}"#;
+    let one = |w: &str| (vec![w.to_string()], vec![w.to_string()]);
+    let both = (
+        vec!["word0".to_string(), "word1".to_string()],
+        vec!["word0".to_string(), "word1".to_string()],
+    );
+    let doc = cards(solid, over);
+    assert_eq!(on_screen(&mut r, &doc, 0.5), one("word0"));
+    assert_eq!(on_screen(&mut r, &doc, 1.5), one("word1"));
+    assert_eq!(on_screen(&mut r, &doc, 2.5), one("word0"));
+    // Covered by a panel (a shape, a cropped solid slid over it).
+    let panel = r##"{"op":"shape","params":{"size":[300,120],"center":[240,140],"color":"#f6f3ee"}}"##;
+    assert_eq!(on_screen(&mut r, &cards(panel, over), 1.5), one("word1"));
+    let slid = r#"{"op":"transform","inputs":{"source":"strip"},"params":{"position":[340,135]}}"#;
+    assert_eq!(on_screen(&mut r, &cards(slid, over), 1.5), one("word1"));
+    // Showing through.
+    let cases = [
+        cards(r##"{"op":"solid","params":{"color":"#f6f3eecc"}}"##, over),
+        cards(
+            solid,
+            &over.replace(r#""timing""#, r#""params":{"opacity":0.9},"timing""#),
+        ),
+        cards(
+            solid,
+            &over.replace(r#""op":"over""#, r#""op":"blend","params":{"mode":"multiply"}"#),
+        ),
+        cards(&panel.replace("[300,120]", "[150,120]"), over),
+        cards(&slid.replace("[340,135]", "[340,135],\"rotation\":10"), over),
+    ];
+    for doc in cases {
+        assert_eq!(on_screen(&mut r, &doc, 1.5), both, "{doc}");
+    }
+}

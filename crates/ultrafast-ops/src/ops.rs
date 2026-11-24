@@ -694,6 +694,175 @@ pub fn bounds(def: &OpDef, node: &Node, fmt: &Format, t: f64, inputs: &[Rect], r
     }
 }
 
+/// Whether `outer` holds all of `inner` (an empty `inner` is held by
+/// nothing).
+pub fn contains(outer: Rect, inner: Rect) -> bool {
+    inner[0] < inner[2]
+        && inner[1] < inner[3]
+        && outer[0] <= inner[0]
+        && outer[1] <= inner[1]
+        && outer[2] >= inner[2]
+        && outer[3] >= inner[3]
+}
+
+/// Of two rects a layer is opaque in, the one that holds the other, else
+/// the larger.
+fn larger(a: Rect, b: Rect) -> Rect {
+    let area = |r: Rect| (r[2] - r[0]).max(0.0) * (r[3] - r[1]).max(0.0);
+    if contains(a, b) || area(a) >= area(b) { a } else { b }
+}
+
+/// A rect that reaches past `UNBOUNDED`'s edges on every side.
+fn everywhere(r: Rect) -> bool {
+    r[0] <= -1e8 && r[1] <= -1e8 && r[2] >= 1e8 && r[3] >= 1e8
+}
+
+/// Where a node's output is fully opaque, in its own coordinate space,
+/// given its inputs' opaque rects: a conservative rect inside which it
+/// hides whatever lies under it. [`UNBOUNDED`] for a layer opaque
+/// everywhere (an opaque solid or gradient, or a composite over one),
+/// [`EMPTY`] for anything not known to be opaque: type and paths (their
+/// counters show what is under them), pictures and footage (which may
+/// carry alpha), shaders, blurs, warps.
+pub fn opaque(def: &OpDef, node: &Node, fmt: &Format, t: f64, inputs: &[Rect]) -> Rect {
+    let p = Packer { id: "", node, t };
+    let (w, h) = (fmt.width as f64, fmt.height as f64);
+    let input = |i: usize| inputs.get(i).copied().unwrap_or(EMPTY);
+    let one = |v: f64| (v - 1.0).abs() <= 1e-6;
+    // The packed block, as the kernel reads it (colors premultiplied, so
+    // alpha already carries any `opacity`).
+    let packed = || {
+        let mut out = Vec::with_capacity(def.params);
+        pack(def, "", node, fmt, t, None, &mut out).ok().map(|()| out)
+    };
+    let solid = |a: f32| a >= 1.0 - 1e-6;
+    match def.func {
+        "solid" => match packed() {
+            Some(v) if solid(v[3]) => UNBOUNDED,
+            _ => EMPTY,
+        },
+        "checker" | "noise" => match packed() {
+            Some(v) if solid(v[3]) && solid(v[7]) => UNBOUNDED,
+            _ => EMPTY,
+        },
+        "gradient_linear" | "gradient_radial" | "gradient_conic" => match packed() {
+            Some(v) if (0..(v[0] as usize).clamp(1, 8)).all(|k| solid(v[6 + k * 5 + 4])) => UNBOUNDED,
+            _ => EMPTY,
+        },
+        "shape" => packed().map(|v| shape_interior(&v)).unwrap_or(EMPTY),
+        "opacity" if one(p.num("opacity", 1.0)) => input(0),
+        "adjust" | "levels" | "lut" | "invert" | "tint" | "threshold" => input(0),
+        // Alpha passes through when its row is the identity.
+        "color_matrix" => match packed() {
+            Some(v) if v[15..20] == [0.0, 0.0, 0.0, 1.0, 0.0] => input(0),
+            _ => EMPTY,
+        },
+        "crop" => {
+            let r = p.vecn("rect", &[0.0, 0.0, w, h]);
+            // Its soft edge, wide enough for a minified footprint.
+            let s = 2.0 * p.num("softness", 1.0).max(1.0);
+            intersect(input(0), [r[0] + s, r[1] + s, r[0] + r[2] - s, r[1] + r[3] - s])
+        }
+        "mask" if text(node, "mode").unwrap_or("alpha") == "alpha" => intersect(input(0), input(1)),
+        // Alpha adds up as it does for `over`, whatever the blend mode.
+        "over" | "blend" => {
+            let fg = if one(p.num("opacity", 1.0)) { input(0) } else { EMPTY };
+            larger(fg, input(1))
+        }
+        "composite" => match text(node, "operator").unwrap_or("over") {
+            "over" => larger(input(0), input(1)),
+            "in" => intersect(input(0), input(1)),
+            "atop" => input(1),
+            _ => EMPTY,
+        },
+        "mix" => match p.num("t", 0.5) {
+            k if k.abs() <= 1e-6 => input(0),
+            k if one(k) => input(1),
+            k if (0.0..=1.0).contains(&k) => intersect(input(0), input(1)),
+            _ => EMPTY,
+        },
+        "transform" => {
+            let b = input(0);
+            let m = transform_affine(node, fmt, t);
+            // At zero scale nothing shows (see `pack`).
+            if m.inverse().is_none() || b[0] >= b[2] || b[1] >= b[3] {
+                return EMPTY;
+            }
+            if everywhere(b) {
+                return UNBOUNDED;
+            }
+            // Moved, scaled, flipped or turned a quarter: still an upright
+            // rect, its edges resampled over a source pixel.
+            let [a, bb, c, d, ..] = m.0;
+            if !((bb.abs() < 1e-9 && c.abs() < 1e-9) || (a.abs() < 1e-9 && d.abs() < 1e-9)) {
+                return EMPTY;
+            }
+            let (sx, sy) = ((a.abs() + c.abs()).max(1.0), (bb.abs() + d.abs()).max(1.0));
+            let (p0, p1) = (m.apply(b[0], b[1]), m.apply(b[2], b[3]));
+            [
+                p0.0.min(p1.0) + sx,
+                p0.1.min(p1.1) + sy,
+                p0.0.max(p1.0) - sx,
+                p0.1.max(p1.1) - sy,
+            ]
+        }
+        _ => EMPTY,
+    }
+}
+
+/// The upright rect inside a filled, opaque `shape` (from its packed
+/// block: color, center, half size, corner radius, kind, softness,
+/// rotation, stroke), short of its soft edge.
+fn shape_interior(v: &[f32]) -> Rect {
+    use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_2, PI};
+    let v: Vec<f64> = v.iter().map(|&x| x as f64).collect();
+    if v[3] < 1.0 - 1e-6 || v[12] > 0.0 {
+        return EMPTY;
+    }
+    let (cx, cy, hw, hh) = (v[4], v[5], v[6], v[7]);
+    // An ellipse holds the rect touching it at 45 degrees; a rounded rect
+    // the one touching its corner arcs there.
+    let (ex, ey) = if v[9] > 0.5 {
+        (hw * FRAC_1_SQRT_2, hh * FRAC_1_SQRT_2)
+    } else {
+        let k = v[8].clamp(0.0, hw.min(hh)) * (1.0 - FRAC_1_SQRT_2);
+        (hw - k, hh - k)
+    };
+    let turn = v[11].rem_euclid(PI);
+    let (ex, ey) = if turn < 1e-6 || PI - turn < 1e-6 {
+        (ex, ey)
+    } else if (turn - FRAC_PI_2).abs() < 1e-6 {
+        (ey, ex)
+    } else {
+        // Any other angle: the square inside its inscribed circle.
+        let m = hw.min(hh) * FRAC_1_SQRT_2;
+        (m, m)
+    };
+    let soft = 2.0 * v[10].max(1.0);
+    let (ex, ey) = (ex - soft, ey - soft);
+    if ex <= 0.0 || ey <= 0.0 {
+        return EMPTY;
+    }
+    [cx - ex, cy - ey, cx + ex, cy + ey]
+}
+
+/// Where an active composite hides its bg (its second input) entirely:
+/// inside `fg`, its fg's opaque rect, when it draws the fg whole over the
+/// bg (`over` or a normal `blend` at full opacity, a `composite` over).
+/// Other modes and operators show the bg through, or its shape. EMPTY
+/// when nothing is hidden.
+pub fn hidden_bg(def: &OpDef, node: &Node, t: f64, fg: Rect) -> Rect {
+    let p = Packer { id: "", node, t };
+    let full = (p.num("opacity", 1.0) - 1.0).abs() <= 1e-6;
+    let hides = match def.name {
+        "over" => full,
+        "blend" => full && text(node, "mode").unwrap_or("normal") == "normal",
+        "composite" => text(node, "operator").unwrap_or("over") == "over",
+        _ => false,
+    };
+    if hides { fg } else { EMPTY }
+}
+
 /// Gradient block: stop count, space, 4 geometry floats, 8 stops of
 /// (position, premultiplied rgba).
 pub const GRADIENT_PARAMS: usize = 6 + 8 * 5;
@@ -1127,5 +1296,120 @@ mod tests {
         assert_eq!(bounds(def, &grows, &fmt, 0.0, &[UNBOUNDED], None), EMPTY);
         let half = bounds(def, &grows, &fmt, 0.5, &[shape], None);
         assert!(half[0] < half[2] && half[1] < half[3], "{half:?}");
+    }
+
+    /// What `opaque` knows hides what is under it, and what it leaves
+    /// alone: translucent colors, outlines, type, pictures, faded or
+    /// blended layers, turned rects.
+    #[test]
+    fn opaque_rects_hide_only_what_is_covered() {
+        let fmt = Format {
+            width: 480,
+            height: 270,
+            fps: 30.0,
+            duration: 1.0,
+            motion_blur: None,
+        };
+        let at = |json: &str, inputs: &[Rect]| {
+            let node: Node = serde_json::from_str(json).unwrap();
+            opaque(resolve("n", &node).unwrap(), &node, &fmt, 0.0, inputs)
+        };
+        assert_eq!(at(r##"{"op":"solid","params":{"color":"#102030"}}"##, &[]), UNBOUNDED);
+        assert_eq!(at(r##"{"op":"solid","params":{"color":"#10203080"}}"##, &[]), EMPTY);
+        assert_eq!(
+            at(r##"{"op":"gradient","params":{"stops":"0:#000000, 1:#ffffff"}}"##, &[]),
+            UNBOUNDED
+        );
+        assert_eq!(
+            at(
+                r##"{"op":"gradient","params":{"stops":"0:#000000, 1:#ffffff00"}}"##,
+                &[]
+            ),
+            EMPTY
+        );
+        assert_eq!(at(r#"{"op":"text","params":{"text":"Hi"}}"#, &[]), EMPTY);
+        assert_eq!(at(r#"{"op":"image","params":{"src":"a.png"}}"#, &[]), EMPTY);
+        // A filled rect, short of its soft edge; an outline hides nothing.
+        let rect = at(
+            r##"{"op":"shape","params":{"size":[200,100],"center":[240,135],"color":"#ffffff"}}"##,
+            &[],
+        );
+        assert!(
+            contains([140.0, 85.0, 340.0, 185.0], rect) && contains(rect, [145.0, 90.0, 335.0, 180.0]),
+            "{rect:?}"
+        );
+        assert_eq!(
+            at(
+                r##"{"op":"shape","params":{"size":[200,100],"color":"#ffffff","stroke":4}}"##,
+                &[]
+            ),
+            EMPTY
+        );
+        // Turned, it keeps the square inside its inscribed circle.
+        let turned = at(
+            r##"{"op":"shape","params":{"size":[200,100],"center":[240,135],"color":"#ffffff","rotation":30}}"##,
+            &[],
+        );
+        assert!(
+            contains([240.0 - 36.0, 135.0 - 36.0, 240.0 + 36.0, 135.0 + 36.0], turned),
+            "{turned:?}"
+        );
+        // Composites: an opaque bg or a whole fg; faded fgs and other
+        // modes don't hide the bg.
+        let over = r#"{"op":"over","inputs":{"fg":"a","bg":"b"}}"#;
+        assert_eq!(at(over, &[EMPTY, UNBOUNDED]), UNBOUNDED);
+        assert_eq!(at(over, &[rect, EMPTY]), rect);
+        let node = |json: &str| -> Node { serde_json::from_str(json).unwrap() };
+        let hides = |json: &str| {
+            let n = node(json);
+            hidden_bg(resolve("n", &n).unwrap(), &n, 0.0, UNBOUNDED)
+        };
+        assert_eq!(hides(over), UNBOUNDED);
+        assert_eq!(
+            hides(r#"{"op":"over","inputs":{"fg":"a","bg":"b"},"params":{"opacity":0.9}}"#),
+            EMPTY
+        );
+        assert_eq!(hides(r#"{"op":"blend","inputs":{"fg":"a","bg":"b"}}"#), UNBOUNDED);
+        assert_eq!(
+            hides(r#"{"op":"blend","inputs":{"fg":"a","bg":"b"},"params":{"mode":"multiply"}}"#),
+            EMPTY
+        );
+        assert_eq!(hides(r#"{"op":"mix","inputs":{"a":"a","b":"b"}}"#), EMPTY);
+        // A cropped solid, moved: still upright; turned: unknown.
+        let crop = at(
+            r#"{"op":"crop","inputs":{"source":"s"},"params":{"rect":[0,0,200,270]}}"#,
+            &[UNBOUNDED],
+        );
+        assert!(
+            contains([0.0, 0.0, 200.0, 270.0], crop) && contains(crop, [4.0, 4.0, 196.0, 266.0]),
+            "{crop:?}"
+        );
+        let moved = at(
+            r#"{"op":"transform","inputs":{"source":"c"},"params":{"position":[340,135]}}"#,
+            &[crop],
+        );
+        assert!(
+            contains([100.0, 0.0, 300.0, 270.0], moved) && contains(moved, [106.0, 6.0, 294.0, 264.0]),
+            "{moved:?}"
+        );
+        let turned = at(
+            r#"{"op":"transform","inputs":{"source":"c"},"params":{"rotation":10}}"#,
+            &[crop],
+        );
+        assert_eq!(turned, EMPTY);
+        assert_eq!(
+            at(
+                r#"{"op":"transform","inputs":{"source":"c"},"params":{"rotation":10}}"#,
+                &[UNBOUNDED]
+            ),
+            UNBOUNDED
+        );
+        assert_eq!(
+            at(
+                r#"{"op":"transform","inputs":{"source":"c"},"params":{"scale":0}}"#,
+                &[UNBOUNDED]
+            ),
+            EMPTY
+        );
     }
 }

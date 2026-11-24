@@ -1154,6 +1154,22 @@ impl Renderer {
             };
             stack.extend(next);
         }
+        // Each element is then walked up to the output: under an opaque
+        // layer (a card cut in over it), cropped away or faded out on every
+        // path there, it is not on screen. Text and paths start where their
+        // raster chain ends, which is where their bounds are.
+        let fdoc: &Document = match flat.as_ref() {
+            Some(f) if needs_flat(doc) => &f.doc,
+            _ => doc,
+        };
+        let consumers = review::consumers(plan);
+        let opaque = opaque_rects(plan, fdoc, t);
+        let mut root_of: Vec<usize> = (0..n).collect();
+        for g in &plan.groups {
+            if let Some(rc) = &g.raster {
+                root_of[rc.node] = g.root;
+            }
+        }
         let mut out = Vec::new();
         for (i, pn) in plan.nodes.iter().enumerate() {
             let (lt, on) = local_time(pn, t);
@@ -1182,6 +1198,9 @@ impl Renderer {
                 }
                 None => continue,
             };
+            if !review::reaches_screen(plan, fdoc, &consumers, &opaque, root_of[i], b, 1.0, 1e-3, t) {
+                continue;
+            }
             let node = pn.id.split('/').next().unwrap_or(&pn.id).to_string();
             let text = (pn.def.name == "text")
                 .then(|| node_of(&pn.id).map(|n| geom::display_text(&n, lt)))
@@ -5354,6 +5373,24 @@ pub(crate) fn absorbed(plan: &Plan, doc: &Document, transforms: &[usize], t: f64
             (_, false) => acc,
         }
     })
+}
+
+/// Per plan node, where its output is fully opaque at `t` ([`ops::opaque`],
+/// in its own space): an inactive node shows its passthrough input, or
+/// nothing.
+pub(crate) fn opaque_rects(plan: &Plan, doc: &Document, t: f64) -> Vec<ops::Rect> {
+    let mut out = vec![ops::EMPTY; plan.nodes.len()];
+    for (i, pn) in plan.nodes.iter().enumerate() {
+        let ins: Vec<ops::Rect> = pn.inputs.iter().map(|&c| out[c]).collect();
+        out[i] = match (local_time(pn, t), doc.nodes.get(&pn.id)) {
+            ((lt, true), Some(node)) => ops::opaque(pn.def, node, &doc.format, lt, &ins),
+            ((_, true), None) => ops::EMPTY,
+            ((_, false), _) => ops::passthrough(pn.def, ins.len())
+                .map(|k| ins[k])
+                .unwrap_or(ops::EMPTY),
+        };
+    }
+    out
 }
 
 fn local_time(n: &plan::PlanNode, t: f64) -> (f64, bool) {
