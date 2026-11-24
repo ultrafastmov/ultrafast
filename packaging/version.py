@@ -18,8 +18,17 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SEMVER = r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?"
-JSON = ["plugin.json", "plugins/ultrafast/.claude-plugin/plugin.json", "gemini-extension.json"]
-SKILLS = ["skills/ultrafast/SKILL.md", "plugins/ultrafast/skills/ultrafast/SKILL.md"]
+JSON = [
+    "plugin.json",
+    "plugins/ultrafast/.claude-plugin/plugin.json",
+    "plugins/ultrafast-directory/.claude-plugin/plugin.json",
+    "gemini-extension.json",
+]
+SKILLS = [
+    "skills/ultrafast/SKILL.md",
+    "plugins/ultrafast/skills/ultrafast/SKILL.md",
+    "plugins/ultrafast-directory/skills/ultrafast/SKILL.md",
+]
 
 
 def crate_names():

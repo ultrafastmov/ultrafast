@@ -134,7 +134,9 @@ jobs:
       # Unproven without a signed-in CLI on a runner: reported, not blocking.
       - name: claude plugin validate
         continue-on-error: true
-        run: npx -y @anthropic-ai/claude-code plugin validate ./plugins/ultrafast
+        run: |
+          npx -y @anthropic-ai/claude-code plugin validate ./plugins/ultrafast
+          npx -y @anthropic-ai/claude-code plugin validate ./plugins/ultrafast-directory
 
   licenses:
     runs-on: ubuntu-24.04
