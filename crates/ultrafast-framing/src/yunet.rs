@@ -6,8 +6,8 @@
 //! ONNX file.
 //!
 //! Every layer is a plain loop that adds its terms in one order, with no
-//! fused multiply-adds, so a frame gives the same boxes on any machine
-//! whatever its vector width.
+//! fused multiply-adds, so its sums don't depend on the machine's vector
+//! width.
 
 use std::sync::OnceLock;
 
