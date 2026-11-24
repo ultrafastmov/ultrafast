@@ -9,7 +9,8 @@ engine (`uf`) that it runs. Last updated 24 November 2026.
   at and writes the files you ask for, in the folders you choose. It has no
   accounts, no analytics and no telemetry, and it sends nothing about you,
   your documents or your videos to ultrafast.
-- `uf` goes online only to download what a render needs. A font family that
+- `uf` goes online only to download what a render needs: media at an https
+  URL that you put in a document or send to `uf serve` comes from that URL. A font family that
   a document names and that isn't installed comes from Google Fonts, and
   color emoji from Google's Noto Emoji release on GitHub. A `cargo install`
   build that can't find the Slang shader compiler downloads it from Slang's
