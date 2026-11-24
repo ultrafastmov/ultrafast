@@ -859,13 +859,24 @@ pub fn review(r: &mut Renderer, doc: &Document, opts: &ReviewOptions) -> Result<
         } else {
             format!("\"{text}\"")
         };
-        // Type set wider than the frame on both sides is texture (marquees,
-        // patterns), not copy to be read.
-        if samples
-            .iter()
-            .any(|(_, p)| (p.bounds[0] < 0.0 && p.bounds[2] >= fw) || (p.bounds[1] < 0.0 && p.bounds[3] >= fh))
-        {
-            continue;
+        // Type wider than the frame on both sides is texture, not copy to be
+        // read, when it moves across (a marquee) or is set huge for the frame
+        // to crop. Copy that sits still at a reading size and runs off both
+        // edges (a long headline) doesn't fit, and is checked like any other.
+        let wide = samples.iter().any(|(_, p)| p.bounds[0] < 0.0 && p.bounds[2] >= fw);
+        let tall = samples.iter().any(|(_, p)| p.bounds[1] < 0.0 && p.bounds[3] >= fh);
+        if wide || tall {
+            let travel = |edge: usize| {
+                let (lo, hi) = samples.iter().fold((f32::MAX, f32::MIN), |(lo, hi), (_, p)| {
+                    (lo.min(p.bounds[edge]), hi.max(p.bounds[edge]))
+                });
+                hi - lo
+            };
+            let moves = (wide && travel(0) > 0.05 * fw) || (tall && travel(1) > 0.05 * fh);
+            let huge = samples.iter().map(|(_, p)| p.size_px).fold(f32::MAX, f32::min) >= 0.25 * short;
+            if moves || huge {
+                continue;
+            }
         }
         let best = samples.iter().map(|(_, p)| p.contrast).fold(1.0f32, f32::max);
         if std::env::var("ULTRAFAST_DEBUG_REVIEW").is_ok() {

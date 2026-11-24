@@ -183,3 +183,25 @@ fn type_under_an_opaque_card_is_not_on_screen() {
         assert_eq!(on_screen(&mut r, &doc, 1.5), both, "{doc}");
     }
 }
+
+/// Copy that sits still and runs off both edges (a headline too long for a
+/// vertical frame) is clipped; type that moves across the frame (a
+/// marquee) or is set huge for the frame to crop is texture, not copy.
+#[test]
+fn a_headline_off_both_edges_is_clipped_but_marquees_and_huge_type_are_not() {
+    let doc = format!(
+        r##"{{"version":1,"format":{{"width":270,"height":480,"fps":30,"duration":2}},"output":"out","nodes":{{
+          "bg":{{"op":"solid","params":{{"color":"#f4f1ea"}}}},
+          "headline":{{"op":"text","params":{{"text":"Seeds that suit your soil","font":"{FONT}","size":34,"position":[135,150],"align":"center","color":"#10261d"}}}},
+          "marquee":{{"op":"text","params":{{"text":"news ticker running across the whole frame","font":"{FONT}","size":24,"color":"#10261d",
+            "position":{{"keys":[{{"t":0,"v":[-200,300]}},{{"t":2,"v":[-500,300]}}]}}}}}},
+          "huge":{{"op":"text","params":{{"text":"SOIL","font":"{FONT}","size":200,"position":[135,440],"align":"center","color":"#e6e0d4"}}}},
+          "a":{{"op":"over","inputs":{{"fg":"huge","bg":"bg"}}}},
+          "b":{{"op":"over","inputs":{{"fg":"marquee","bg":"a"}}}},
+          "out":{{"op":"over","inputs":{{"fg":"headline","bg":"b"}}}}}}}}"##
+    );
+    let k = kinds(&doc);
+    let has = |kind: &str, node: &str| k.iter().any(|(a, b)| a == kind && b == node);
+    assert!(has("clipped", "headline"), "{k:?}");
+    assert!(!k.iter().any(|(_, n)| n == "marquee" || n == "huge"), "{k:?}");
+}
