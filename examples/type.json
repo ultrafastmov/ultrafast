@@ -26,7 +26,7 @@
       "trim_end": { "keys": [ { "t": 0, "v": [0], "ease": "in_out_cubic" }, { "t": 2.5, "v": [1] } ] } } },
     "dashed": { "op": "path", "params": { "kind": "circle", "center": [1650, 850], "radius": 170, "stroke": 6, "dash": [24, 14],
       "dash_offset": { "keys": [ { "t": 0, "v": [0] }, { "t": 4, "v": [152] } ] }, "color": [1, 1, 1, 0.6] } },
-    "outline": { "op": "text", "params": { "text": "OUTLINE", "size": 140, "weight": 800, "stroke": 3, "position": [120, 140], "color": "#ef476f" } },
+    "outline": { "op": "text", "params": { "text": "OUTLINE", "size": 140, "weight": 800, "stroke": 3, "position": [120, 70], "color": "#ef476f" } },
 
     "l1": { "op": "over", "inputs": { "fg": "title_x", "bg": "bg" } },
     "l2": { "op": "over", "inputs": { "fg": "body", "bg": "l1" } },
