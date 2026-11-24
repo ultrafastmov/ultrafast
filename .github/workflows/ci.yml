@@ -131,6 +131,14 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: sh tools/sync-plugin-skill.sh --check
+      # The SDKs' document types are generated from the schema, and only the
+      # release runs the SDK tests: catch a stale copy on the branch.
+      - name: SDK types match docs/schema/v1.json
+        run: |
+          python3 sdk/python/tools/gen_types.py docs/schema/v1.json --check
+          cmp docs/schema/v1.json sdk/typescript/schema/v1.json
+          node sdk/typescript/scripts/gen-types.mjs docs/schema/v1.json "$RUNNER_TEMP/schema.ts"
+          cmp "$RUNNER_TEMP/schema.ts" sdk/typescript/src/schema.ts
       # Unproven without a signed-in CLI on a runner: reported, not blocking.
       - name: claude plugin validate
         continue-on-error: true

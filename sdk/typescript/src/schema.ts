@@ -1564,6 +1564,8 @@ export interface BlockParams {
   thickness?: Param<number>;
   /** title / chapter / end_card / charts (above the chart) */
   title?: Param<string>;
+  /** end_card: the title's face. Default: ultrafast:wide. */
+  title_font?: Param<string>;
   /** stat: counts up to it. Default: 0. */
   value?: Param<number>;
   /** charts: the data, e.g. [24, 31, 58, 265] */

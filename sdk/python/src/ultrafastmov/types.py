@@ -691,6 +691,7 @@ class BlockParams(TypedDict, total=False):
     text_font: Union[str, Animated, ComponentParam]  # body face. Default: ultrafast:sans.
     thickness: Union[float, Animated, ComponentParam]  # donut: ring thickness px. Default: 30% of radius.
     title: Union[str, Animated, ComponentParam]  # title / chapter / end_card / charts (above the chart)
+    title_font: Union[str, Animated, ComponentParam]  # end_card: the title's face. Default: ultrafast:wide.
     value: Union[float, Animated, ComponentParam]  # stat: counts up to it. Default: 0.
     values: Union[Numbers, Animated, ComponentParam]  # charts: the data, e.g. [24, 31, 58, 265]
     width: Union[float, Animated, ComponentParam]  # wrap width px. Default: 80% of the width.
