@@ -1,7 +1,7 @@
 {
   "name": "ultrafast",
   "displayName": "ultrafast",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Make and edit videos as JSON documents rendered on your GPU. The skill teaches the document format and the check, look, review and export loop, run through the `uf` command on this machine.",
   "author": {
     "name": "ultrafast",
