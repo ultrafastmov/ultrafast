@@ -205,6 +205,11 @@ impl Device {
         self.inner.device.name().to_string()
     }
 
+    /// Metal always runs on the GPU.
+    pub fn is_cpu(&self) -> bool {
+        false
+    }
+
     pub fn backend(&self) -> &'static str {
         "metal"
     }

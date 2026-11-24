@@ -62,6 +62,31 @@ impl Toolbox for Local {
     }
 
     fn call(&mut self, name: &str, a: &Value) -> Result<Value, String> {
+        let mut out = self.run(name, a)?;
+        // A driver that renders on the CPU makes every render many times
+        // slower. The server's stderr reaches the client's log, not the
+        // agent: say it in the results of the tools that render.
+        let renders = [
+            "ultrafast_frame",
+            "ultrafast_sheet",
+            "ultrafast_review",
+            "ultrafast_export",
+            "ultrafast_batch",
+        ];
+        if renders.contains(&name)
+            && let Some(s) = self.sessions.values().next()
+            && s.renderer.device().is_cpu()
+            && let Some(content) = out.get_mut("content").and_then(Value::as_array_mut)
+        {
+            let note = ultrafast_gpu::cpu_device_warning(&s.renderer.device().name());
+            content.push(json!({ "type": "text", "text": format!("warning: {note}") }));
+        }
+        Ok(out)
+    }
+}
+
+impl Local {
+    fn run(&mut self, name: &str, a: &Value) -> Result<Value, String> {
         match name {
             "ultrafast_ops" => Ok(core::ops(a)),
             "ultrafast_new" => {

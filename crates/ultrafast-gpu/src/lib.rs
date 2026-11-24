@@ -49,6 +49,16 @@ pub enum Blend {
 }
 
 /// The backend this build renders with: "metal" or "vulkan".
+/// What to tell someone whose renders run on `device`, a driver that does
+/// Vulkan's work on the CPU (llvmpipe, SwiftShader): the GPU isn't visible
+/// to this process, and every frame takes many times longer.
+pub fn cpu_device_warning(device: &str) -> String {
+    format!(
+        "rendering on {device}, a driver that runs on the CPU, so renders take many times longer: \
+         no GPU is visible to this process (a sandbox, a container without the GPU, or no GPU driver)"
+    )
+}
+
 #[cfg(backend_metal)]
 pub const BACKEND: &str = "metal";
 #[cfg(backend_vulkan)]

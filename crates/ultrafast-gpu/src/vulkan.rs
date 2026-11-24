@@ -268,6 +268,8 @@ struct Inner {
     timestamp_period: f64,
     queue_family: u32,
     name: String,
+    /// The driver does the work on the CPU (llvmpipe, SwiftShader).
+    cpu: bool,
     /// Compiled pipelines carried between processes ([`cached_pipeline`]).
     cache_dir: Option<std::path::PathBuf>,
     /// The same, shared between machines.
@@ -861,6 +863,13 @@ impl Device {
             .device_name_as_c_str()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
+        let cpu = props.device_type == vk::PhysicalDeviceType::CPU;
+        // Said once a process: the device is opened once per command, but a
+        // server opens one per session.
+        static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if cpu && !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            eprintln!("ultrafast: {}", crate::cpu_device_warning(&name));
+        }
 
         let dev_exts = listed("device extensions", || unsafe {
             instance.enumerate_device_extension_properties(pdev)
@@ -1083,6 +1092,7 @@ impl Device {
             timestamp_period: props.limits.timestamp_period as f64,
             queue_family,
             name,
+            cpu,
             device,
             cache_dir,
             shared_dir,
@@ -1106,6 +1116,12 @@ impl Device {
 
     pub fn name(&self) -> String {
         self.inner.name.clone()
+    }
+
+    /// Whether the driver does the work on the CPU (llvmpipe, SwiftShader):
+    /// see [`crate::cpu_device_warning`].
+    pub fn is_cpu(&self) -> bool {
+        self.inner.cpu
     }
 
     pub fn backend(&self) -> &'static str {
