@@ -1,7 +1,7 @@
 {
   "name": "ultrafast",
   "displayName": "ultrafast",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Make and edit videos as JSON documents rendered on your GPU. The skill teaches the document format and the check, look, review and export loop; the MCP server runs `uf mcp` on this machine.",
   "author": { "name": "ultrafast", "url": "https://ultrafast.mov" },
   "homepage": "https://ultrafast.mov",
