@@ -35,14 +35,6 @@ https://ultrafast.mov/docs/#install, then check that `uf --version` prints a
 version. Without `uf`, the skill explains how to install it and doesn't
 pretend to render.
 
-For Claude Code there is also a plugin with the local MCP server
-(`uf mcp`, 20 tools):
-
-```bash
-claude plugin marketplace add ultrafastmov/ultrafast
-claude plugin install ultrafast@ultrafast
-```
-
 Then ask for a video, for example: "a 10-second vertical teaser for my
 pottery class, Saturdays, first class free".
 
