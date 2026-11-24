@@ -209,7 +209,7 @@ pub fn row_edits(doc: &Document, row: &Row) -> Result<Vec<Edit>, String> {
             let near = doc
                 .nodes
                 .keys()
-                .min_by_key(|k| strsim(k, node))
+                .min_by_key(|k| crate::schema::edit_distance(k, node))
                 .map(|k| format!(" (did you mean `{k}`?)"))
                 .unwrap_or_default();
             return Err(format!("`{key}`: no node `{node}`{near}"));
@@ -240,11 +240,20 @@ pub fn row_edits(doc: &Document, row: &Row) -> Result<Vec<Edit>, String> {
     Ok(edits)
 }
 
-/// The document for one row.
+/// The document for one row. A param its node doesn't take is refused,
+/// like a node that isn't there: the film would never show that cell.
 pub fn apply_row(doc: &Document, row: &Row) -> Result<Document, String> {
     let edits = row_edits(doc, row)?;
     let mut d = doc.fork();
     d.apply(&edits).map_err(|e| e.to_string())?;
+    for e in &edits {
+        if let Edit::SetParam { node, param, .. } = e
+            && let Some(n) = d.nodes.get(node)
+            && let Some(why) = crate::schema::unknown_param(&d, &n.op, param)
+        {
+            return Err(format!("`{node}.{param}`: {why}"));
+        }
+    }
     Ok(d)
 }
 
@@ -291,21 +300,6 @@ pub fn output_name(pattern: &str, row: &Row, index: usize) -> String {
     out
 }
 
-fn strsim(a: &str, b: &str) -> usize {
-    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    for i in 1..=a.len() {
-        let mut cur = vec![i; b.len() + 1];
-        for j in 1..=b.len() {
-            cur[j] = (prev[j] + 1)
-                .min(cur[j - 1] + 1)
-                .min(prev[j - 1] + (a[i - 1] != b[j - 1]) as usize);
-        }
-        prev = cur;
-    }
-    prev[b.len()]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,6 +340,19 @@ mod tests {
         let row: Row = serde_json::from_str(r#"{"nmae.text": "x"}"#).unwrap();
         let e = apply_row(&doc(), &row).unwrap_err();
         assert!(e.contains("did you mean `name`"), "{e}");
+        // A param the node doesn't take, as a column or in `edits`.
+        let row: Row = serde_json::from_str(r#"{"name.txet": "x"}"#).unwrap();
+        let e = apply_row(&doc(), &row).unwrap_err();
+        assert!(
+            e.contains("`name.txet`: `text` has no param `txet` (did you mean `text`?)"),
+            "{e}"
+        );
+        let row: Row = serde_json::from_str(
+            r#"{"edits": [{"edit": "set_param", "node": "bg", "param": "colour", "value": "x"}]}"#,
+        )
+        .unwrap();
+        let e = apply_row(&doc(), &row).unwrap_err();
+        assert!(e.contains("did you mean `color`"), "{e}");
         let row: Row = serde_json::from_str(
             r##"{"format.height": 1080, "edits": [{"edit": "set_param", "node": "bg", "param": "color", "value": "#ffffff"}]}"##,
         )

@@ -739,15 +739,26 @@ fn main() -> Result<()> {
             // Every row's document first: a mistake in row 40 shows before
             // anything renders.
             let mut jobs = Vec::new();
+            // Each warning once, with the first row that has it: a row's
+            // own (a word in a number column, say), not the template's.
+            let mut warned: std::collections::HashSet<(String, String)> = ultrafast_render::schema::check(&doc)
+                .into_iter()
+                .map(|i| (i.node, i.message))
+                .collect();
             for (i, row) in rows.iter().enumerate() {
                 let d = batch::apply_row(&doc, row).map_err(|e| anyhow::anyhow!("row {}: {e}", i + 1))?;
-                let issues: Vec<String> = ultrafast_render::schema::check(&d)
+                let (errors, warnings): (Vec<_>, Vec<_>) = ultrafast_render::schema::check(&d)
                     .into_iter()
-                    .filter(|i| i.severity == "error")
-                    .map(|i| format!("{}: {}", i.node, i.message))
-                    .collect();
-                if !issues.is_empty() {
-                    bail!("row {}: {}", i + 1, issues.join("; "));
+                    .filter(|i| i.severity != "info")
+                    .partition(|i| i.severity == "error");
+                if !errors.is_empty() {
+                    let errors: Vec<String> = errors.iter().map(|e| format!("{}: {}", e.node, e.message)).collect();
+                    bail!("row {}: {}", i + 1, errors.join("; "));
+                }
+                for w in warnings {
+                    if warned.insert((w.node.clone(), w.message.clone())) {
+                        eprintln!("warning: row {}: node `{}`: {}", i + 1, w.node, w.message);
+                    }
                 }
                 let out = PathBuf::from(batch::output_name(&pattern, row, i));
                 settings
@@ -810,9 +821,6 @@ fn main() -> Result<()> {
             let mut r = renderer(&path)?;
             let t0 = Instant::now();
             let n = jobs.len();
-            // Each warning once, with the first row that has it (a row
-            // whose longer text its reveal never shows, say).
-            let mut warned = std::collections::HashSet::new();
             for (i, (d, out)) in jobs.iter().enumerate() {
                 if let Some(dir) = out.parent().filter(|d| !d.as_os_str().is_empty()) {
                     std::fs::create_dir_all(dir)?;

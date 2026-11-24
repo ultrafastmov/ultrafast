@@ -493,6 +493,9 @@ mod tests {
         assert!(batch_jobs(&doc, &rows, "same.mp4").is_err());
         let bad = batch_rows(&json!({ "rows": [ { "no_such_node.text": "x" } ] }), None).unwrap();
         assert!(batch_jobs(&doc, &bad, "{row}.mp4").is_err());
+        let bad = batch_rows(&json!({ "rows": [ { "title.txet": "x" } ] }), None).unwrap();
+        let e = batch_jobs(&doc, &bad, "{row}.mp4").unwrap_err();
+        assert!(e.starts_with("row 1: `title.txet`:"), "{e}");
     }
 
     #[test]

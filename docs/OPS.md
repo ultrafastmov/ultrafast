@@ -485,6 +485,7 @@ a ready-made animated block in one house style: title, lower_third, quote, stat,
 - `radius`: number = fits the plot - donut: outer radius px
 - `thickness`: number = 30% of radius - donut: ring thickness px
 - `number_font`: text = ultrafast:wide - stat, donut: the big number's face
+- `title_font`: text = ultrafast:wide - end_card: the title's face
 - `duration`: number = 3.5 (lower_third 4, quote 5, chapter 2.5, charts 5) - seconds before it exits (end_card stays)
 - `ink`: color = #f6f3ee - type color
 - `muted`: color = ink at 72% - secondary type

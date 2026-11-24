@@ -105,7 +105,7 @@ const EDITS: &str = "Edits, applied in order and all or nothing. Each is an obje
 
 const ESTIMATE: &str = "What exporting the document will cost before it runs: rendered minutes (1080p minutes; 720p counts half, 4K three), GPU seconds measured by rendering a sample of frames on this GPU, and the time to the first frame. Pass the export settings you will export with (size, quality, fps...): minutes are counted at the output size and frames timed with the quality level's motion blur. Nothing is encoded or stored.";
 
-const BATCH: &str = "One document, many videos: each row sets some of the document's params and becomes its own video. A key `node.param` sets that param (e.g. `title.title`), `format.width` / `format.height` / `format.fps` / `format.duration` the format, and a row may carry `edits` (an edit batch). `name` and other keys fill `{name}`-style placeholders in the output pattern; `{row}` is the row number from 1. Every row is checked before anything renders.";
+const BATCH: &str = "One document, many videos: each row sets some of the document's params and becomes its own video. A key `node.param` sets that param (e.g. `title.title`), `format.width` / `format.height` / `format.fps` / `format.duration` the format, and a row may carry `edits` (an edit batch). `name` and other keys fill `{name}`-style placeholders in the output pattern; `{row}` is the row number from 1. Every row is checked before anything renders: a key naming a node or a param that isn't there is refused, with the nearest name.";
 
 const MEASURE: &str = "Glyph-by-glyph metrics of a line of text (pen positions, advances, ink boxes, ascent, descent), for laying type out by hand. `params` are `text` op params (text, font, size, weight, tracking, ...).";
 

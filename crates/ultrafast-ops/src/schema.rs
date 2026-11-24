@@ -1129,6 +1129,7 @@ const SCHEMAS: &[OpSchema] = &[
                 "ultrafast:wide",
                 "stat, donut: the big number's face",
             ),
+            ("title_font", "text", "ultrafast:wide", "end_card: the title's face"),
             (
                 "duration",
                 "number",
@@ -1398,6 +1399,59 @@ fn all_params(s: &OpSchema) -> impl Iterator<Item = &'static P> {
     s.params.iter().chain(s.extra.iter().flat_map(|g| g.iter()))
 }
 
+/// The op's entry for param `k`, counting the numbered families (`u0` to
+/// `u15`, `k0` to `k4`) and `axis_<tag>`.
+fn op_param(s: &OpSchema, k: &str) -> Option<&'static P> {
+    all_params(s).find(|p| {
+        p.0 == k
+            || (k.starts_with('u') && p.0 == "u0" && k[1..].parse::<u8>().is_ok_and(|i| i < 16))
+            || (k.starts_with('k') && p.0 == "k0" && k[1..].parse::<u8>().is_ok_and(|i| i < 5))
+            || (k.starts_with("axis_") && p.0 == "axis_<tag>" && (6..=9).contains(&k.len()))
+    })
+}
+
+/// The component `op` names: the document's own, else a builtin.
+fn component<'a>(doc: &'a Document, op: &str) -> Option<&'a ultrafast_graph::Component> {
+    doc.components.get(op).or_else(|| {
+        crate::builtins::components()
+            .iter()
+            .find(|(n, _)| n == op)
+            .map(|(_, c)| c)
+    })
+}
+
+/// Why a node whose op is `op` takes no param `k`, with the nearest it
+/// does take (what [`check`] warns), or `None` when it takes `k` or `op`
+/// is unknown.
+pub fn unknown_param(doc: &Document, op: &str, k: &str) -> Option<String> {
+    let hint = |names: &mut dyn Iterator<Item = &str>| {
+        names
+            .min_by_key(|n| edit_distance(n, k))
+            .filter(|n| edit_distance(n, k) <= 3)
+            .map(|n| format!(" (did you mean `{n}`?)"))
+            .unwrap_or_default()
+    };
+    if let Some(c) = component(doc, op) {
+        // Declared, or used as `$k` inside: every param an instance sets
+        // reaches its nodes.
+        let used = c.nodes.values().any(|n| {
+            n.params
+                .values()
+                .any(|v| matches!(v, Param::Text(s) if s.strip_prefix('$') == Some(k)))
+        });
+        return (!c.params.contains_key(k) && !used).then(|| {
+            format!(
+                "component `{op}` has no param `{k}`{}",
+                hint(&mut c.params.keys().map(String::as_str))
+            )
+        });
+    }
+    let s = find(op)?;
+    op_param(s, k)
+        .is_none()
+        .then(|| format!("`{op}` has no param `{k}`{}", hint(&mut all_params(s).map(|p| p.0))))
+}
+
 /// The full vocabulary as JSON.
 pub fn vocabulary() -> Value {
     let mut ops: Vec<Value> = SCHEMAS
@@ -1471,16 +1525,10 @@ pub fn check(doc: &Document) -> Vec<Issue> {
     for (prefix, nodes) in graphs {
         for (id, node) in nodes {
             let path = format!("{prefix}{id}");
-            let component = doc.components.get(&node.op).or_else(|| {
-                crate::builtins::components()
-                    .iter()
-                    .find(|(n, _)| *n == node.op)
-                    .map(|(_, c)| c)
-            });
-            if let Some(c) = component {
+            if let Some(c) = component(doc, &node.op) {
                 for k in node.params.keys() {
-                    if !c.params.contains_key(k) {
-                        issue(&path, "warning", format!("component `{}` has no param `{k}`", node.op));
+                    if let Some(why) = unknown_param(doc, &node.op, k) {
+                        issue(&path, "warning", why);
                     }
                 }
                 for p in node.inputs.keys() {
@@ -1496,25 +1544,10 @@ pub fn check(doc: &Document) -> Vec<Issue> {
             };
             for (k, v) in &node.params {
                 if prefix.is_empty() || !matches!(v, Param::Text(s) if s.starts_with('$')) {
-                    let known = all_params(schema).find(|p| {
-                        p.0 == k
-                            || (k.starts_with('u') && p.0 == "u0" && k[1..].parse::<u8>().is_ok_and(|i| i < 16))
-                            || (k.starts_with('k') && p.0 == "k0" && k[1..].parse::<u8>().is_ok_and(|i| i < 5))
-                            || (k.starts_with("axis_") && p.0 == "axis_<tag>" && (6..=9).contains(&k.len()))
-                    });
-                    match known {
+                    match op_param(schema, k) {
                         None => {
-                            let hint = all_params(schema)
-                                .map(|p| p.0)
-                                .min_by_key(|n| edit_distance(n, k))
-                                .filter(|n| edit_distance(n, k) <= 3)
-                                .map(|n| format!(" (did you mean `{n}`?)"))
-                                .unwrap_or_default();
-                            issue(
-                                &path,
-                                "warning",
-                                format!("`{}` has no param `{k}`{hint}; it is ignored", node.op),
-                            );
+                            let why = unknown_param(doc, &node.op, k).unwrap_or_default();
+                            issue(&path, "warning", format!("{why}; it is ignored"));
                         }
                         Some(p) => {
                             if let Param::Expr { expr } = v {
@@ -1804,19 +1837,29 @@ fn type_mismatch(ty: &str, v: &Param) -> Option<String> {
     (!ok).then(|| format!("expected {ty}, got {}", serde_json::to_string(v).unwrap_or_default()))
 }
 
-fn edit_distance(a: &str, b: &str) -> usize {
+/// Edits from `a` to `b`, two letters swapped counting as one: `valeus`
+/// is one from `values` and two from `value`.
+pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
     let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    for i in 1..=a.len() {
-        let mut cur = vec![i; b.len() + 1];
-        for j in 1..=b.len() {
-            cur[j] = (prev[j] + 1)
-                .min(cur[j - 1] + 1)
-                .min(prev[j - 1] + (a[i - 1] != b[j - 1]) as usize);
-        }
-        prev = cur;
+    let mut d = vec![vec![0; b.len() + 1]; a.len() + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
     }
-    prev[b.len()]
+    for j in 0..=b.len() {
+        d[0][j] = j;
+    }
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let mut v = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + (a[i - 1] != b[j - 1]) as usize);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                v = v.min(d[i - 2][j - 2] + 1);
+            }
+            d[i][j] = v;
+        }
+    }
+    d[a.len()][b.len()]
 }
 
 #[cfg(test)]
@@ -1828,6 +1871,47 @@ mod tests {
         for d in crate::ops::OPS {
             assert!(find(d.name).is_some(), "no schema for {}", d.name);
         }
+    }
+
+    #[test]
+    fn a_swapped_pair_is_one_edit() {
+        assert_eq!(edit_distance("valeus", "values"), 1);
+        assert_eq!(edit_distance("valeus", "value"), 2);
+        assert_eq!(edit_distance("kitten", "sitting"), 3);
+        assert_eq!(edit_distance("", "ab"), 2);
+        let doc = Document::from_json(
+            r#"{"version":1,"format":{"width":100,"height":100,"fps":30,"duration":1},"output":"c",
+            "nodes":{"c":{"op":"block","params":{"kind":"bar_chart","values":[1],"valeus":[2]}}}}"#,
+        )
+        .unwrap();
+        let msgs: Vec<String> = check(&doc).into_iter().map(|i| i.message).collect();
+        assert!(
+            msgs.contains(&"`block` has no param `valeus` (did you mean `values`?); it is ignored".to_string()),
+            "{msgs:?}"
+        );
+    }
+
+    #[test]
+    fn params_a_node_does_take_are_known() {
+        let doc = Document::from_json(
+            r#"{"version":1,"format":{"width":100,"height":100,"fps":30,"duration":1},"output":"o",
+            "components":{"card":{"output":"t","params":{"size":40},
+                "nodes":{"t":{"op":"text","params":{"text":"$title","size":"$size"}}}}},
+            "nodes":{"c":{"op":"card","params":{"title":"Hi","sise":30}},
+                     "e":{"op":"block","params":{"kind":"end_card","title_font":"ultrafast:sans"}},
+                     "o":{"op":"over","inputs":{"fg":"c","bg":"e"}}}}"#,
+        )
+        .unwrap();
+        // The end card reads `title_font`; a component's nodes read every
+        // param its instance sets, declared or not (`title` here).
+        assert_eq!(unknown_param(&doc, "block", "title_font"), None);
+        assert_eq!(unknown_param(&doc, "card", "title"), None);
+        assert_eq!(
+            unknown_param(&doc, "card", "sise").as_deref(),
+            Some("component `card` has no param `sise` (did you mean `size`?)")
+        );
+        let msgs: Vec<String> = check(&doc).into_iter().map(|i| i.message).collect();
+        assert_eq!(msgs, ["component `card` has no param `sise` (did you mean `size`?)"]);
     }
 
     #[test]

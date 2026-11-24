@@ -108,8 +108,9 @@ up to 20 rows a call, each a download link). CLI:
 
 - A key `node.param` sets a param; `format.*` changes the format; a JSON row
   can carry `edits`. Other keys only fill the output pattern.
-- Every row is checked before anything renders, and two rows can't write
-  the same file.
+- Every row is checked before anything renders: a key naming a node or a
+  param that isn't there stops the batch with the nearest name, and two
+  rows can't write the same file.
 - Changing the size per row works because blocks, captions, stacks and `fit`
   follow the frame. Review one row at each size first.
 
