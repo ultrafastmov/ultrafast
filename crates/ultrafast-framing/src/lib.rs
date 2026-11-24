@@ -24,6 +24,7 @@ pub use anchor::{AnchorProfile, AnchorState, advance_anchor, anchor_profile};
 
 pub mod faces;
 pub mod follow;
+pub mod yunet;
 
 /// `Math.round`: halves round toward +infinity.
 pub fn js_round(x: f64) -> f64 {

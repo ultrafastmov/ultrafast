@@ -12,6 +12,3 @@ homepage.workspace = true
 ultrafast-graph.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# Face detection for clips that come without face tracks (SeetaFace's
-# frontal model, BSD-2-Clause; models/LICENSE-SeetaFace).
-rustface = { version = "0.1.7", default-features = false }

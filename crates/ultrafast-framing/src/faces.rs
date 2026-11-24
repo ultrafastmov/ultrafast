@@ -3,21 +3,24 @@
 //!
 //! The caller decodes the clip into grey frames at a steady rate (about
 //! ten a second); this finds the cuts ([`cuts`], then [`cut_within`] on
-//! the frames between two samples for the exact frame), finds faces
-//! (SeetaFace's frontal detector, through `rustface`), links them into
-//! tracks within each shot, estimates who is talking from how much the
-//! lower face changes against the middle of the face, and writes the
-//! payload [`crate::Faces::from_json`] reads: `{sourceWidth, sourceHeight,
-//! fps, frames: [{frame, faces: [{id, x, y, w, h, talk}]}], shots:
-//! [{startFrame, endFrame}]}` with boxes normalized to the frame.
+//! the frames between two samples for the exact frame), finds faces in
+//! every sample (YuNet, [`crate::yunet`], which finds them turned to the
+//! side too), links them into tracks within each shot, estimates who is
+//! talking from how much the lower face changes against the middle of the
+//! face, and writes the payload [`crate::Faces::from_json`] reads:
+//! `{sourceWidth, sourceHeight, fps, frames: [{frame, faces: [{id, x, y,
+//! w, h, talk}]}], shots: [{startFrame, endFrame}]}` with boxes normalized
+//! to the frame.
 
 use serde_json::{Value, json};
 
-/// The detector's model (BSD-2-Clause, see `models/LICENSE-SeetaFace`).
-const MODEL: &[u8] = include_bytes!("../models/seeta_fd_frontal_v1.0.bin");
-
 /// Bumped when the analysis changes, so cached results are redone.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
+
+/// The score (0..1) a face needs. In an 18-minute two-camera interview,
+/// faces turned to the side scored 0.85 to 0.92 and no false face was
+/// tracked.
+const SCORE: f32 = 0.6;
 
 /// Cells across and down of the grid a frame's layout is averaged over.
 const GRID_W: usize = 16;
@@ -224,7 +227,7 @@ pub struct Cut {
 }
 
 /// A face found in one frame: normalized top-left, size and the
-/// detector's score.
+/// detector's score (0..1).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Detection {
     pub x: f64,
@@ -234,44 +237,32 @@ pub struct Detection {
     pub score: f64,
 }
 
-/// Finds faces in grey frames.
-pub struct Detector {
-    inner: Box<dyn rustface::Detector>,
-}
+/// Finds faces in grey frames ([`crate::yunet`]).
+#[derive(Debug, Default)]
+pub struct Detector;
 
 impl Detector {
     pub fn new() -> Self {
-        let model = rustface::read_model(std::io::Cursor::new(MODEL)).expect("the bundled face model reads");
-        let mut inner = rustface::create_detector_with_model(model);
-        inner.set_min_face_size(20);
-        inner.set_score_thresh(2.0);
-        inner.set_pyramid_scale_factor(0.8);
-        inner.set_slide_window_step(4, 4);
-        Self { inner }
+        Self
     }
 
+    /// The faces in `img`, each box cut to the part inside the frame.
     pub fn detect(&mut self, img: &Gray) -> Vec<Detection> {
         let (w, h) = (img.width as f64, img.height as f64);
-        self.inner
-            .detect(&rustface::ImageData::new(&img.px, img.width as u32, img.height as u32))
+        crate::yunet::detect(&img.px, img.width, img.height, SCORE)
             .into_iter()
-            .map(|f| {
-                let b = f.bbox();
-                Detection {
-                    x: b.x() as f64 / w,
-                    y: b.y() as f64 / h,
-                    w: b.width() as f64 / w,
-                    h: b.height() as f64 / h,
-                    score: f.score(),
-                }
+            .filter_map(|f| {
+                let (x0, y0) = ((f.x as f64).max(0.0), (f.y as f64).max(0.0));
+                let (x1, y1) = (((f.x + f.w) as f64).min(w), ((f.y + f.h) as f64).min(h));
+                (x1 > x0 && y1 > y0).then(|| Detection {
+                    x: x0 / w,
+                    y: y0 / h,
+                    w: (x1 - x0) / w,
+                    h: (y1 - y0) / h,
+                    score: f.score as f64,
+                })
             })
             .collect()
-    }
-}
-
-impl Default for Detector {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -332,52 +323,49 @@ pub fn analyze_with(samples: &[Sample], cuts: &[Cut], fps: f64, width: f64, heig
         }
     }
     let mut shot_of = vec![0usize; n];
-    let mut is_start = vec![false; n];
     for (k, &(s, _)) in starts.iter().enumerate() {
-        is_start[s] = true;
         let end = starts.get(k + 1).map_or(n, |next| next.0);
         shot_of[s..end].fill(k);
     }
 
-    // Detections on every other sample (and the first of each shot), on
-    // all cores.
-    let every = if step < 0.15 { 2 } else { 1 };
-    let detect_at: Vec<usize> = (0..n)
-        .filter(|&i| i % every == 0 || i + 1 == n || is_start[i])
-        .collect();
+    // Faces in every sample, on all cores.
     let threads = std::thread::available_parallelism()
         .map(|p| p.get())
         .unwrap_or(4)
         .clamp(1, 8);
-    let mut found: Vec<Option<Vec<Detection>>> = vec![None; n];
+    let mut found: Vec<Vec<Detection>> = vec![Vec::new(); n];
     std::thread::scope(|scope| {
-        let chunks: Vec<&[usize]> = detect_at.chunks(detect_at.len().div_ceil(threads).max(1)).collect();
-        let handles: Vec<_> = chunks
-            .into_iter()
-            .map(|idx| {
+        let handles: Vec<_> = samples
+            .chunks(n.div_ceil(threads))
+            .enumerate()
+            .map(|(c, chunk)| {
                 scope.spawn(move || {
                     let mut det = Detector::new();
-                    idx.iter()
-                        .map(|&i| (i, det.detect(&samples[i].frame)))
+                    let first = c * n.div_ceil(threads);
+                    chunk
+                        .iter()
+                        .enumerate()
+                        .map(|(k, s)| (first + k, det.detect(&s.frame)))
                         .collect::<Vec<_>>()
                 })
             })
             .collect();
         for h in handles {
             for (i, d) in h.join().expect("face detection thread") {
-                found[i] = Some(d);
+                found[i] = d;
             }
         }
     });
 
-    // Tracks: each detection joins the nearest track of its shot seen in
-    // the last second, or starts one.
+    // Tracks: each detection joins the nearest track seen earlier in its
+    // shot, or starts one. Someone missed for a while (a hand over the
+    // face, a turn away) is still where they sat.
     let mut next_id = 1i64;
     let mut live: Vec<(Tracked, usize)> = Vec::new(); // (last box, sample index)
     let mut at: Vec<Vec<Tracked>> = vec![Vec::new(); n];
-    for &i in &detect_at {
-        live.retain(|(_, j)| shot_of[*j] == shot_of[i] && (i - j) as f64 * step <= 1.0);
-        let dets = found[i].take().unwrap_or_default();
+    for i in 0..n {
+        live.retain(|(_, j)| shot_of[*j] == shot_of[i]);
+        let dets = std::mem::take(&mut found[i]);
         let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
         for (di, d) in dets.iter().enumerate() {
             for (li, (t, _)) in live.iter().enumerate() {
@@ -423,21 +411,19 @@ pub fn analyze_with(samples: &[Sample], cuts: &[Cut], fps: f64, width: f64, heig
     for t in at.iter().flatten() {
         *seen.entry(t.id).or_default() += 1;
     }
-    let long = |id: i64| seen.get(&id).copied().unwrap_or(0) >= 2 || detect_at.len() < 3;
+    let long = |id: i64| seen.get(&id).copied().unwrap_or(0) >= 2 || n < 3;
 
-    // Boxes on every sample: between two finds of a track in one shot, less
-    // than a second apart, the box moves in a straight line.
+    // Boxes on every sample: between two finds of a track (in one shot),
+    // the box moves in a straight line, so a face missed for a moment is
+    // still there to follow.
     let mut boxes: Vec<Vec<Tracked>> = vec![Vec::new(); n];
     let mut last: std::collections::HashMap<i64, (usize, Detection)> = std::collections::HashMap::new();
-    for &i in &detect_at {
+    for i in 0..n {
         for t in &at[i] {
             if !long(t.id) {
                 continue;
             }
-            if let Some(&(j, b0)) = last.get(&t.id)
-                && shot_of[j] == shot_of[i]
-                && (i - j) as f64 * step <= 1.0
-            {
+            if let Some(&(j, b0)) = last.get(&t.id) {
                 for k in j + 1..i {
                     let f = (k - j) as f64 / (i - j) as f64;
                     let l = |a: f64, b: f64| a + (b - a) * f;
@@ -458,15 +444,12 @@ pub fn analyze_with(samples: &[Sample], cuts: &[Cut], fps: f64, width: f64, heig
         }
     }
 
-    // Talk: how much the lower face changes from the previous sample, beyond
-    // a quarter of how much the middle of the face does. The lower face
+    // Movement: how much the lower face changes from the previous sample,
+    // beyond half of how much the middle of the face does. The lower face
     // across the box's whole width, so a mouth in profile, at the box's
     // edge, counts; the middle without the sides, where hair and ears
-    // swing. Only a quarter, because speakers move their heads and brows
-    // as they talk: taking off all of it left a gesturing speaker quieter
-    // than a listener who smiles. In the two-shots of a two-camera
-    // interview the speaker scored higher in 97-98 % of samples this way,
-    // 80-82 % that way.
+    // swing. Only half, because speakers move their heads and brows as they
+    // talk, and a listener who laughs or nods moves the middle too.
     let mut raw: Vec<Vec<f64>> = vec![Vec::new(); n];
     for i in 0..n {
         for t in &boxes[i] {
@@ -477,7 +460,7 @@ pub fn analyze_with(samples: &[Sample], cuts: &[Cut], fps: f64, width: f64, heig
                     let middle = [b.x + 0.3 * b.w, b.y + 0.2 * b.h, b.x + 0.7 * b.w, b.y + 0.45 * b.h];
                     let m = samples[i].frame.diff(&samples[i - 1].frame, lower)?;
                     let u = samples[i].frame.diff(&samples[i - 1].frame, middle)?;
-                    Some((m - 0.25 * u).max(0.0))
+                    Some((m - 0.5 * u).max(0.0))
                 })
                 .flatten();
             raw[i].push(moving.unwrap_or(0.0));
@@ -509,17 +492,33 @@ pub fn analyze_with(samples: &[Sample], cuts: &[Cut], fps: f64, width: f64, heig
         .unwrap_or(1.0)
         .max(1.5);
 
+    // Talk, as the camera reads it: who of the faces in a sample is the
+    // one speaking. The camera hands over to a new speaker only once their
+    // talk is 2.5 times the current one's, as a face worker's speaking
+    // scores are, and movement alone is rarely that far ahead (a listener
+    // who laughs moves too). So the faces in a sample share their talk,
+    // each by its movement to the sixth power (1.2 times the movement is 3
+    // times the talk), and silence takes the share of a face moving half as
+    // much as the clip's busiest tenth, so faces that barely move stay near
+    // 0. In the two-shots of a two-camera interview the camera framed the
+    // one speaking 97.5 % of the time this way, 87.7 % with the movement as
+    // the talk.
+    const SHARP: i32 = 6;
+    let silence = 0.5f64.powi(SHARP);
     let r4 = |v: f64| (v * 1e4).round() / 1e4;
     let frames: Vec<Value> = (0..n)
         .map(|i| {
+            let shares: Vec<f64> = smooth[i].iter().map(|s| (s / reference).powi(SHARP)).collect();
+            let total = shares.iter().sum::<f64>() + silence;
             let faces: Vec<Value> = boxes[i]
                 .iter()
-                .zip(&smooth[i])
-                .map(|(t, s)| {
+                .zip(&shares)
+                .map(|(t, p)| {
+                    let talk = p / total;
                     json!({
                         "id": t.id,
                         "x": r4(t.b.x), "y": r4(t.b.y), "w": r4(t.b.w), "h": r4(t.b.h),
-                        "talk": r4((s / reference).clamp(0.0, 1.0)),
+                        "talk": r4(talk),
                     })
                 })
                 .collect();
