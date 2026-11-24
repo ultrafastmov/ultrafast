@@ -205,3 +205,26 @@ fn a_headline_off_both_edges_is_clipped_but_marquees_and_huge_type_are_not() {
     assert!(has("clipped", "headline"), "{k:?}");
     assert!(!k.iter().any(|(_, n)| n == "marquee" || n == "huge"), "{k:?}");
 }
+
+/// Text drawn over text is found wherever the two rasters start (each is
+/// sampled every other pixel from its own corner, so a pixel's parity once
+/// hid it), and words set apart are not.
+#[test]
+fn text_over_text_is_found_whatever_the_rasters_line_up() {
+    let doc = |x: i32, y: i32| {
+        format!(
+            r##"{{"version":1,"format":{{"width":480,"height":270,"fps":30,"duration":2}},"output":"out","nodes":{{
+              "bg":{{"op":"solid","params":{{"color":"#101014"}}}},
+              "first":{{"op":"text","params":{{"text":"Overlapping words","font":"{FONT}","size":40,"position":[40,130],"color":"#ffffff"}}}},
+              "second":{{"op":"text","params":{{"text":"drawn on top","font":"{FONT}","size":40,"position":[{x},{y}],"color":"#ffffff"}}}},
+              "a":{{"op":"over","inputs":{{"fg":"first","bg":"bg"}}}},
+              "out":{{"op":"over","inputs":{{"fg":"second","bg":"a"}}}}}}}}"##
+        )
+    };
+    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+        let k = kinds(&doc(70 + dx, 142 + dy));
+        assert!(k.iter().any(|(kind, _)| kind == "overlap"), "({dx}, {dy}): {k:?}");
+    }
+    let k = kinds(&doc(70, 220));
+    assert!(!k.iter().any(|(kind, _)| kind == "overlap"), "{k:?}");
+}

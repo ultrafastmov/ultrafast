@@ -29,7 +29,10 @@ pub struct TextProbe {
     pub contrast: f32,
     /// Type size in frame px (size param times absorbed scale).
     pub size_px: f32,
-    /// Frame indices of sampled glyph pixels, sorted (overlap tests).
+    /// The frame's STRIDE-px cells that hold sampled glyph pixels, sorted
+    /// (overlap tests). Cells, not pixels: each text is sampled every
+    /// STRIDE px from its own raster's corner, so two texts' samples only
+    /// meet in a cell.
     pub pixels: Vec<u32>,
     /// Glanced at rather than read (`skim` on the text: code, data
     /// labels): no reading-time check.
@@ -276,7 +279,8 @@ impl Renderer {
                             b[3].max(fy as f32),
                         ];
                         if inside(fx, fy) {
-                            pixels.push((fy * fw + fx) as u32);
+                            let s = STRIDE as i64;
+                            pixels.push(((fy / s) * ((fw + s - 1) / s) + fx / s) as u32);
                             if a > 220 {
                                 solid.push((fx, fy))
                             } else {
@@ -424,6 +428,7 @@ impl Renderer {
                 contrast_against(&all)
             };
             pixels.sort_unstable();
+            pixels.dedup();
             let text = crate::geom::display_text(&doc.nodes[&id], t);
             let skim = matches!(
                 doc.nodes[&id].params.get("skim"),
@@ -754,6 +759,44 @@ fn iou(a: [f32; 4], b: [f32; 4]) -> f32 {
     i / (area(a) + area(b) - i).max(1e-6)
 }
 
+/// Whether two texts are drawn over each other: both legible (text
+/// crossing in a transition, fading or half there, is not a collision), not
+/// stacked copies of one text, and more than 3 % of the smaller one's ink
+/// on or right beside the other's (within a tenth of the smaller type
+/// size): letters drawn among another text's letters, whether or not their
+/// thin strokes cross.
+fn collide(a: &TextProbe, b: &TextProbe, frame_width: u32) -> bool {
+    if a.contrast < READABLE || b.contrast < READABLE {
+        return false;
+    }
+    if a.text == b.text && iou(a.bounds, b.bounds) > 0.6 {
+        return false;
+    }
+    let (small, big) = if a.pixels.len() < b.pixels.len() {
+        (a, b)
+    } else {
+        (b, a)
+    };
+    let s = STRIDE as i64;
+    let r = (0.1 * a.size_px.min(b.size_px) / STRIDE as f32).round().max(1.0) as i64;
+    let reach = (r * s) as f32;
+    let (p, q) = (small.bounds, big.bounds);
+    if p[0] > q[2] + reach || q[0] > p[2] + reach || p[1] > q[3] + reach || q[1] > p[3] + reach {
+        return false;
+    }
+    let cells = (frame_width as i64 + s - 1) / s;
+    let near = |c: &u32| {
+        let (cx, cy) = (*c as i64 % cells, *c as i64 / cells);
+        (cy - r..=cy + r).any(|y| {
+            y >= 0
+                && (cx - r..=cx + r)
+                    .any(|x| x >= 0 && x < cells && big.pixels.binary_search(&((y * cells + x) as u32)).is_ok())
+        })
+    };
+    let close = small.pixels.iter().filter(|c| near(c)).count();
+    close as f32 > 0.03 * small.pixels.len() as f32
+}
+
 fn r2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
 }
@@ -778,26 +821,7 @@ pub fn review(r: &mut Renderer, doc: &Document, opts: &ReviewOptions) -> Result<
             for i in 0..probes.len() {
                 for j in i + 1..probes.len() {
                     let (a, b) = (&probes[i], &probes[j]);
-                    // Text crossing in a transition (fading, half there)
-                    // is not a collision: only both fully legible is.
-                    if a.contrast < READABLE || b.contrast < READABLE {
-                        continue;
-                    }
-                    // Stacked copies of one text overlap by design.
-                    if a.text == b.text && iou(a.bounds, b.bounds) > 0.6 {
-                        continue;
-                    }
-                    let (small, big) = if a.pixels.len() < b.pixels.len() {
-                        (a, b)
-                    } else {
-                        (b, a)
-                    };
-                    let shared = small
-                        .pixels
-                        .iter()
-                        .filter(|p| big.pixels.binary_search(p).is_ok())
-                        .count();
-                    if shared as f32 > 0.03 * small.pixels.len() as f32 {
+                    if collide(a, b, fmt.width) {
                         let key = if a.node < b.node {
                             (a.node.clone(), b.node.clone())
                         } else {
