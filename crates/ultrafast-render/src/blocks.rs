@@ -409,10 +409,12 @@ pub fn build(node: &Node, fmt: &Format, fonts: &mut Fonts, base: &Path) -> Resul
                 b.layers.push(id);
                 y += 60.0 * s;
             }
+            // Title and tagline wrap at the block's width, like every block's.
             let t = b.line(
                 "title",
                 json!({"text": field("title"), "font": text(node, "title_font").unwrap_or("ultrafast:wide"),
-                "size": 120.0 * s, "weight": 800, "tracking": -4.0 * s, "color": ink, "align": "center"}),
+                "size": 120.0 * s, "weight": 800, "tracking": -4.0 * s, "width": width, "line_height": 1.04,
+                "color": ink, "align": "center"}),
             )?;
             let tb = y - t.top;
             b.reveal(&t, x - (t.left + t.right) / 2.0, tb, 0.2, 0.0)?;
@@ -422,7 +424,7 @@ pub fn build(node: &Node, fmt: &Format, fonts: &mut Fonts, base: &Path) -> Resul
                 let l = b.line(
                     "tagline",
                     json!({"text": tag, "font": "ultrafast:serif", "style": "italic", "size": 56.0 * s,
-                    "color": muted, "align": "center"}),
+                    "width": width, "line_height": 1.25, "color": muted, "align": "center"}),
                 )?;
                 let base = y - l.top;
                 b.reveal(&l, x - (l.left + l.right) / 2.0, base, 0.35, 0.0)?;
@@ -518,4 +520,52 @@ pub fn build(node: &Node, fmt: &Format, fonts: &mut Fonts, base: &Path) -> Resul
         params: [("opacity".to_string(), Param::Number(1.0))].into(),
         inputs: Vec::new(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ink bounds of each text in a built block once it has settled.
+    fn settled_text(params: Value, width: u32, height: u32) -> Vec<(String, [f32; 4])> {
+        let node: Node = serde_json::from_value(json!({"op": "block", "params": params})).unwrap();
+        let fmt = Format {
+            width,
+            height,
+            fps: 30.0,
+            duration: 6.0,
+            motion_blur: None,
+        };
+        let mut fonts = Fonts::new();
+        let c = build(&node, &fmt, &mut fonts, Path::new(".")).unwrap();
+        c.nodes
+            .iter()
+            .filter(|(_, n)| n.op == "text")
+            .map(|(id, n)| {
+                let g = geom::text_node(id, n, &fmt, 3.0, Affine::IDENTITY, &mut fonts, Path::new(".")).unwrap();
+                (id.clone(), g.bounds)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_end_card_title_wraps_inside_a_vertical_frame() {
+        // 25 characters in the wide face ran 1740 px across a 1080 px frame.
+        let texts = settled_text(
+            json!({"kind": "end_card", "title": "Seeds that suit your soil",
+                   "tagline": "Planting guides for every garden", "cta": "fernway.example"}),
+            1080,
+            1920,
+        );
+        assert_eq!(texts.len(), 3, "{texts:?}");
+        for (id, b) in &texts {
+            assert!(b[0] >= 108.0 - 1.0 && b[2] <= 972.0 + 1.0, "{id} {b:?}");
+        }
+        // Stacked in order, not overlapping.
+        let y = |p: &str| texts.iter().find(|(id, _)| id.starts_with(p)).unwrap().1;
+        assert!(
+            y("title")[3] < y("tagline")[1] && y("tagline")[3] < y("cta")[1],
+            "{texts:?}"
+        );
+    }
 }
