@@ -44,4 +44,5 @@ claude plugin install ultrafast@ultrafast
 Then ask for a video, for example: "a 10-second vertical teaser for my
 pottery class, Saturdays, first class free".
 
-Documentation: https://ultrafast.mov/docs/. Licensed Apache-2.0 OR MIT.
+Documentation: https://ultrafast.mov/docs/. Privacy: [PRIVACY.md](PRIVACY.md).
+Licensed Apache-2.0 OR MIT.
