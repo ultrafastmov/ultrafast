@@ -290,6 +290,7 @@ fn renders_from_uploads_to_local_storage() {
         deadline: Some(ultrafast_service::util::rfc3339(
             std::time::SystemTime::now() + std::time::Duration::from_secs(300),
         )),
+        strict: false,
     };
 
     // The render, stored.
@@ -431,6 +432,29 @@ fn renders_from_uploads_to_local_storage() {
     let has = |n: &str| names.iter().any(|m| m == n);
     assert!(has("00000.png") && has("00014.png"), "{names:?}");
     assert!(has("audio.wav"), "the sound beside the frames: {names:?}");
+
+    // A param its node doesn't take (a misspelled column): the node's own
+    // value is rendered and the receipt says why; a strict request is
+    // refused before anything is fetched.
+    let mut typo = request("r10", "a1");
+    typo.document["nodes"]["title"]["params"]["txt"] = "From a row".into();
+    typo.output = Some(Output {
+        inline: true,
+        range: Some([0.0, 0.5]),
+        ..Output::default()
+    });
+    let Reply::Bytes { headers, .. } = engine.render(typo.clone(), &grants, Instant::now()).unwrap() else {
+        panic!("expected the video inline");
+    };
+    let receipt: Receipt = serde_json::from_str(&headers[0].1).unwrap();
+    assert_eq!(
+        receipt.warnings,
+        ["node `title`: `text` has no param `txt` (did you mean `text`?); it is ignored"]
+    );
+    typo.strict = true;
+    let e = engine.render(typo, &grants, Instant::now()).err().unwrap();
+    assert_eq!((e.status, e.code.as_str()), (400, "invalid_document"), "{e}");
+    assert_eq!(e.extra["issues"][0]["node"], "title");
 
     // Cloud features: bucket output and bucket inputs.
     let mut to_bucket = request("r2", "a1");

@@ -81,11 +81,13 @@ usage:
                                              .webm .gif, a folder/ or frames/{frame:05}.png|.exr for a
                                              sequence, .wav .mp3 .m4a .flac .opus for sound alone. H.264 and
                                              HEVC hardware-encode with zero readback
-  ultrafast serve  [--port 8080] [--host 0.0.0.0]
+  ultrafast serve  [--port 8080] [--host ::]
                                              the self-hosted render service on this machine: the
                                              v1 HTTP API (render, uploads, frames, sheets, check,
                                              review, estimate) and remote MCP at /mcp; one API
-                                             key; storage on local disk (docs/service/SELF_HOST.md)
+                                             key; storage on local disk (docs/service/SELF_HOST.md).
+                                             :: is every address, IPv4 and IPv6; --host localhost
+                                             this machine only
   ultrafast serve key                        print a new API key
   ultrafast batch <doc.json> --data rows.csv|rows.json|rows.jsonl [--out 'out/{name}.mp4'] [--docs DIR]
                                              one document, a video per row: columns named node.param

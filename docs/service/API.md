@@ -145,6 +145,11 @@ A transparent ProRes master at 4K and 60 fps from the same document
   whatever it is doing, and never starts writing the output after it
   (`504`). Capped at 10 minutes from receipt (synchronous renders are
   capped at 10 minutes of work; Cloud jobs are not).
+- `strict` (optional, default false): refuse a document its check warns
+  about (a param its node doesn't take, a value of the wrong type), with
+  `400 invalid_document` and the warnings as `issues`, before anything is
+  fetched or rendered. Without it the render goes ahead and the warnings
+  are in the receipt. The legacy `POST /render` takes `?strict=1`.
 
 ### Receipt
 
@@ -200,7 +205,12 @@ A transparent ProRes master at 4K and 60 fps from the same document
   kernel compiles before the first frame), `render_s` (frames rendered and
   encoded; the encoder runs alongside), `encode_s` (encoder busy time,
   informational), `upload_s`, `total_s`.
-- `warnings`: strings. `created_at`.
+- `warnings`: one line per problem that did not stop the render, as
+  ``node `id`: message``: what `POST /v1/check` warns about (a param
+  its node doesn't take is ignored, so the film shows the node's default),
+  then what the renderer found while rendering (an image it could not
+  read, text that never shows in full). At most 20; the last says how many
+  more. Empty when there is nothing to say. `created_at`.
 
 ### Inline output
 
@@ -335,8 +345,9 @@ server without one. Estimates are free.
 ```
 
 `200` with the frame at `at` seconds (`t` is accepted too) as `image/png`
-(default) or `image/jpeg`, and a compact receipt (inputs, timings) in
-`X-Ultrafast-Receipt`. Frames are free.
+(default) or `image/jpeg`, and a compact receipt (inputs, timings,
+`warnings` as a render's receipt has them) in `X-Ultrafast-Receipt`. Frames
+are free.
 
 ## POST /v1/sheet
 
@@ -478,7 +489,7 @@ succeed later. Fixtures: [fixtures/errors/](fixtures/errors/).
 | 409 | `job_started` | `DELETE` on a job that is no longer queued. `job_status`. |
 | 413 | `over_limit` | A limit exceeded: an inline video over 32 MiB (use storage or a job), a body, a document, an input or an upload too large. `limit`, `value`, `max`. |
 | 422 | `input_unavailable` | An input could not be fetched, is not at that version, or failed its integrity check. `location`, `reason`. |
-| 429 | `busy` | More requests waiting than the server queues (`ULTRAFAST_QUEUE`), or on Cloud more concurrent renders than the key may run (`limit: "concurrency"`). `retry: true`. |
+| 429 | `busy` | More requests waiting than the server queues (`limit: "queue"`, `max`: `ULTRAFAST_QUEUE`), or on Cloud more concurrent renders than the key may run (`limit: "concurrency"`). `retry_after_s`, also the `Retry-After` header: about how long the requests waiting need, from how long requests have been taking. `retry: true`. |
 | 500 | `render_failed` | The render itself failed (a bug or a GPU fault; the server recovers). `retry: true`. |
 | 501 | `cloud_only` | A Cloud feature asked of `ultrafast serve`: jobs, `output.uri`, bucket inputs. `feature`. |
 | 503 | `unavailable` | Not ready, shutting down, or the store is unreachable. `retry: true`. |
@@ -497,7 +508,7 @@ succeed later. Fixtures: [fixtures/errors/](fixtures/errors/).
 | Archive | 20,000 entries, 2 GiB unpacked, compression ratio 200 | |
 | Synchronous wall time | 10 minutes | |
 | Inline video | 32 MiB | |
-| Requests waiting for the GPU | 16 | `ULTRAFAST_QUEUE` |
+| Requests waiting for the GPU | 128 | `ULTRAFAST_QUEUE` |
 | Concurrent renders per key (Cloud) | per plan | |
 
 One server renders one thing at a time on its GPU, in the order requests
@@ -557,3 +568,9 @@ drivers may differ in the last bits.
   the format's content type; `ultrafast-format` in the object metadata.
   `minutes` count the size written. `/v1/estimate` reads `output`'s size,
   frame rate and quality.
+- 2026-11-25: `strict` in render requests; receipts' `warnings` carry
+  the document's check warnings and the renderer's diagnostics, and so do
+  the receipts of `/v1/frame` and `/v1/sheet`; `429 busy` has `max` and
+  `retry_after_s`, and `Retry-After` follows the queue (all additive).
+  `ultrafast serve` queues 128 requests by default (was 16) and listens on
+  IPv6 as well as IPv4.

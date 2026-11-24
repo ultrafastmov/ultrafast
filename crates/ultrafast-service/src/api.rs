@@ -20,6 +20,12 @@ pub struct RenderRequest {
     /// RFC 3339 UTC (`...Z`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline: Option<String>,
+    /// Refuses a document its check warns about (a param its node doesn't
+    /// take, a value of the wrong type): `400 invalid_document` with the
+    /// warnings as `issues`, before anything is fetched or rendered.
+    /// Without it they are the receipt's `warnings`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict: bool,
 }
 
 /// Where the render goes and what it is. The encode settings are
@@ -279,6 +285,9 @@ pub struct Receipt {
     pub fonts: Vec<FontRecord>,
     #[serde(default)]
     pub timings: Option<Timings>,
+    /// What the document's check warns about and what the renderer found
+    /// while rendering (an image it could not read, text that never shows
+    /// in full), one line each: ``node `title`: ...``.
     #[serde(default)]
     pub warnings: Vec<String>,
     pub created_at: String,

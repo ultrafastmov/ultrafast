@@ -2,7 +2,10 @@
   "error": {
     "status": 429,
     "code": "busy",
-    "message": "this instance is rendering another request",
-    "retry": true
+    "message": "the GPU queue is full: 128 requests are waiting (ULTRAFAST_QUEUE=128), about 24 s of work. Retry after that, or send fewer at once",
+    "retry": true,
+    "limit": "queue",
+    "max": 128,
+    "retry_after_s": 24
   }
 }

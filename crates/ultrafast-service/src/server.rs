@@ -17,7 +17,7 @@ use serde_json::Value;
 use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use tiny_http::{Header, Method, Request, Response, Server};
@@ -70,6 +70,9 @@ struct Shared {
     wake: Condvar,
     mounts: Vec<Arc<dyn Mount>>,
     open: AtomicUsize,
+    /// Microseconds a request has been taking on the GPU (a moving
+    /// average; 0 before the first), for how long the queue needs.
+    work_us: AtomicU64,
 }
 
 /// The server as other code sees it: authenticate a token, run work on the
@@ -126,7 +129,8 @@ fn error(e: &ApiError) -> Body {
         extra.push(("WWW-Authenticate".to_string(), "Bearer realm=\"ultrafast\"".to_string()));
     }
     if e.retry && matches!(e.status, 429 | 503) {
-        extra.push(("Retry-After".to_string(), "2".to_string()));
+        let after = e.extra.get("retry_after_s").and_then(Value::as_u64).unwrap_or(2);
+        extra.push(("Retry-After".to_string(), after.to_string()));
     }
     respond_bytes(e.status, "application/json", e.body().into_bytes(), &extra)
 }
@@ -179,6 +183,41 @@ impl Shared {
         self.lanes.lock().unwrap().interactive.len()
     }
 
+    /// Notes how long one request's GPU work took.
+    fn worked(&self, took: Duration) {
+        let us = (took.as_micros().min(u64::MAX as u128 / 4) as u64).max(1);
+        // Only the GPU thread writes it.
+        let old = self.work_us.load(Ordering::Relaxed);
+        let new = if old == 0 { us } else { (old * 3 + us) / 4 };
+        self.work_us.store(new, Ordering::Relaxed);
+    }
+
+    /// The 429 for a full queue: how many wait, about how long they need
+    /// (each as long as requests have been taking), and when to come back.
+    fn busy(&self, waiting: usize) -> ApiError {
+        let full = format!(
+            "the GPU queue is full: {waiting} requests are waiting (ULTRAFAST_QUEUE={})",
+            self.cfg.queue
+        );
+        let (message, after) = match self.work_us.load(Ordering::Relaxed) {
+            // Nothing has finished yet to judge by (a burst at start).
+            0 => (format!("{full}. Retry in a few seconds, or send fewer at once"), 2),
+            us => {
+                // A new request would wait for those and the one rendering.
+                let ahead_s = (waiting + 1) as f64 * us as f64 / 1e6;
+                let after = ahead_s.ceil().clamp(1.0, 3600.0) as u64;
+                (
+                    format!("{full}, about {after} s of work. Retry after that, or send fewer at once"),
+                    after,
+                )
+            }
+        };
+        ApiError::new(429, "busy", message)
+            .with("limit", "queue")
+            .with("max", self.cfg.queue)
+            .with("retry_after_s", after)
+    }
+
     /// Runs `f` on the GPU thread and waits for it.
     fn on_gpu<T: Send + 'static>(&self, f: impl FnOnce(&mut Engine) -> T + Send + 'static) -> Result<T, ApiError> {
         if self.failed.load(Ordering::SeqCst) {
@@ -188,12 +227,7 @@ impl Shared {
         {
             let mut lanes = self.lanes.lock().unwrap();
             if lanes.interactive.len() >= self.cfg.queue {
-                return Err(ApiError::new(
-                    429,
-                    "busy",
-                    format!("{} requests are already waiting for the GPU", lanes.interactive.len()),
-                )
-                .with("limit", "queue"));
+                return Err(self.busy(lanes.interactive.len()));
             }
             lanes.interactive.push_back(Box::new(move |e: &mut Engine| {
                 let _ = tx.send(f(e));
@@ -674,6 +708,7 @@ impl Handle {
             output: Some(output),
             attempt: None,
             deadline: None,
+            strict: false,
         };
         let base = base_url.to_string();
         let grants = who.grants.clone();
@@ -875,6 +910,7 @@ impl Handle {
                             }),
                             attempt: None,
                             deadline: None,
+                            strict: query_param(query, "strict").is_some_and(|v| v != "false" && v != "0"),
                         }
                     } else {
                         parse(&body)?
@@ -1000,9 +1036,15 @@ pub fn run(cfg: Config, opts: Options) -> anyhow::Result<()> {
     // SAFETY: called before this function starts any thread.
     unsafe { std::env::set_var("ULTRAFAST_NO_EXTERNAL_FILES", "1") };
     std::fs::create_dir_all(&cfg.data_dir).map_err(|e| anyhow::anyhow!("creating {}: {e}", cfg.data_dir.display()))?;
-    let addr = format!("{}:{}", cfg.bind, cfg.port);
-    let server = Server::http(&addr).map_err(|e| anyhow::anyhow!("cannot listen on {addr}: {e}"))?;
-    let local = server.server_addr().to_ip();
+    let (sockets, family) = listen(&cfg.bind, cfg.port)?;
+    let addrs: Vec<std::net::SocketAddr> = sockets.iter().filter_map(|l| l.local_addr().ok()).collect();
+    let addr = addrs.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(" and ") + family;
+    let servers = sockets
+        .into_iter()
+        .map(|l| Server::from_listener(l, None))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| anyhow::anyhow!("cannot listen on {addr}: {e}"))?;
+    let local = addrs.first().copied();
     let stores = Stores::new(&cfg.storage)?;
     let shared = Arc::new(Shared {
         auth: Authenticator::new(&cfg),
@@ -1016,6 +1058,7 @@ pub fn run(cfg: Config, opts: Options) -> anyhow::Result<()> {
         wake: Condvar::new(),
         mounts: opts.mounts,
         open: AtomicUsize::new(0),
+        work_us: AtomicU64::new(0),
         cfg,
     });
     let cfg = &shared.cfg;
@@ -1031,6 +1074,14 @@ pub fn run(cfg: Config, opts: Options) -> anyhow::Result<()> {
             }
         ),
     }));
+    if cfg.auth == crate::config::Auth::None && !addrs.iter().all(|a| a.ip().is_loopback()) {
+        log(serde_json::json!({
+            "severity": "WARNING",
+            "message": "ultrafast serve: authentication is off and the server answers on every address it \
+                        listens on, so anyone who can reach this machine can render on it; \
+                        --host localhost keeps it to this machine",
+        }));
+    }
     if let (Some(f), Some(a)) = (opts.on_listen, local) {
         f(a);
     }
@@ -1084,13 +1135,30 @@ pub fn run(cfg: Config, opts: Options) -> anyhow::Result<()> {
                     }
                 };
                 shared.busy.store(true, Ordering::SeqCst);
+                let t = Instant::now();
                 next(&mut engine);
+                shared.worked(t.elapsed());
                 engine.cache.trim(&[]);
                 shared.busy.store(false, Ordering::SeqCst);
             }
         })?;
     }
     let handle = Handle(shared.clone());
+    let mut servers = servers.into_iter();
+    let first = servers.next().expect("listen gives a socket");
+    for server in servers {
+        let h = handle.clone();
+        std::thread::Builder::new()
+            .name("accept".into())
+            .spawn(move || accept(&h, server))?;
+    }
+    accept(&handle, first);
+    Ok(())
+}
+
+/// Hands each request `server` receives to a thread of its own.
+fn accept(handle: &Handle, server: Server) {
+    let shared = handle.shared();
     for req in server.incoming_requests() {
         if shared.open.load(Ordering::SeqCst) >= 256 {
             let _ = req.respond(error(&ApiError::new(503, "unavailable", "too many open requests")));
@@ -1106,7 +1174,64 @@ pub fn run(cfg: Config, opts: Options) -> anyhow::Result<()> {
             shared.open.fetch_sub(1, Ordering::SeqCst);
         }
     }
-    Ok(())
+}
+
+/// Whether binding failed because the system has no such family (no IPv6),
+/// not because of the port.
+fn no_family(e: &std::io::Error) -> bool {
+    !matches!(
+        e.kind(),
+        std::io::ErrorKind::AddrInUse | std::io::ErrorKind::PermissionDenied
+    )
+}
+
+/// The sockets `host` names on `port`, and what to add to their addresses
+/// in the log. `::` (the default) is every address, IPv4 and IPv6: one
+/// socket where IPv6 sockets take IPv4 too (Linux and macOS do unless told
+/// otherwise), one of each where they don't, IPv4 alone on a system
+/// without IPv6. `localhost` is both loopbacks, so a client that tries
+/// `::1` first (n8n's) finds the server as well as one that tries
+/// 127.0.0.1. Anything else is what it names, as given.
+fn listen(host: &str, port: u16) -> anyhow::Result<(Vec<std::net::TcpListener>, &'static str)> {
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener};
+    let bind = |a: SocketAddr| TcpListener::bind(a).map_err(|e| (a, e));
+    let fail = |(a, e): (SocketAddr, std::io::Error)| anyhow::anyhow!("cannot listen on {a}: {e}");
+    // With port 0 the first socket picks one; a second takes the same.
+    let port_of = |l: &TcpListener| l.local_addr().map_or(port, |a| a.port());
+    let host = host.trim();
+    let host = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')).unwrap_or(host);
+    match host {
+        "::" => match bind((Ipv6Addr::UNSPECIFIED, port).into()) {
+            Ok(v6) => {
+                // Reading it is fine (setting it after bind is what is deprecated).
+                #[allow(deprecated)]
+                let only_v6 = v6.only_v6().unwrap_or(false);
+                if !only_v6 {
+                    return Ok((vec![v6], ", IPv4 and IPv6"));
+                }
+                let v4 = bind((Ipv4Addr::UNSPECIFIED, port_of(&v6)).into()).map_err(fail)?;
+                Ok((vec![v6, v4], ""))
+            }
+            Err((_, e)) if no_family(&e) => Ok((
+                vec![bind((Ipv4Addr::UNSPECIFIED, port).into()).map_err(fail)?],
+                ", IPv4 only: no IPv6 here",
+            )),
+            Err(e) => Err(fail(e)),
+        },
+        "localhost" => {
+            let v4 = bind((Ipv4Addr::LOCALHOST, port).into()).map_err(fail)?;
+            match bind((Ipv6Addr::LOCALHOST, port_of(&v4)).into()) {
+                Ok(v6) => Ok((vec![v6, v4], "")),
+                Err((_, e)) if no_family(&e) => Ok((vec![v4], "")),
+                Err(e) => Err(fail(e)),
+            }
+        }
+        _ => {
+            let l =
+                TcpListener::bind((host, port)).map_err(|e| anyhow::anyhow!("cannot listen on {host}:{port}: {e}"))?;
+            Ok((vec![l], ""))
+        }
+    }
 }
 
 /// When a request arrives (for logs and tests).
@@ -1150,6 +1275,98 @@ Content-Disposition: form-data; name=\"file\"; filename=\"a b.mp4\"\r\nContent-T
         read_multipart(&mut &body[..], "b0undary", &mut out, 1 << 30).unwrap();
         assert_eq!(out.len(), data.len());
         assert!(out == data);
+    }
+
+    /// Whether this machine has an IPv6 loopback to test with.
+    fn has_ipv6() -> bool {
+        std::net::TcpListener::bind("[::1]:0").is_ok()
+    }
+
+    fn reaches(addr: &str) -> bool {
+        std::net::TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(2)).is_ok()
+    }
+
+    /// The default answers on both families (n8n's `localhost` is `::1`
+    /// first), and `localhost` is both loopbacks on one port.
+    #[test]
+    fn listens_on_ipv4_and_ipv6() {
+        let (every, _) = listen("::", 0).unwrap();
+        let port = every[0].local_addr().unwrap().port();
+        assert!(every.iter().all(|l| l.local_addr().unwrap().port() == port));
+        assert!(reaches(&format!("127.0.0.1:{port}")));
+        if has_ipv6() {
+            assert!(reaches(&format!("[::1]:{port}")));
+        }
+        // A port in use is an error, not a fallback to IPv4.
+        let e = listen("[::]", port).unwrap_err().to_string();
+        assert!(e.contains(&format!(":{port}")), "{e}");
+        // `[::]`, as a URL writes it, is `::`.
+        assert!(listen("[::]", 0).is_ok());
+        let (sockets, _) = listen("localhost", 0).unwrap();
+        let port = sockets[0].local_addr().unwrap().port();
+        assert!(sockets.iter().all(|l| l.local_addr().unwrap().ip().is_loopback()));
+        assert!(reaches(&format!("127.0.0.1:{port}")));
+        if has_ipv6() {
+            assert_eq!(sockets.len(), 2);
+            assert!(reaches(&format!("[::1]:{port}")));
+        }
+        // An address is that address alone.
+        let (sockets, family) = listen("127.0.0.1", 0).unwrap();
+        assert_eq!((sockets.len(), family), (1, ""));
+        assert!(sockets[0].local_addr().unwrap().is_ipv4());
+    }
+
+    #[test]
+    fn a_full_queue_says_how_long_it_needs() {
+        let dir = std::env::temp_dir().join(format!("uf-busy-{}-{}", std::process::id(), crate::util::unique()));
+        let cfg = Config {
+            queue: 4,
+            ..Config::for_tests(dir.clone())
+        };
+        let shared = Shared {
+            auth: Authenticator::new(&cfg),
+            stores: Stores::new(&cfg.storage).unwrap(),
+            started: Instant::now(),
+            ready: AtomicBool::new(true),
+            failed: AtomicBool::new(false),
+            busy: AtomicBool::new(false),
+            device: Mutex::new(String::new()),
+            lanes: Mutex::new(Lanes::default()),
+            wake: Condvar::new(),
+            mounts: Vec::new(),
+            open: AtomicUsize::new(0),
+            work_us: AtomicU64::new(0),
+            cfg,
+        };
+        // Before anything has finished there is nothing to judge by.
+        let e = shared.busy(4);
+        assert_eq!((e.status, e.code.as_str(), e.retry), (429, "busy", true));
+        assert_eq!((&e.extra["retry_after_s"], &e.extra["max"]), (&2.into(), &4.into()));
+        assert_eq!(
+            e.message,
+            "the GPU queue is full: 4 requests are waiting (ULTRAFAST_QUEUE=4). Retry in a few seconds, or send \
+             fewer at once"
+        );
+        // Then as long as requests have been taking, at least a second.
+        shared.worked(Duration::from_millis(180));
+        let e = shared.busy(4);
+        assert_eq!(e.extra["retry_after_s"], 1);
+        assert!(
+            e.message
+                .contains("are waiting (ULTRAFAST_QUEUE=4), about 1 s of work. Retry after that")
+        );
+        for _ in 0..40 {
+            shared.worked(Duration::from_secs(3));
+        }
+        assert_eq!(shared.busy(4).extra["retry_after_s"], 15);
+        let r = error(&shared.busy(4));
+        let after = r
+            .headers()
+            .iter()
+            .find(|h| h.field.equiv("Retry-After"))
+            .map(|h| h.value.as_str().to_string());
+        assert_eq!(after.as_deref(), Some("15"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

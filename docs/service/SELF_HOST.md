@@ -19,8 +19,14 @@ docker run --gpus all -p 8080:8080 -v ultrafast:/data \
 Or with the binary:
 
 ```bash
-ultrafast serve            # 0.0.0.0:8080; --port and --host to change
+ultrafast serve            # port 8080 on every address, IPv4 and IPv6
+ultrafast serve --host localhost --port 9000   # this machine only
 ```
+
+`--host` (or `ULTRAFAST_BIND`) takes an address: `::`, the default, is
+every address of both kinds (IPv4 alone on a system without IPv6),
+`localhost` is both loopbacks (`127.0.0.1` and `::1`, so clients that try
+either first find it), and `0.0.0.0` or `127.0.0.1` is IPv4 alone.
 
 With no key set, the server makes one on first start, saves it in
 `$ULTRAFAST_DATA/api-key` and prints it in a box that starts with
@@ -79,7 +85,7 @@ a proxy or another name; otherwise the URL is built from the request's
 | Setting | What it does |
 |---|---|
 | `ULTRAFAST_API_KEY` | The key callers send as `Authorization: Bearer <key>`. At least 16 characters. Without it, a generated key (above). |
-| `ULTRAFAST_AUTH=none` | No authentication: every request is the caller `local`. Only on your own machine, or behind something else that authenticates. |
+| `ULTRAFAST_AUTH=none` | No authentication: every request is the caller `local`. Only on your own machine (with `--host localhost`: the default listens on every address, including a public IPv6 one), or behind something else that authenticates. |
 
 `ultrafast serve key` prints a new key. `GET /v1/health` and signed
 `/v1/files/` URLs need no key.
@@ -102,8 +108,12 @@ holds the server's own state: `secret` (signs download URLs; or set
 ## Limits and queueing
 
 One server renders one thing at a time on its GPU. Requests (render,
-frame, sheet, check, review, estimate, MCP tools) wait their turn; at most
-`ULTRAFAST_QUEUE` (16) wait, then `429`. Renders stop after 10 minutes.
+frame, sheet, check, review, estimate, MCP tools) wait their turn, in the
+order they came; at most `ULTRAFAST_QUEUE` (128) wait. The next gets `429
+busy` with a `Retry-After` of about as long as those need, judged by how
+long requests have been taking. An automation that sends hundreds of rows
+at once should send them a few at a time (in n8n, Loop Over Items) and
+retry a `429` after its `Retry-After`. Renders stop after 10 minutes.
 Other limits: `ULTRAFAST_MAX_DURATION_S` (3 hours of output),
 `ULTRAFAST_MAX_INPUT_GB` (4 per request), `ULTRAFAST_MAX_UPLOAD_GB` (20),
 `ULTRAFAST_INPUT_CACHE_GB` (8 of cached inputs). `ULTRAFAST_USD_PER_MINUTE`

@@ -1,6 +1,7 @@
 //! Settings from the environment. docs/service/SELF_HOST.md describes each.
 //!
-//!   PORT / ULTRAFAST_BIND   listen port (8080) and address (0.0.0.0)
+//!   PORT / ULTRAFAST_BIND   listen port (8080) and address (::, every address, IPv4
+//!                           and IPv6; localhost is both loopbacks)
 //!   ULTRAFAST_DATA          the server's own directory: local storage, its secret and
 //!                           generated key ($XDG_DATA_HOME/ultrafast)
 //!   ULTRAFAST_STORAGE       where renders and uploads go: file:///DIR or a path
@@ -11,7 +12,7 @@
 //!   ULTRAFAST_AUTH          auto (default): the API key; none: no auth (caller "local")
 //!   ULTRAFAST_HTTPS_HOSTS   if set, the only hosts https:// inputs may come from
 //!   ULTRAFAST_SECRET        signs download URLs (else generated)
-//!   ULTRAFAST_QUEUE         requests that may wait for the GPU (16)
+//!   ULTRAFAST_QUEUE         requests that may wait for the GPU (128)
 //!   ULTRAFAST_USD_PER_MINUTE  price for /v1/estimate (none)
 //!   ULTRAFAST_URL_TTL_HOURS   signed URL lifetime (168)
 //!   ULTRAFAST_MAX_DURATION_S, ULTRAFAST_MAX_UPLOAD_GB
@@ -210,7 +211,7 @@ impl Config {
         }
         Ok(Config {
             port: env("PORT").and_then(|p| p.parse().ok()).unwrap_or(8080),
-            bind: env("ULTRAFAST_BIND").unwrap_or_else(|| "0.0.0.0".into()),
+            bind: env("ULTRAFAST_BIND").unwrap_or_else(|| "::".into()),
             auth,
             key_sha256: key.map(|k| crate::util::sha256_hex(k.as_bytes())),
             generated_key,
@@ -222,7 +223,12 @@ impl Config {
             storage,
             public_url: env("ULTRAFAST_PUBLIC_URL").map(|u| u.trim_end_matches('/').to_string()),
             secret,
-            queue: env("ULTRAFAST_QUEUE").and_then(|v| v.parse().ok()).unwrap_or(16),
+            // Enough for an automation's burst of short renders (n8n sends
+            // a run's items at once); FIFO, so only the wait grows.
+            queue: env("ULTRAFAST_QUEUE")
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(128)
+                .max(1),
             usd_per_minute: num("ULTRAFAST_USD_PER_MINUTE"),
             url_ttl: std::time::Duration::from_secs_f64(
                 num("ULTRAFAST_URL_TTL_HOURS").unwrap_or(168.0).max(0.01) * 3600.0,

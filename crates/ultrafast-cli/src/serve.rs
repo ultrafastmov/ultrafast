@@ -2,7 +2,7 @@
 //! docs/service/API.md, configured as docs/service/SELF_HOST.md says), with
 //! the remote MCP server mounted at /mcp.
 //!
-//!   ultrafast serve [--port 8080] [--host 0.0.0.0]
+//!   ultrafast serve [--port 8080] [--host ::]   (every address, IPv4 and IPv6)
 //!   ultrafast serve key     print a new API key (and its sha256, for a keys file)
 
 use anyhow::Result;

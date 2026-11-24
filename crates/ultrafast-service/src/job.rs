@@ -14,7 +14,7 @@ use std::time::{Duration, Instant, SystemTime};
 use ultrafast_gpu::Device;
 use ultrafast_graph::{Document, Param};
 use ultrafast_live::output::Target as ExportTarget;
-use ultrafast_render::Renderer;
+use ultrafast_render::{Diagnostic, Renderer};
 
 /// Uploads do not start this close to the deadline.
 const UPLOAD_MARGIN: Duration = Duration::from_secs(2);
@@ -143,6 +143,37 @@ struct Prepared {
     sha: String,
     from: f64,
     to: f64,
+    /// What the check warns about, as `issues` list them.
+    warnings: Vec<Value>,
+}
+
+/// Receipts list at most this many warnings: the inline receipt is a
+/// header, and clients cap the size of those.
+const MAX_WARNINGS: usize = 20;
+
+/// Warnings as receipts list them, ``node `id`: message``: the check's
+/// first, then what the renderer found, each once.
+fn warning_lines(issues: &[Value], found: &[Diagnostic]) -> Vec<String> {
+    let issues = issues
+        .iter()
+        .map(|i| (i["node"].as_str().unwrap_or(""), i["message"].as_str().unwrap_or("")));
+    let mut out: Vec<String> = Vec::new();
+    for (node, message) in issues.chain(found.iter().map(|d| (d.node.as_str(), d.message.as_str()))) {
+        let line = if node.is_empty() {
+            message.to_string()
+        } else {
+            format!("node `{node}`: {message}")
+        };
+        if !out.contains(&line) {
+            out.push(line);
+        }
+    }
+    if out.len() > MAX_WARNINGS {
+        let more = out.len() - (MAX_WARNINGS - 1);
+        out.truncate(MAX_WARNINGS - 1);
+        out.push(format!("and {more} more"));
+    }
+    out
 }
 
 impl Engine {
@@ -173,11 +204,11 @@ impl Engine {
                 vec![serde_json::json!({"node": "", "severity": "error", "message": e.to_string()})],
             )
         })?;
-        let issues: Vec<Value> = ultrafast_render::schema::check(&doc)
+        let (issues, warnings): (Vec<Value>, Vec<Value>) = ultrafast_render::schema::check(&doc)
             .into_iter()
-            .filter(|i| i.severity == "error")
+            .filter(|i| i.severity != "info")
             .map(|i| serde_json::json!({"node": i.node, "severity": i.severity, "message": i.message}))
-            .collect();
+            .partition(|i| i["severity"] == "error");
         if !issues.is_empty() {
             return Err(ApiError::new(
                 400,
@@ -220,7 +251,13 @@ impl Engine {
                 f.duration
             )));
         }
-        Ok(Prepared { doc, sha, from, to })
+        Ok(Prepared {
+            doc,
+            sha,
+            from,
+            to,
+            warnings,
+        })
     }
 
     /// Resolves the inputs and returns the document to render, reading only
@@ -307,6 +344,18 @@ impl Engine {
             }
         };
         let p = self.prepare(&req.document, output.range)?;
+        if req.strict && !p.warnings.is_empty() {
+            let n = p.warnings.len();
+            return Err(ApiError::new(
+                400,
+                "invalid_document",
+                format!(
+                    "the document has {n} warning{} and the request is `strict`",
+                    if n == 1 { "" } else { "s" }
+                ),
+            )
+            .with("issues", &p.warnings));
+        }
         // What gets written, checked before anything is fetched.
         let enc = settings.resolve(output.named_path(), &p.doc.format).map_err(bad)?;
         // Every store call ends by the deadline too, not only the export.
@@ -400,7 +449,6 @@ impl Engine {
             return self.replay(st, &obj, attempt.as_ref(), &p.sha, &target, &ctx.base_url);
         }
         let (doc, resolved) = materialized?;
-        let warnings = Vec::new();
         let scheme_of = match &target {
             Target::Object { scheme, .. } => Some(scheme.clone()),
             Target::Inline => None,
@@ -445,8 +493,11 @@ impl Engine {
                 }
             })
         });
+        // Before unpinning, which lets go of the document and them.
+        let found = self.renderer.diagnostics().to_vec();
         self.renderer.unpin_fonts();
         let report = report?;
+        let warnings = warning_lines(&p.warnings, &found);
         let render_s = t_render.elapsed().as_secs_f64();
         let out = if sequence {
             let zipped = dir.join("out.zip");
@@ -798,6 +849,7 @@ impl Engine {
                 .map(|(px, _)| px)
                 .map_err(|e| ApiError::new(500, "render_failed", format!("render failed: {e}")))
         });
+        let found = self.renderer.diagnostics().to_vec();
         self.renderer.unpin_fonts();
         let px = px?;
         let (w, h) = (doc.format.width, doc.format.height);
@@ -809,6 +861,7 @@ impl Engine {
             "inputs": resolved.inputs,
             "timings": {"fetch_s": fetched, "render_s": t1.elapsed().as_secs_f64()},
             "document": {"sha256": p.sha},
+            "warnings": warning_lines(&p.warnings, &found),
         });
         Ok(Reply::Bytes {
             content_type,
@@ -993,6 +1046,8 @@ pub struct Materialized {
     pub doc: Document,
     pub inputs: Vec<InputRecord>,
     pub fetch_s: f64,
+    /// What the document's check warns about, as `issues` list them.
+    pub warnings: Vec<Value>,
 }
 
 impl Engine {
@@ -1025,6 +1080,7 @@ impl Engine {
             doc,
             inputs: resolved.inputs.clone(),
             fetch_s: t0.elapsed().as_secs_f64(),
+            warnings: p.warnings,
         };
         let out = self.guarded(|r| {
             r.set_base_dir(&dir);
@@ -1040,7 +1096,7 @@ impl Engine {
     pub fn sheet(&mut self, req: SheetRequest, grants: &Grants) -> Result<Reply, ApiError> {
         let format = req.format;
         let t0 = Instant::now();
-        let (w, h, px, inputs, fetch_s) = self.with_document(&req.document, None, None, grants, |r, m| {
+        let (w, h, px, inputs, fetch_s, warnings) = self.with_document(&req.document, None, None, grants, |r, m| {
             let d = m.doc.format.duration;
             let times: Vec<f64> = match &req.at {
                 Some(at) if !at.is_empty() => {
@@ -1064,7 +1120,8 @@ impl Engine {
                 .clamp(1, 16);
             let (w, h, px) = ultrafast_live::contact_sheet(r, &m.doc, &times, cols)
                 .map_err(|e| ApiError::new(500, "render_failed", format!("render failed: {e}")))?;
-            Ok((w, h, px, m.inputs.clone(), m.fetch_s))
+            let warnings = warning_lines(&m.warnings, r.diagnostics());
+            Ok((w, h, px, m.inputs.clone(), m.fetch_s, warnings))
         })?;
         let (body, content_type) = match format {
             ImageFormat::Png => (encode_png(w, h, &px).map_err(|e| internal(&e))?, "image/png"),
@@ -1074,6 +1131,7 @@ impl Engine {
             "inputs": inputs,
             "timings": {"fetch_s": fetch_s, "total_s": t0.elapsed().as_secs_f64()},
             "width": w, "height": h,
+            "warnings": warnings,
         });
         Ok(Reply::Bytes {
             content_type,
@@ -1188,6 +1246,40 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warnings_read_like_the_cli_and_stay_short() {
+        let issues = vec![
+            serde_json::json!({"node": "line1", "severity": "warning",
+                "message": "`text` has no param `txt` (did you mean `text`?); it is ignored"}),
+            serde_json::json!({"node": "", "severity": "warning", "message": "whole document"}),
+        ];
+        let found = [
+            ("title", "text: never shows in full"),
+            (
+                "line1",
+                "`text` has no param `txt` (did you mean `text`?); it is ignored",
+            ),
+        ]
+        .map(|(node, message)| Diagnostic {
+            node: node.into(),
+            message: message.into(),
+        });
+        assert_eq!(
+            warning_lines(&issues, &found),
+            [
+                "node `line1`: `text` has no param `txt` (did you mean `text`?); it is ignored",
+                "whole document",
+                "node `title`: text: never shows in full",
+            ]
+        );
+        let many: Vec<Value> = (0..30)
+            .map(|i| serde_json::json!({"node": format!("n{i}"), "message": "x"}))
+            .collect();
+        let lines = warning_lines(&many, &[]);
+        assert_eq!(lines.len(), MAX_WARNINGS);
+        assert_eq!(lines[MAX_WARNINGS - 1], "and 11 more");
+    }
 
     #[test]
     fn stored_names_follow_the_format() {
