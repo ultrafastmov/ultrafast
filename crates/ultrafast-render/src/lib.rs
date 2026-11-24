@@ -206,7 +206,7 @@ fn reveal_falls_short(node: &ultrafast_graph::Node, units: usize) -> Option<Stri
     let shown = ((most - softness + 1.0).max(0.0).floor() as usize).min(units);
     let fmt = |v: f64| format!("{}", (v * 100.0).round() / 100.0);
     Some(format!(
-        "text: its `reveal` keys stop at {} of its {units} glyphs, so the last {} never show: key it up to {}",
+        "text: its `reveal` keys stop at {}, so the last {} of its {units} glyphs never show in full: key it up to {}",
         fmt(most),
         units - shown,
         fmt(needed)
@@ -5496,7 +5496,15 @@ mod tests {
         assert_eq!(reveal_falls_short(&typed, 20), None);
         let m = reveal_falls_short(&typed, 31).unwrap();
         assert!(
-            m.starts_with("text: ") && m.contains("the last 7 never show") && m.ends_with("key it up to 31"),
+            m.starts_with("text: ") && m.contains("the last 7 of its 31 glyphs never show") && m.ends_with("up to 31"),
+            "{m}"
+        );
+        // A soft reveal needs its softness past the last glyph: type.json's
+        // 33 glyphs at softness 4 stopped at 34, leaving "PU" faded and low.
+        let soft = text(r#"{"keys":[{"t":0,"v":0},{"t":2,"v":34}]},"reveal_softness":4"#);
+        let m = reveal_falls_short(&soft, 33).unwrap();
+        assert!(
+            m.contains("the last 2 of its 33 glyphs") && m.ends_with("up to 36"),
             "{m}"
         );
         assert_eq!(

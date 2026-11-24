@@ -8,7 +8,7 @@
     "title": { "op": "text", "params": {
       "text": "ultrafast renders type on the GPU", "font": "Helvetica Neue", "weight": 700, "size": 96,
       "position": [960, 300], "align": "center", "valign": "middle", "color": "#ffffff",
-      "reveal": { "keys": [ { "t": 0, "v": [0] }, { "t": 2, "v": [34] } ] },
+      "reveal": { "keys": [ { "t": 0, "v": [0] }, { "t": 2, "v": [36] } ] },
       "reveal_softness": 4, "reveal_offset": [0, 40] } },
     "title_x": { "op": "transform", "inputs": { "source": "title" }, "params": {
       "anchor": [960, 300], "position": [960, 300],
