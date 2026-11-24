@@ -349,16 +349,29 @@ pub fn build(words: &[Word], node: &Node, fmt: &Format, fonts: &mut Fonts, base:
         pages.push(lines);
     }
 
+    let first_of = |pi: usize| words[pages[pi][0][0].0].start;
+    let last_of = |pi: usize| words[pages[pi].last().unwrap().last().unwrap().0].end;
+    // When page `pi` hands over to the next: 0.04 s before the next page's
+    // first word, or when this page's last word ends if that is later
+    // (speech runs on), and no later than the next first word starts. The
+    // one time ends this page and starts the next, so two pages never show
+    // at once.
+    let handover = |pi: usize| {
+        (pi + 1 < pages.len()).then(|| {
+            let next = first_of(pi + 1);
+            (next - 0.04).max(last_of(pi)).min(next)
+        })
+    };
     let mut nodes = BTreeMap::new();
     let mut page_layers = Vec::new();
     for (pi, page) in pages.iter().enumerate() {
-        let first = words[page[0][0].0].start;
-        let last = words[page.last().unwrap().last().unwrap().0].end;
-        let next = pages.get(pi + 1).map(|p| words[p[0][0].0].start);
-        let t_in = (first - 0.04).max(0.0);
-        let t_out = match next {
-            Some(n) => (last + st.linger).min(n - 0.04).max(last),
-            None => last + st.linger,
+        let t_in = match pi.checked_sub(1) {
+            Some(prev) => handover(prev).unwrap_or(0.0),
+            None => (first_of(pi) - 0.04).max(0.0),
+        };
+        let t_out = match handover(pi) {
+            Some(h) => (last_of(pi) + st.linger).min(h),
+            None => last_of(pi) + st.linger,
         };
         // Block centered on position: lines stacked, each aligned, and
         // moved into the safe area if it would cross it.
@@ -703,5 +716,88 @@ mod tests {
             &fmt,
         );
         assert!(boxes.iter().any(|b| b[3] > y1));
+    }
+
+    /// Each page's window, `(in, out)`, and the indices of its first and
+    /// last words, in page order.
+    fn page_windows(words: &str, fmt: &Format) -> Vec<(f64, f64, usize, usize)> {
+        let node: Node = serde_json::from_str(&format!(
+            r#"{{"op":"captions","params":{{"words":"{words}","font":"ultrafast:sans","size":84}}}}"#
+        ))
+        .unwrap();
+        let words = words_of(&node, Path::new(".")).unwrap();
+        let c = build(&words, &node, fmt, &mut Fonts::new(), Path::new(".")).unwrap();
+        (0..)
+            .map_while(|pi| Some((pi, c.nodes.get(&format!("page{pi}"))?)))
+            .map(|(pi, n)| {
+                let t = n.timing.unwrap();
+                let prefix = format!("p{pi}_w");
+                let ws: Vec<usize> = c
+                    .nodes
+                    .iter()
+                    .filter(|(id, n)| n.op == "text" && id.starts_with(&prefix))
+                    .map(|(id, _)| id[prefix.len()..].parse().unwrap())
+                    .collect();
+                let (lo, hi) = (*ws.iter().min().unwrap(), *ws.iter().max().unwrap());
+                (t.in_point.unwrap(), t.out_point.unwrap(), lo, hi)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn pages_hand_over_without_showing_together() {
+        let fmt = Format {
+            width: 1080,
+            height: 1920,
+            fps: 30.0,
+            duration: 30.0,
+            motion_blur: None,
+        };
+        let text = "When speech runs on the next page comes in as the last one goes and never on top of it \
+                    however the words were timed";
+        // Words every `step` s lasting `len`: abutting, as speech-to-text
+        // gives them, overlapping by 0.05 s, 0.02 s apart and 0.3 s apart.
+        for (step, len) in [(0.3, 0.3), (0.3, 0.35), (0.3, 0.28), (0.5, 0.2)] {
+            let words: String = text
+                .split(' ')
+                .enumerate()
+                .map(|(i, w)| format!("{} {} {w}\\n", i as f64 * step, i as f64 * step + len))
+                .collect();
+            let pages = page_windows(&words, &fmt);
+            assert!(pages.len() >= 3, "{pages:?}");
+            let e = 1e-9;
+            for (k, &(t_in, t_out, lo, hi)) in pages.iter().enumerate() {
+                let (first, last) = (lo as f64 * step, hi as f64 * step + len);
+                // In 0.04 s before its first word, or as the page before
+                // goes if that is later; out after its last word and the
+                // linger, or as the next comes in.
+                assert!(
+                    t_in <= first + e && t_in >= first - 0.04 - e,
+                    "({step}, {len}) {k}: {pages:?}"
+                );
+                match pages.get(k + 1) {
+                    Some(&(next_in, ..)) => {
+                        assert!(t_out <= next_in + e, "({step}, {len}) {k}: {pages:?}");
+                        // Shown while its words are spoken, up to the next
+                        // page's first.
+                        let next_first = (hi + 1) as f64 * step;
+                        assert!(t_out >= last.min(next_first) - e, "({step}, {len}) {k}: {pages:?}");
+                        // After a pause, as before: out after the linger or
+                        // as the next comes in, 0.04 s before its first word.
+                        if next_first - last >= 0.04 {
+                            assert!(
+                                (next_in - (next_first - 0.04)).abs() < e,
+                                "({step}, {len}) {k}: {pages:?}"
+                            );
+                            assert!(
+                                (t_out - (last + 0.6).min(next_in)).abs() < e,
+                                "({step}, {len}) {k}: {pages:?}"
+                            );
+                        }
+                    }
+                    None => assert!((t_out - (last + 0.6)).abs() < e),
+                }
+            }
+        }
     }
 }
