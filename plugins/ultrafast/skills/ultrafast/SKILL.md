@@ -6,7 +6,7 @@ compatibility: Needs the ultrafast MCP server (local `uf mcp`, or a remote one o
 metadata:
   homepage: https://ultrafast.mov
   docs: https://ultrafast.mov/docs/
-  version: "0.2.1"
+  version: "0.2.2"
 ---
 
 # ultrafast
