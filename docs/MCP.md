@@ -153,8 +153,8 @@ What was run against these servers (November 2026):
 | MCP Inspector (CLI) | HTTP, `ultrafast serve` | `tools/mcp-every-tool.sh`: all 16 remote tools answered, `beats` on an uploaded `asset://` |
 | Claude Code 2.1.325 + skill | stdio | from a one-line request: loaded the skill, then template, ops, check, sheets, two fixes, review (0 findings), export |
 | MCP TypeScript SDK 1.32 | HTTP, OAuth (Cloud's sign-in, tested before it moved out of this repo) | 401 → metadata → DCR, and separately CIMD with Claude Code's published client document → sign-in page → PKCE token → every tool |
-| Antigravity CLI 1.5.17 | stdio (`agy plugin install`) | installed from GitHub with the skill and the server; `/mcp` listed all 20 tools; a headless `agy -p` run named the 20 tools and the skill; no video made yet |
+| Antigravity CLI 1.5.17 + skill | stdio (`agy plugin install`) | installed from GitHub with the skill and the server; `/mcp` listed all 20 tools; from a one-line `agy -p` request (allow rule `mcp(ultrafast_ultrafast/*)`): ops, check, sheet, review, estimate, frame and export, then inspect, a fix and a vertical copy in a second turn |
 | Gemini CLI 0.70 | stdio and HTTP (`httpUrl` + header) | connected (`gemini mcp list`); no model run: Gemini CLI refuses personal Google accounts |
 | Cursor CLI 2026.11.19 | stdio (`.cursor/mcp.json`) | ready, all 20 tools listed (`agent mcp list-tools`); no model run (no Cursor sign-in) |
-| Codex 0.169 | stdio | not run: Codex's sign-in on this machine had expired |
+| Codex 0.169 + skill | stdio | from a one-line `codex exec` request (`default_tools_approval_mode = "approve"`): ops, check, sheet, review, inspect and export, then a fix and a square copy in a second turn |
 | Claude Desktop | stdio | not run |
