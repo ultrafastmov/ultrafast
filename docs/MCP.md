@@ -20,6 +20,7 @@ stateless 2026-07-28 (`server/discover`, the version in every request's
 ```bash
 claude mcp add ultrafast -- uf mcp                  # Claude Code
 codex mcp add ultrafast -- uf mcp                   # Codex
+agy mcp add ultrafast uf mcp                        # Antigravity CLI
 ```
 
 Codex (`~/.codex/config.toml`):
@@ -31,8 +32,9 @@ args = ["mcp"]
 tool_timeout_sec = 300   # exports of long films outlast the 60 s default
 ```
 
-Cursor (`.cursor/mcp.json`), Gemini CLI (`~/.gemini/settings.json`) and
-Claude Desktop (`claude_desktop_config.json`):
+Cursor (`.cursor/mcp.json`), Antigravity CLI
+(`~/.gemini/config/mcp_config.json`), Gemini CLI (`~/.gemini/settings.json`)
+and Claude Desktop (`claude_desktop_config.json`):
 
 ```json
 {
@@ -98,7 +100,9 @@ claude mcp add --transport http ultrafast https://video.example.com/mcp \
 ```
 
 Codex: `url = "..."` and `bearer_token_env_var = "ULTRAFAST_API_KEY"`.
-Cursor: `"url"` with `"headers"`. Gemini CLI: `"httpUrl"` with `"headers"`.
+Cursor: `"url"` with `"headers"`. Antigravity CLI: `agy mcp add --header
+"Authorization: Bearer $ULTRAFAST_API_KEY" ultrafast <url>` (it writes
+`"serverUrl"` with `"headers"`). Gemini CLI: `"httpUrl"` with `"headers"`.
 Claude's and ChatGPT's connectors sign in with OAuth rather than a key, so
 they use ultrafast Cloud.
 
@@ -126,8 +130,15 @@ ULTRAFAST_API_KEYS=uf_test_dev cargo run --release -p ultrafastmov-mcp --example
   `claude plugin install ultrafast@ultrafast`. Its copies of the skill, the
   license files and SECURITY.md are kept in sync by
   `tools/sync-plugin-skill.sh` (`--check` in CI).
+- `mcp_config.json`: `agy plugin install
+  https://github.com/ultrafastmov/ultrafast` adds `uf mcp` and the skill to
+  Antigravity CLI. It reads a plugin's servers from this file, not from
+  `mcp.json`.
 - `gemini-extension.json`: `gemini extensions install
   https://github.com/ultrafastmov/ultrafast` adds `uf mcp` and the skill.
+  Since June 2026 Gemini CLI serves only paid Gemini API keys, Vertex AI and
+  Code Assist Standard or Enterprise; personal Google accounts moved to
+  Antigravity CLI.
 
 ## Tested clients
 
@@ -141,7 +152,8 @@ What was run against these servers (November 2026):
 | MCP Inspector (CLI) | HTTP, `ultrafast serve` | `tools/mcp-every-tool.sh`: all 16 remote tools answered, `beats` on an uploaded `asset://` |
 | Claude Code 2.1.325 + skill | stdio | from a one-line request: loaded the skill, then template, ops, check, sheets, two fixes, review (0 findings), export |
 | MCP TypeScript SDK 1.32 | HTTP, OAuth (Cloud's sign-in, tested before it moved out of this repo) | 401 → metadata → DCR, and separately CIMD with Claude Code's published client document → sign-in page → PKCE token → every tool |
-| Gemini CLI 0.70 | stdio and HTTP (`httpUrl` + header) | connected (`gemini mcp list`); no model run (no Gemini sign-in) |
+| Antigravity CLI 1.5.17 | stdio (`agy plugin install`) | installed from GitHub with the skill and the server; `/mcp` listed all 20 tools; a headless `agy -p` run named the 20 tools and the skill; no video made yet |
+| Gemini CLI 0.70 | stdio and HTTP (`httpUrl` + header) | connected (`gemini mcp list`); no model run: Gemini CLI refuses personal Google accounts |
 | Cursor CLI 2026.11.19 | stdio (`.cursor/mcp.json`) | ready, all 20 tools listed (`agent mcp list-tools`); no model run (no Cursor sign-in) |
 | Codex 0.169 | stdio | not run: Codex's sign-in on this machine had expired |
 | Claude Desktop | stdio | not run |
