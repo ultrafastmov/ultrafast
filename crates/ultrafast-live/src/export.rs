@@ -777,12 +777,21 @@ mod nvenc {
     /// reference runs a little ahead, and stays positive.
     const TS_START: u64 = 90_000;
 
+    /// How much finer H.264 key frames are coded than the rate control
+    /// would. Without B-frames NVENC codes a key frame hardly finer than
+    /// the frames after it, so a film opened soft and filled in over half a
+    /// second (its first frame 3.8 KB at 1080p, against 16 KB with
+    /// B-frames and 33 KB from libx264, and faint lines on a pale ground
+    /// gone): 3 QP is about libx264's weighting (its ipratio of 1.4).
+    const KEY_QP_DELTA: i8 = -3;
+
     /// The quality level as NVENC's rate control: constant quality on
     /// libx264's CRF scale (see [`ffmpeg::nvenc_cq`]), capped at the
-    /// level's bits per pixel, or the asked bitrate; P1, P4, P5 or P7;
-    /// three B-frames and a key frame every 250 frames, as libx264 makes
-    /// them; a full-resolution first pass for masters. Runs of a parallel
-    /// export have no B-frames (see [`Whole::Run`]).
+    /// level's bits per pixel, or the asked bitrate; P1, P4, P5 or P7; a
+    /// key frame every 250 frames, as libx264 makes them; a full-resolution
+    /// first pass for masters. B-frames for HEVC only (see
+    /// [`ffmpeg::nvenc_b_frames`]), and none in the runs of a parallel
+    /// export (see [`Whole::Run`]).
     fn rate(t: &Target, whole: Whole) -> EncodeRate {
         let codec = t.codec().unwrap_or(VideoCodec::H264);
         let (bitrate, quality) = match t.video.and_then(|v| v.rate) {
@@ -795,8 +804,13 @@ mod nvenc {
             quality,
             preset: [1, 4, 5, 7][t.quality as usize],
             multipass: t.quality == Quality::Master,
-            b_frames: if whole == Whole::File { 3 } else { 0 },
+            b_frames: if whole == Whole::File {
+                ffmpeg::nvenc_b_frames(codec)
+            } else {
+                0
+            },
             gop: ffmpeg::GOP,
+            key_qp_delta: if codec == VideoCodec::H264 { KEY_QP_DELTA } else { 0 },
         }
     }
 

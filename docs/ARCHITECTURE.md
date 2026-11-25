@@ -411,7 +411,11 @@ and zero uploads beyond uniforms**.
   held by the encoder, keeps the GPU rendering ahead of the encoder; zero
   readbacks. Each frame is encoded in strips, one per encoder engine the
   GPU has (up to three: 0.7 ms for a 1080x1920 frame at P4 on an RTX 5090,
-  against 1.7 ms whole), with three B-frames. Frames come out in decode order, each naming the frame it
+  against 1.7 ms whole). HEVC has three B-frames; H.264 has none, because
+  NVENC's H.264 B-frames leave blocks stale where motion stops (a block an
+  in-between frame drew wrong is never coded again until the next key
+  frame), and its key frames are coded 3 QP finer than the rate control
+  picks, as libx264 weighs them. Frames come out in decode order, each naming the frame it
   holds; a small MPEG-TS writer (`ts.rs`) gives each its presentation and
   decoding times, and `ffmpeg` only muxes that stream (MP4, MOV or
   Matroska, with composition offsets) and the AAC soundtrack. Runs of a
@@ -426,8 +430,9 @@ and zero uploads beyond uniforms**.
   quality capped at the quality level's bits per pixel. A CRF means
   libx264's scale (libx265's for HEVC) on every encoder: NVENC's own
   constant quality is finer at the same number, and measured with VMAF on
-  footage, type, a chart and effects its CQ 24 matches libx264's CRF 18 and
-  CQ 28 libx265's CRF 23, so NVENC gets the CRF plus 6 (H.264) or 5 (HEVC).
+  twelve films its H.264 at CQ 27 (no B-frames, key frames 3 QP finer)
+  matches or passes libx264's CRF 18 and HEVC's CQ 28 libx265's CRF 23, so
+  NVENC gets the CRF plus 9 (H.264) or 5 (HEVC).
   Quality levels pick NVENC presets P1, P4, P5 and P7; key frames come every
   250 frames, as libx264 places them. Everything else
   (ProRes, AV1, VP9, alpha, GIF, PNG and EXR sequences, and H.264 / HEVC

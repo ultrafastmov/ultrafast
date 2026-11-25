@@ -524,6 +524,10 @@ pub struct Encoder {
     frames: u64,
     /// B-frames between reference frames, as opened.
     b_frames: u8,
+    /// The QP delta of every macroblock of a key frame (empty: none), and
+    /// the frames from one key frame to the next.
+    key_map: Vec<i8>,
+    key_every: u32,
 }
 
 /// One encoded frame, as the encoder writes them: in decode order.
@@ -588,6 +592,8 @@ impl Encoder {
                 pitch: width.next_multiple_of(256),
                 frames: 0,
                 b_frames: 0,
+                key_map: Vec::new(),
+                key_every: 0,
             };
             let split = std::env::var("ULTRAFAST_NVENC_SPLIT").ok().and_then(|v| v.parse().ok());
             if let Err(e) = enc.open(codec, fps, rate, split) {
@@ -678,11 +684,10 @@ impl Encoder {
             (fps * 2.0).round().max(1.0) as u32
         };
         cfg.gopLength = gop;
-        // B-frames as far as this GPU encodes them for the codec (HEVC's
-        // came with Turing), the middle one of three a reference for the
-        // others where it can be: about a third smaller on footage. Without
-        // lookahead the pattern is fixed, and frames come out in decode
-        // order (see `Packet`).
+        // B-frames as asked, as far as this GPU encodes them for the codec
+        // (HEVC's came with Turing), the middle one of three a reference
+        // for the others where it can be. Without lookahead the pattern is
+        // fixed, and frames come out in decode order (see `Packet`).
         let b_frames = (rate.b_frames as i32)
             .min(cap(sys::_NV_ENC_CAPS_NV_ENC_CAPS_NUM_MAX_BFRAMES))
             .max(0) as u8;
@@ -716,6 +721,15 @@ impl Encoder {
         // `encode` waits for, and choose their pattern itself.
         cfg.rcParams.set_enableLookahead(0);
         cfg.rcParams.lookaheadDepth = 0;
+        // Key frames finer than the rate control picks: a QP delta on each
+        // of their macroblocks (H.264's are 16x16).
+        self.key_map.clear();
+        if rate.key_qp_delta != 0 && codec == Codec::H264 {
+            cfg.rcParams.qpMapMode = sys::_NV_ENC_QP_MAP_MODE_NV_ENC_QP_MAP_DELTA;
+            let mbs = (self.width as usize).div_ceil(16) * (self.height as usize).div_ceil(16);
+            self.key_map = vec![rate.key_qp_delta; mbs];
+            self.key_every = gop;
+        }
         let vui = sys::NV_ENC_CONFIG_H264_VUI_PARAMETERS {
             videoSignalTypePresentFlag: 1,
             videoFormat: sys::_NV_ENC_VUI_VIDEO_FORMAT_NV_ENC_VUI_VIDEO_FORMAT_UNSPECIFIED,
@@ -881,6 +895,12 @@ impl Encoder {
             pic.pictureStruct = sys::_NV_ENC_PIC_STRUCT_NV_ENC_PIC_STRUCT_FRAME;
             pic.inputTimeStamp = frame;
             pic.frameIdx = frame as u32;
+            // The encoder makes every `key_every`th frame from the first a
+            // key frame.
+            if !self.key_map.is_empty() && frame.is_multiple_of(self.key_every as u64) {
+                pic.qpDeltaMap = self.key_map.as_ptr().cast_mut();
+                pic.qpDeltaMapSize = self.key_map.len() as u32;
+            }
             match api.nvEncEncodePicture.unwrap()(session, &mut pic) {
                 sys::_NVENCSTATUS_NV_ENC_SUCCESS => Ok((map.mappedResource, false)),
                 // A B-frame: encoded once the frame after it is.

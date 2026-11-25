@@ -29,16 +29,33 @@ pub const BT709_TAGS: [&str; 8] = [
 pub const GOP: u32 = 250;
 
 /// NVENC's constant quality for a CRF on libx264's scale (libx265's for
-/// HEVC). At the same number NVENC's is finer: measured with VMAF and PSNR
-/// on footage, type, a chart and effects at 1080p, NVENC's CQ 24 matches
-/// libx264's CRF 18 (preset medium) and CQ 28 libx265's CRF 23. So
-/// `--crf 18` means the same picture whichever encoder makes it.
+/// HEVC). At the same number NVENC's is finer: measured with VMAF on
+/// twelve films at 1080p (titles, type, charts, footage, effects),
+/// NVENC's H.264 at CQ 27 (no B-frames, key frames 3 QP finer) matches or
+/// passes libx264's CRF 18 (preset medium) wherever the bitrate cap leaves
+/// it room, and HEVC's CQ 28 libx265's CRF 23. So `--crf 18` means the
+/// same picture whichever encoder makes it.
 pub fn nvenc_cq(codec: VideoCodec, crf: f64) -> f64 {
     let step = match codec {
         VideoCodec::Hevc => 5.0,
-        _ => 6.0,
+        _ => 9.0,
     };
     (crf + step).clamp(0.0, 51.0)
+}
+
+/// B-frames between NVENC's reference frames: three for HEVC, none for
+/// H.264. NVENC's H.264 B-frames leave blocks stale where motion stops: a
+/// block of a moving element that comes to rest is left as an in-between
+/// frame drew it and never coded again, up to the next key frame (a grey
+/// patch on a white title held to the end of the film), and single frames
+/// put blocks out of place. On twelve films, as a reference or not, one
+/// B-frame or three, at P4 or P7, blocks stayed off by up to 60 levels
+/// for up to 7.5 s; without B-frames none did, nor with HEVC's.
+pub fn nvenc_b_frames(codec: VideoCodec) -> u8 {
+    match codec {
+        VideoCodec::Hevc => 3,
+        _ => 0,
+    }
 }
 
 /// How frames reach ffmpeg's stdin.
@@ -208,10 +225,10 @@ pub fn video_args(t: &Target, encoder: &str) -> Vec<String> {
                     if matches!(v.codec, VideoCodec::H264 | VideoCodec::Hevc) {
                         push(&["-g", &GOP.to_string()]);
                     }
-                    // B-frames, which every NVENC has for H.264 (HEVC's
-                    // came later: there ffmpeg's own choice stands).
+                    // None for H.264 (see `nvenc_b_frames`); HEVC's came
+                    // with Turing, so there ffmpeg's own choice stands.
                     if v.codec == VideoCodec::H264 {
-                        push(&["-bf", "3"]);
+                        push(&["-bf", "0"]);
                     }
                 }
                 "libx264" | "libx265" => {
@@ -425,17 +442,17 @@ mod tests {
             "{a}"
         );
         // NVENC's constant quality, on libx264's scale: master's CRF 12 is
-        // NVENC's 18, standard's 18 its 24.
+        // NVENC's 21, standard's 18 its 27; no B-frames for H.264.
         let t = target(r#"{"quality": "master"}"#, "f.mp4");
         let a = joined(&t, "h264_nvenc");
         assert!(
-            a.contains("-preset p7") && a.contains("-cq 18") && a.contains("-multipass fullres"),
+            a.contains("-preset p7") && a.contains("-cq 21") && a.contains("-multipass fullres"),
             "{a}"
         );
         let t = target("{}", "f.mp4");
         let a = joined(&t, "h264_nvenc");
         assert!(
-            a.contains("-preset p4") && a.contains("-cq 24 ") && a.contains("-g 250") && a.contains("-bf 3"),
+            a.contains("-preset p4") && a.contains("-cq 27 ") && a.contains("-g 250") && a.contains("-bf 0"),
             "{a}"
         );
         let t = target(r#"{"codec": "hevc", "crf": 23}"#, "f.mp4");

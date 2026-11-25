@@ -72,6 +72,10 @@ pub struct EncodeRate {
     pub b_frames: u8,
     /// Frames from one key frame to the next (0: two seconds' worth).
     pub gop: u32,
+    /// How much finer than the rate control's choice key frames are coded,
+    /// as a QP offset (H.264; 0 leaves them alone, -3 is about libx264's
+    /// weighting).
+    pub key_qp_delta: i8,
 }
 
 impl EncodeRate {
@@ -84,6 +88,7 @@ impl EncodeRate {
             multipass: false,
             b_frames: 0,
             gop: 0,
+            key_qp_delta: 0,
         }
     }
 }
