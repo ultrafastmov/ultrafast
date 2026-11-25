@@ -102,7 +102,8 @@ claude mcp add --transport http ultrafast https://video.example.com/mcp \
 Codex: `url = "..."` and `bearer_token_env_var = "ULTRAFAST_API_KEY"`.
 Cursor: `"url"` with `"headers"`. Antigravity CLI: `agy mcp add --header
 "Authorization: Bearer $ULTRAFAST_API_KEY" ultrafast <url>` (it writes
-`"serverUrl"` with `"headers"`). Gemini CLI: `"httpUrl"` with `"headers"`.
+`"serverUrl"` with `"headers"` and sends the header as written, without
+expanding variables). Gemini CLI: `"httpUrl"` with `"headers"`.
 Claude's and ChatGPT's connectors sign in with OAuth rather than a key, so
 they use ultrafast Cloud.
 
