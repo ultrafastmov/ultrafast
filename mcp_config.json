@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ultrafast": {
+      "command": "uf",
+      "args": ["mcp"]
+    }
+  }
+}
