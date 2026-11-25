@@ -24,6 +24,8 @@ looked at.
    (Codex's, for one) may not see the GPU, and `uf` there renders on the
    CPU, many times slower.
    - Local server (`uf mcp`): tools take a document `path` on this machine.
+     Absolute paths are safest; a relative one resolves against your project
+     folder. Results name files by absolute path: tell the person those.
      Edit with `ultrafast_edit` or by writing the file; the server reloads it.
    - Remote server (HTTP): tools take the whole `document` inline. Pass the
      document `ultrafast_edit` returns to the next call. Media inside it are

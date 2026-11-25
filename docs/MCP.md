@@ -59,6 +59,16 @@ reloads a file when it changes, whether the agent edits it through
 `ultrafast_edit` or writes it directly. Anything else the process writes to
 stdout goes to stderr, so it can't corrupt the protocol stream.
 
+Paths in tool arguments are absolute, or relative to the project folder: the
+client's first root. In the `initialize` protocols the server asks for the
+roots (`roots/list`) once the session is up; in 2026-07-28 it asks during the
+first call that names a relative path (an `input_required` result, which the
+client answers by calling again with them). Without roots, relative paths
+resolve against the folder the server runs in, unless that is its plugin's
+own folder: Antigravity CLI runs a plugin's servers there (and says so in
+`PLUGIN_ROOT`), so rather than leave files in the plugin the call fails and
+says to use an absolute path. Results name files by absolute path.
+
 | tool | does |
 |---|---|
 | `ultrafast_ops` | the op vocabulary as compact Markdown, or the full JSON of named ops (`ops: [...]`) |

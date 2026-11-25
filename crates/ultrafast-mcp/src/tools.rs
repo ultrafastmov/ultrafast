@@ -151,7 +151,7 @@ fn text_params() -> Value {
 
 /// The tools `uf mcp` serves: documents are files on this machine.
 pub fn local() -> Value {
-    let path = json!({ "type": "string", "description": "Path to an ultrafast document (.json)" });
+    let path = json!({ "type": "string", "description": "An ultrafast document (.json): an absolute path, or one relative to your project folder" });
     // The local schemas name the document `path`; rename the key from the
     // shared builders.
     let with_path = |mut props: Value| {
@@ -235,7 +235,7 @@ pub fn local() -> Value {
             object(
                 with_export(json!({
                     "path": path,
-                    "out": { "type": "string", "description": "Output file (its extension picks the format), or a folder for an image sequence" },
+                    "out": { "type": "string", "description": "Output file (its extension picks the format), or a folder for an image sequence: an absolute path, or one relative to your project folder" },
                     "from": { "type": "number", "description": "Start in seconds (default 0)" },
                     "to": { "type": "number", "description": "End in seconds (default: the whole film)" }
                 })),
@@ -582,7 +582,7 @@ pub fn instructions(remote: bool) -> String {
     let doc = if remote {
         "Pass the whole document as `document` to every tool; ultrafast_edit returns the edited document for the next call. Media are asset ids or https URLs."
     } else {
-        "Documents are JSON files; tools take their `path`. Edit with ultrafast_edit or by writing the file; the server reloads it."
+        "Documents are JSON files; tools take their `path`. Paths are absolute or relative to your project folder (the client's root), and results name files by absolute path. Edit with ultrafast_edit or by writing the file; the server reloads it."
     };
     format!(
         "ultrafast renders videos on the GPU from JSON documents: a `format` (size, fps, duration), `nodes` (each an op with params and timing) and an `output`. {doc} The loop: ultrafast_ops for the vocabulary, ultrafast_new for a starting point, ultrafast_check until clean, ultrafast_sheet and ultrafast_frame to look, ultrafast_inspect to find the node behind something, ultrafast_review and fix what it reports, then ultrafast_export (ultrafast_estimate first quotes the cost; ultrafast_batch makes one video per row of data). Always look at a sheet before exporting."
