@@ -42,10 +42,10 @@
   },
   "s1": {
    "op": "over",
-   "inputs": {
-    "fg": "chapter",
-    "bg": "ground"
-   }
+   "inputs": [
+    "ground",
+    "chapter"
+   ]
   },
   "point": {
    "op": "block",
@@ -79,19 +79,13 @@
     "offset": 4.6
    }
   },
-  "s2a": {
-   "op": "over",
-   "inputs": {
-    "fg": "point",
-    "bg": "ground"
-   }
-  },
   "s2": {
    "op": "over",
-   "inputs": {
-    "fg": "who",
-    "bg": "s2a"
-   }
+   "inputs": [
+    "ground",
+    "point",
+    "who"
+   ]
   },
   "stat": {
    "op": "block",
@@ -113,10 +107,10 @@
   },
   "s3": {
    "op": "over",
-   "inputs": {
-    "fg": "stat",
-    "bg": "ground"
-   }
+   "inputs": [
+    "ground",
+    "stat"
+   ]
   },
   "cut1": {
    "op": "transition",

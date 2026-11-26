@@ -65,10 +65,10 @@
   },
   "s1": {
    "op": "over",
-   "inputs": {
-    "fg": "title",
-    "bg": "ground"
-   }
+   "inputs": [
+    "ground",
+    "title"
+   ]
   },
   "stat": {
    "op": "block",
@@ -86,10 +86,10 @@
   },
   "s2": {
    "op": "over",
-   "inputs": {
-    "fg": "stat",
-    "bg": "ground"
-   }
+   "inputs": [
+    "ground",
+    "stat"
+   ]
   },
   "quote": {
    "op": "block",
@@ -106,10 +106,10 @@
   },
   "s3": {
    "op": "over",
-   "inputs": {
-    "fg": "quote",
-    "bg": "ground"
-   }
+   "inputs": [
+    "ground",
+    "quote"
+   ]
   },
   "end": {
    "op": "block",
@@ -125,10 +125,10 @@
   },
   "s4": {
    "op": "over",
-   "inputs": {
-    "fg": "end",
-    "bg": "ground"
-   }
+   "inputs": [
+    "ground",
+    "end"
+   ]
   },
   "cut1": {
    "op": "transition",

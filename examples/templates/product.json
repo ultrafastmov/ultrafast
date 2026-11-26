@@ -21,23 +21,23 @@
     "background_level": 0.9,
     "orbit": {
      "keys": [
-      {
-       "t": 0,
-       "v": [
+      [
+       0,
+       [
         -35,
         14,
         7.2
        ],
-       "ease": "in_out_sine"
-      },
-      {
-       "t": 8,
-       "v": [
+       "in_out_sine"
+      ],
+      [
+       8,
+       [
         20,
         9,
         6.6
        ]
-      }
+      ]
      ]
     },
     "target": [
@@ -55,18 +55,18 @@
     "samples": 2,
     "k0": {
      "keys": [
-      {
-       "t": 0,
-       "v": [
+      [
+       0,
+       [
         0
        ]
-      },
-      {
-       "t": 8,
-       "v": [
+      ],
+      [
+       8,
+       [
         40
        ]
-      }
+      ]
      ]
     }
    }
@@ -87,37 +87,37 @@
     "tracking": -3,
     "glyph_opacity": {
      "keys": [
-      {
-       "t": 0.6,
-       "v": [
+      [
+       0.6,
+       [
         0
        ]
-      },
-      {
-       "t": 1.2,
-       "v": [
+      ],
+      [
+       1.2,
+       [
         1
        ]
-      }
+      ]
      ]
     },
     "glyph_offset": {
      "keys": [
-      {
-       "t": 0.6,
-       "v": [
+      [
+       0.6,
+       [
         0,
         40
        ],
-       "ease": "out_expo"
-      },
-      {
-       "t": 1.6,
-       "v": [
+       "out_expo"
+      ],
+      [
+       1.6,
+       [
         0,
         0
        ]
-      }
+      ]
      ]
     },
     "stagger": 0.05
@@ -138,18 +138,18 @@
     "valign": "baseline",
     "glyph_opacity": {
      "keys": [
-      {
-       "t": 1.4,
-       "v": [
+      [
+       1.4,
+       [
         0
        ]
-      },
-      {
-       "t": 1.9,
-       "v": [
+      ],
+      [
+       1.9,
+       [
         1
        ]
-      }
+      ]
      ]
     },
     "stagger": 0.012
@@ -170,43 +170,31 @@
     "valign": "baseline",
     "reveal": {
      "keys": [
-      {
-       "t": 2.2,
-       "v": [
+      [
+       2.2,
+       [
         0
        ]
-      },
-      {
-       "t": 2.8,
-       "v": [
+      ],
+      [
+       2.8,
+       [
         9
        ],
-       "ease": "linear"
-      }
+       "linear"
+      ]
      ]
     }
    }
   },
-  "a": {
-   "op": "over",
-   "inputs": {
-    "fg": "name",
-    "bg": "product"
-   }
-  },
-  "b": {
-   "op": "over",
-   "inputs": {
-    "fg": "line",
-    "bg": "a"
-   }
-  },
   "c": {
    "op": "over",
-   "inputs": {
-    "fg": "price",
-    "bg": "b"
-   }
+   "inputs": [
+    "product",
+    "name",
+    "line",
+    "price"
+   ]
   },
   "finish": {
    "op": "film_look",
