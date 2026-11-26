@@ -177,7 +177,8 @@ pub fn row_edits(doc: &Document, row: &Row) -> Result<Vec<Edit>, String> {
     let mut format_changed = false;
     for (key, cell) in row {
         if key == "edits" {
-            let more: Vec<Edit> = serde_json::from_value(cell.clone()).map_err(|e| format!("`edits`: {e}"))?;
+            let more = ultrafast_graph::parse_edits(cell)
+                .map_err(|e| format!("`edits`: {}", e.strip_prefix("bad edits: ").unwrap_or(&e)))?;
             edits.extend(more);
             continue;
         }
@@ -360,6 +361,22 @@ mod tests {
         let d = apply_row(&doc(), &row).unwrap();
         assert_eq!(d.format.height, 1080);
         assert_eq!(d.nodes["bg"].params["color"], Param::Text("#ffffff".into()));
+        // A malformed edit is named by its place, with the fields its kind
+        // takes; `node` stands for `id` in remove_node.
+        let row: Row = serde_json::from_str(
+            r#"{"edits": [{"edit": "remove_node", "node": "name"}, {"edit": "set_param", "node": "bg", "value": 1}]}"#,
+        )
+        .unwrap();
+        let e = apply_row(&doc(), &row).unwrap_err();
+        assert!(
+            e.starts_with("`edits`: edit 2 of 2 (set_param): ") && e.ends_with("set_param takes {node, param, value}"),
+            "{e}"
+        );
+        let row: Row = serde_json::from_str(r#"{"edits": [{"edit": "remove_node", "node": "name"}]}"#).unwrap();
+        assert_eq!(
+            row_edits(&doc(), &row).unwrap(),
+            vec![Edit::RemoveNode { id: "name".into() }]
+        );
         let row: Row = serde_json::from_str(r#"{"out": "a/b.mp4", "name": "z"}"#).unwrap();
         assert_eq!(output_name("{name}.mp4", &row, 0), "a/b.mp4");
         let row: Row = serde_json::from_str(r#"{"name": "a/b"}"#).unwrap();

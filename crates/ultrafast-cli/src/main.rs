@@ -246,8 +246,14 @@ fn main() -> Result<()> {
             let vocab = serde_json::to_value(ultrafast_render::schema::vocabulary())?;
             if pos.len() > 1 {
                 // `uf ops text captions`: just those ops, as Markdown.
-                let r = ultrafast_mcp::core::ops(&serde_json::json!({ "ops": &pos[1..] }));
-                print!("{}", r["content"][0]["text"].as_str().unwrap_or(""));
+                let want: Vec<&str> = pos[1..].iter().map(String::as_str).collect();
+                let (md, missing) = ultrafast_mcp::core::ops_detail(&vocab, &want);
+                if missing.len() < want.len() {
+                    print!("{md}");
+                }
+                if !missing.is_empty() {
+                    bail!("not ops: {}; `uf ops --index` lists every op", missing.join(", "));
+                }
             } else if has("--index") {
                 // Every op on one line: what an agent reads first.
                 print!("{}", ultrafast_mcp::core::ops_index(&vocab, "uf ops text block"));

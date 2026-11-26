@@ -148,19 +148,10 @@ pub fn document_value(v: Option<&Value>) -> Result<Value, String> {
 /// in full only the ops it uses.
 pub fn ops(args: &Value) -> Value {
     let vocab = ultrafast_render::schema::vocabulary();
-    let all: Vec<&Value> = vocab.as_array().into_iter().flatten().collect();
     match args.get("ops").and_then(Value::as_array) {
         Some(names) if !names.is_empty() => {
             let want: Vec<&str> = names.iter().filter_map(Value::as_str).collect();
-            let mut md = String::from("Params: `name`: type = default - what it does.\n");
-            for op in all.iter().filter(|op| want.contains(&op["op"].as_str().unwrap_or(""))) {
-                md += &op_markdown(op);
-            }
-            let missing: Vec<&str> = want
-                .iter()
-                .copied()
-                .filter(|n| !all.iter().any(|op| op["op"] == *n))
-                .collect();
+            let (mut md, missing) = ops_detail(&vocab, &want);
             if !missing.is_empty() {
                 md += &format!(
                     "\nNot ops: {}. `ultrafast_ops` with no arguments lists them all.\n",
@@ -171,6 +162,23 @@ pub fn ops(args: &Value) -> Value {
         }
         _ => text(ops_index(&vocab, r#"ultrafast_ops {"ops": ["text", "block"]}"#)),
     }
+}
+
+/// The params of the ops named in `want`, in full, as Markdown (what
+/// `ultrafast_ops` with `ops` and `uf ops text captions` return), and the
+/// names that aren't ops.
+pub fn ops_detail<'a>(vocab: &Value, want: &[&'a str]) -> (String, Vec<&'a str>) {
+    let all: Vec<&Value> = vocab.as_array().into_iter().flatten().collect();
+    let mut md = String::from("Params: `name`: type = default - what it does.\n");
+    for op in all.iter().filter(|op| want.contains(&op["op"].as_str().unwrap_or(""))) {
+        md += &op_markdown(op);
+    }
+    let missing = want
+        .iter()
+        .copied()
+        .filter(|n| !all.iter().any(|op| op["op"] == *n))
+        .collect();
+    (md, missing)
 }
 
 /// Every op on one line: its name, input ports and what it does. `lookup`
@@ -579,6 +587,12 @@ mod tests {
         assert!(md.contains("- `font`: "));
         assert!(!md.contains("## block"));
         assert!(md.contains("Not ops: nope."));
+        // The detail itself leaves the wording of the unknown names to its
+        // caller (the tool, or `uf ops`).
+        let vocab = ultrafast_render::schema::vocabulary();
+        let (md, missing) = ops_detail(&vocab, &["captions", "nope"]);
+        assert!(md.contains("## captions") && !md.contains("Not ops"));
+        assert_eq!(missing, ["nope"]);
     }
 
     #[test]
