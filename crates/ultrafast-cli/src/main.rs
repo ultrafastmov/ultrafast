@@ -24,7 +24,8 @@ usage:
   ultrafast schema                               the document format as JSON Schema (draft 2020-12),
                                              for editors, validators and structured outputs
   ultrafast check  <doc.json>                    find problems without rendering: unknown ops,
-                                             misspelled params, bad values, broken shaders, missing files
+                                             misspelled params, bad values, broken shaders, missing files,
+                                             node and timing keys ultrafast ignores
   ultrafast outline '<text params JSON>' [--base DIR]
                                              a line of text as SVG path data (for path morphs and vector work)
   ultrafast measure '<text params JSON>' [--base DIR]

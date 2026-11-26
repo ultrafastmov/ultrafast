@@ -136,7 +136,8 @@ A transparent ProRes master at 4K and 60 fps from the same document
     H.264 and HEVC without alpha encode on the GPU with no readback; on
     NVIDIA they run at constant quality (NVENC's equivalent of the CRF:
     the same picture libx264 or libx265 would make) capped at the level's
-    bits per pixel (standard's is 0.12), with B-frames.
+    bits per pixel (standard's is 0.12). HEVC uses B-frames; H.264 doesn't,
+    as NVENC's H.264 B-frames can leave a block stale where motion stops.
 - `attempt` (optional): `{"render_id", "attempt_id"}`, each 1 to 128
   characters of `A-Z a-z 0-9 . _ : -`. Stored on the object and echoed in
   the receipt; with `output.uri` it makes retries safe (see replays). The
