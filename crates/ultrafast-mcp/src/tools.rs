@@ -87,7 +87,7 @@ const OPS: &str = "The op vocabulary: every op ultrafast knows (generators, foot
 
 const NEW: &str = "Templates to start from: `vertical` (1080x1920 editorial), `title` (1920x1080 title over a shader world), `square` (1080x1080 risograph), `promo` (1080x1920, 13 s: title, stat, quote and end card blocks joined by transitions), `explainer` (1920x1080 on paper: chapter, key idea with a lower third, stat), `product` (a product reveal).";
 
-const CHECK: &str = "Problems in a document, before rendering it: unknown ops, misspelled params (with suggestions), wrongly shaped values, broken connections, shader compile errors, missing files or fonts. Run it after every change until it reports none.";
+const CHECK: &str = "Problems in a document, before rendering it: unknown ops, misspelled params (with suggestions), keys a node or its timing doesn't take (with what to write instead), wrongly shaped values, broken connections, shader compile errors, missing files or fonts. Run it after every change until it reports none.";
 
 const REVIEW: &str = "Render the whole film and report what a viewer would trip over, measured on the final frames: text that never reaches readable contrast or dips below it, is on screen too briefly for its word count, runs off the frame, sits in the safe margin or under social-app buttons (`safe`: margin | social), overlaps other text, or is too small; and flashing above 3 per second (seizure risk). Each issue names a node, a time span and a fix. Run it before exporting and fix everything it finds.";
 
