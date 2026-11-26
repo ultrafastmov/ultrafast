@@ -79,6 +79,7 @@ of the edits). The script is a list of steps:
 {"edit": "remove_node", "id": "id"}
 {"edit": "connect", "node": "id", "port": "fg", "source": "other_id"}
 {"edit": "disconnect", "node": "id", "port": "fg"}
+{"edit": "set_inputs", "node": "id", "inputs": ["bg", "title"]}       (all its inputs: a map, or an over's layers)
 {"edit": "set_output", "node": "id"}
 {"edit": "set_format", "format": {"width": 1920, "height": 1080, "fps": 60, "duration": 5}}
 {"edit": "set_timing", "node": "id", "timing": {"in": 1, "out": 3}}       (null clears)
