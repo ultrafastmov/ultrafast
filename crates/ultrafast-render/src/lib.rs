@@ -971,6 +971,22 @@ impl Renderer {
         self.mode = mode;
     }
 
+    /// The kernel fused group `gi` runs this frame: Pending means op by op
+    /// with tier-0 kernels. Exact renders wait for it, unless they may fall
+    /// back (`set_wait_for_fused(false)`) and every op has a tier-0 kernel.
+    fn fused_state(&self, plan: &Plan, gi: usize) -> KernelState {
+        let g = &plan.groups[gi];
+        let op_by_op = || {
+            g.nodes
+                .iter()
+                .all(|&n| self.kernels.tier0(plan.nodes[n].def.func).is_some())
+        };
+        match self.mode {
+            Mode::Exact if self.wait_fused || !op_by_op() => self.kernels.wait(&g.key),
+            _ => self.kernels.get(&g.key).unwrap_or(KernelState::Pending),
+        }
+    }
+
     /// Whether exact renders wait for fused kernels still compiling. Off,
     /// such a group renders op by op with the tier-0 kernels (built at
     /// startup) until its fused kernel is ready: the same image to within
@@ -3390,12 +3406,15 @@ impl Renderer {
                     if local_time(&plan.nodes[g.root], t).1 {
                         // Kept at its reduced resolution when every reader can
                         // sample it there and has its kernel (not while motion
-                        // blur averages it, nor for a fallback reader).
+                        // blur averages it, nor for a fallback reader). Asked
+                        // the way each reader will ask: an exact render waits
+                        // for the reader's kernel here rather than seeing it
+                        // still compiling, so the result never depends on how
+                        // far the compile threads got.
                         let keep_low = self.mb_sample.is_none()
                             && low_readers[gi].as_ref().is_some_and(|rs| {
-                                rs.iter().all(|&c| {
-                                    matches!(self.kernels.get(&plan.groups[c].key), Some(KernelState::Ready(_)))
-                                })
+                                rs.iter()
+                                    .all(|&c| matches!(self.fused_state(plan, c), KernelState::Ready(_)))
                             });
                         let (placed, b) =
                             self.encode_blur(&src, src_bounds, self.scratch[4], prev, keep_low, doc, t, list);
@@ -3454,15 +3473,7 @@ impl Renderer {
                         Some(p) => p.tex.clone(),
                         None => slots[g.output].clone(),
                     };
-                    let op_by_op = || {
-                        g.nodes
-                            .iter()
-                            .all(|&n| self.kernels.tier0(plan.nodes[n].def.func).is_some())
-                    };
-                    let state = match self.mode {
-                        Mode::Exact if self.wait_fused || !op_by_op() => self.kernels.wait(&g.key),
-                        _ => self.kernels.get(&g.key).unwrap_or(KernelState::Pending),
-                    };
+                    let state = self.fused_state(plan, gi);
                     let scale = ops::render_scale(&doc.nodes[&plan.nodes[g.root].id]);
                     match state {
                         KernelState::Ready(k) if scale.is_some() => {
