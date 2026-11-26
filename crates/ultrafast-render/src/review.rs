@@ -127,9 +127,11 @@ impl Renderer {
     /// frame (sRGB RGBA8, opaque) and the probes.
     pub fn probe_texts(&mut self, doc: &Document, t: f64) -> Result<(Vec<u8>, Vec<TextProbe>), RenderError> {
         // Text rasters drawn whole, not stopped at the frame: what runs off
-        // it is what the probe measures.
+        // it is what the probe measures. The frame is the one viewers get,
+        // flattened over black where the document draws nothing: straight
+        // colour there would make a glow's faint edge read as bright ground.
         let framed = std::mem::replace(&mut self.no_framed, true);
-        let rendered = self.render_rgba8(doc, t);
+        let rendered = self.render_opaque_rgba8(doc, t);
         self.no_framed = framed;
         let (frame, _) = rendered?;
         let flat = if crate::needs_flat(doc) {
@@ -141,7 +143,7 @@ impl Renderer {
         let (fw, fh) = (doc.format.width as i64, doc.format.height as i64);
         let active = self.active.take().expect("plan");
         let live = crate::live_groups(&active.plan, t);
-        let mut found: Vec<(String, Placed, f32, Option<Hom>)> = Vec::new();
+        let mut found: Vec<(String, Placed, f32, Option<Hom>, f64)> = Vec::new();
         let plan = &active.plan;
         let consumers = consumers(plan);
         let opaque = crate::opaque_rects(plan, doc, t);
@@ -177,7 +179,7 @@ impl Renderer {
                 .and_then(|p| p.eval(lt))
                 .and_then(|v| v.first().copied())
                 .unwrap_or(64.0);
-            found.push((pn.id.clone(), placed, (size * scale) as f32, map));
+            found.push((pn.id.clone(), placed, (size * scale) as f32, map, lt));
         }
         self.active = Some(active);
 
@@ -200,7 +202,7 @@ impl Renderer {
             (x >= 0 && y >= 0 && x < fw && y < fh).then(|| lum[(y * fw + x) as usize])
         };
         let mut probes = Vec::new();
-        for (id, placed, raster_px, map) in found {
+        for (id, placed, raster_px, map, lt) in found {
             let d = placed.tex.desc();
             let rgba = self.device.create_texture(TextureDesc {
                 width: d.width,
@@ -429,7 +431,9 @@ impl Renderer {
             };
             pixels.sort_unstable();
             pixels.dedup();
-            let text = crate::geom::display_text(&doc.nodes[&id], t);
+            // What it shows at its own time (a timed text's scramble or
+            // counter runs on local time).
+            let text = crate::geom::display_text(&doc.nodes[&id], lt);
             let skim = matches!(
                 doc.nodes[&id].params.get("skim"),
                 Some(ultrafast_graph::Param::Bool(true))
@@ -835,7 +839,7 @@ pub fn review(r: &mut Renderer, doc: &Document, opts: &ReviewOptions) -> Result<
                 per.entry(p.node.clone()).or_default().push((t, p));
             }
         } else {
-            let (frame, _) = r.render_rgba8(doc, t)?;
+            let (frame, _) = r.render_opaque_rgba8(doc, t)?;
             lumas.push(mean_luminance(&frame));
         }
     }
@@ -877,7 +881,30 @@ pub fn review(r: &mut Renderer, doc: &Document, opts: &ReviewOptions) -> Result<
         .filter(|(_, v)| !v.is_empty())
         .collect();
     for (node, samples) in &per {
-        let text = samples[0].1.text.clone();
+        // Named by what it shows most often while legible: a text that
+        // scrambles in shows different noise in each of its first samples,
+        // its words in the rest.
+        let text = {
+            let legible: Vec<&TextProbe> = samples
+                .iter()
+                .map(|(_, p)| p)
+                .filter(|p| p.contrast >= READABLE)
+                .collect();
+            let pool = if legible.is_empty() {
+                samples.iter().map(|(_, p)| p).collect()
+            } else {
+                legible
+            };
+            let mut counts: std::collections::HashMap<&str, usize> = Default::default();
+            for p in &pool {
+                *counts.entry(p.text.as_str()).or_default() += 1;
+            }
+            // On a tie, the latest (max_by_key keeps the last maximum).
+            pool.iter()
+                .max_by_key(|p| counts[p.text.as_str()])
+                .map(|p| p.text.clone())
+                .unwrap_or_default()
+        };
         let label = if text.chars().count() > 40 {
             format!("\"{}…\"", text.chars().take(40).collect::<String>())
         } else {

@@ -5027,7 +5027,15 @@ impl Renderer {
         Ok(sum as f64 / (w as f64 * h as f64 * 3.0))
     }
 
-    /// Renders frame `t`, waits, and returns tightly packed sRGB RGBA8 pixels.
+    /// Renders frame `t` as a video without alpha shows it: flattened over
+    /// black by the export's own encode (sRGB RGBA8, alpha 255). Where the
+    /// document draws nothing, that is black, not see-through.
+    pub fn render_opaque_rgba8(&mut self, doc: &Document, t: f64) -> Result<(Vec<u8>, FrameReport), RenderError> {
+        self.render_readback(doc, t, Readback::Srgb8, true)
+    }
+
+    /// Renders frame `t`, waits, and returns tightly packed sRGB RGBA8
+    /// pixels with straight alpha (transparent where nothing is drawn).
     pub fn render_rgba8(&mut self, doc: &Document, t: f64) -> Result<(Vec<u8>, FrameReport), RenderError> {
         let (sub, report) = self.submit_frame(doc, t, true)?;
         sub.wait()?;

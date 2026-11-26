@@ -228,3 +228,49 @@ fn text_over_text_is_found_whatever_the_rasters_line_up() {
     let k = kinds(&doc(70, 220));
     assert!(!k.iter().any(|(kind, _)| kind == "overlap"), "{k:?}");
 }
+
+/// A film with no backdrop is reviewed as viewers get it, over black: a
+/// glowing title's faint halo is dark ground there, not the title's own
+/// colour (as its straight-alpha pixels say), so both texts read and the
+/// tagline drawn through the title is an overlap. Measured on see-through
+/// pixels, both were "never visible" and the overlap went unreported.
+#[test]
+fn a_film_without_a_backdrop_is_reviewed_as_shown_over_black() {
+    let doc = format!(
+        r##"{{"version":1,"format":{{"width":480,"height":270,"fps":30,"duration":2}},"output":"out","nodes":{{
+          "name":{{"op":"text","params":{{"text":"gullwing","font":"{FONT}","size":64,"position":[240,120],"align":"center","color":"#e8edf2"}}}},
+          "glow":{{"op":"glow","params":{{"intensity":0.35,"radius":14}},"inputs":{{"source":"name"}}}},
+          "tag":{{"op":"text","params":{{"text":"tidy old git branches","font":"{FONT}","size":16,"position":[240,140],"align":"center","color":"#b8c4d0"}}}},
+          "out":{{"op":"over","inputs":{{"fg":"tag","bg":"glow"}}}}}}}}"##
+    );
+    let k = kinds(&doc);
+    assert!(k.contains(&("overlap".to_string(), "name".to_string())), "{k:?}");
+    assert!(
+        !k.iter()
+            .any(|(kind, _)| kind == "never_visible" || kind == "low_contrast"),
+        "{k:?}"
+    );
+}
+
+/// Issues quote a text as it reads, at its own time: one that scrambles in
+/// is named by its words, not by the noise of its first frames.
+#[test]
+fn issues_quote_a_scrambled_text_by_its_words() {
+    let doc = format!(
+        r##"{{"version":1,"format":{{"width":480,"height":270,"fps":30,"duration":1}},"output":"out","nodes":{{
+          "bg":{{"op":"solid","params":{{"color":"#101014"}}}},
+          "word":{{"op":"text","timing":{{"offset":0.3}},"params":{{"text":"scrambled words read late","font":"{FONT}","size":36,"position":[40,130],"color":"#f4f1ea",
+            "scramble":{{"keys":[{{"t":0,"v":0}},{{"t":0.3,"v":1}}]}}}}}},
+          "out":{{"op":"over","inputs":{{"fg":"word","bg":"bg"}}}}}}}}"##
+    );
+    let d = Document::from_json(&doc).unwrap();
+    let mut r = Renderer::new(Device::new().unwrap()).unwrap();
+    r.set_base_dir(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+    let rv = review(&mut r, &d, &ReviewOptions::default()).unwrap();
+    let brief = rv.issues.iter().find(|i| i.kind == "too_brief").expect("too brief");
+    assert!(
+        brief.message.contains("\"scrambled words read late\""),
+        "{}",
+        brief.message
+    );
+}
