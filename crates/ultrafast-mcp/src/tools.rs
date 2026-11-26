@@ -56,28 +56,115 @@ fn object(props: Value, required: &[&str]) -> Value {
     json!({ "type": "object", "properties": props, "required": required })
 }
 
-/// `props` with the export settings every export tool takes (the same names
-/// as `ultrafast export`'s flags and the HTTP API's `output`).
-fn with_export(mut props: Value) -> Value {
-    let settings = json!({
-        "format": { "type": "string", "enum": ["mp4", "mov", "mkv", "webm", "gif", "png", "exr", "wav", "mp3", "m4a", "flac", "opus"], "description": "Container (default: from the output's extension, else mp4). png and exr are image sequences; wav to opus are sound alone." },
-        "codec": { "type": "string", "enum": ["h264", "hevc", "av1", "vp9", "prores"], "description": "Video codec (default h264; vp9 for webm)" },
-        "quality": { "type": "string", "enum": ["draft", "standard", "high", "master"], "description": "draft: a fast preview without motion blur; standard (default); high: more motion-blur samples, a slower better encode; master: the most of both" },
-        "crf": { "type": "number", "description": "Constant quality on the codec's scale (lower is better; H.264/HEVC 0-51, AV1/VP9 0-63), instead of the quality level's" },
-        "bitrate": { "type": ["number", "string"], "description": "Average bits per second (or \"8M\") instead of constant quality" },
-        "prores_profile": { "type": "string", "enum": ["proxy", "light", "standard", "hq", "4444", "4444-xq"], "description": "ProRes flavor (default hq; 4444 with alpha)" },
-        "alpha": { "type": "boolean", "description": "Keep transparency: ProRes 4444 (.mov), VP9 (.webm), GIF, or a PNG or EXR sequence" },
-        "size": { "type": "string", "description": "Output size, sharp at any size: 720p, 1080p, 1440p, 4k (the short side, so vertical stays vertical) or WxH of the document's shape" },
-        "scale": { "type": "number", "description": "Output size as a multiple of the document's (0.5, 2)" },
-        "fps": { "type": "number", "description": "Output frame rate (default the document's; a GIF's at most 30 unless asked)" },
-        "audio": { "type": "boolean", "description": "Mix the document's sound in (default true)" },
-        "audio_codec": { "type": "string", "enum": ["aac", "opus", "mp3", "flac", "pcm", "pcm-24"], "description": "Sound codec (default aac; opus for webm; pcm with ProRes)" },
-        "audio_bitrate": { "type": ["number", "string"], "description": "Sound bits per second (or \"192k\")" },
-        "loops": { "type": "integer", "description": "GIF: times it plays again after the first (0: once; default forever)" }
-    });
-    if let (Some(p), Some(s)) = (props.as_object_mut(), settings.as_object()) {
-        for (k, v) in s {
-            p.insert(k.clone(), v.clone());
+/// The export settings every export tool takes (the same names as
+/// `ultrafast export`'s flags and the HTTP API's `output`): each one's schema,
+/// a few words on it, and its full description.
+fn export_settings() -> Vec<(&'static str, Value, &'static str, &'static str)> {
+    vec![
+        (
+            "format",
+            json!({ "type": "string", "enum": ["mp4", "mov", "mkv", "webm", "gif", "png", "exr", "wav", "mp3", "m4a", "flac", "opus"] }),
+            "Container (default: from the extension)",
+            "Container (default: from the output's extension, else mp4). png and exr are image sequences; wav to opus are sound alone.",
+        ),
+        (
+            "codec",
+            json!({ "type": "string", "enum": ["h264", "hevc", "av1", "vp9", "prores"] }),
+            "Video codec (default h264)",
+            "Video codec (default h264; vp9 for webm)",
+        ),
+        (
+            "quality",
+            json!({ "type": "string", "enum": ["draft", "standard", "high", "master"] }),
+            "Quality level (default standard)",
+            "draft: a fast preview without motion blur; standard (default); high: more motion-blur samples, a slower better encode; master: the most of both",
+        ),
+        (
+            "crf",
+            json!({ "type": "number" }),
+            "Constant quality, instead of the level's",
+            "Constant quality on the codec's scale (lower is better; H.264/HEVC 0-51, AV1/VP9 0-63), instead of the quality level's",
+        ),
+        (
+            "bitrate",
+            json!({ "type": ["number", "string"] }),
+            "Average bits per second (or \"8M\")",
+            "Average bits per second (or \"8M\") instead of constant quality",
+        ),
+        (
+            "prores_profile",
+            json!({ "type": "string", "enum": ["proxy", "light", "standard", "hq", "4444", "4444-xq"] }),
+            "ProRes flavor (default hq)",
+            "ProRes flavor (default hq; 4444 with alpha)",
+        ),
+        (
+            "alpha",
+            json!({ "type": "boolean" }),
+            "Keep transparency",
+            "Keep transparency: ProRes 4444 (.mov), VP9 (.webm), GIF, or a PNG or EXR sequence",
+        ),
+        (
+            "size",
+            json!({ "type": "string" }),
+            "720p, 1080p, 1440p, 4k (the short side) or WxH",
+            "Output size, sharp at any size: 720p, 1080p, 1440p, 4k (the short side, so vertical stays vertical) or WxH of the document's shape",
+        ),
+        (
+            "scale",
+            json!({ "type": "number" }),
+            "Size as a multiple of the document's",
+            "Output size as a multiple of the document's (0.5, 2)",
+        ),
+        (
+            "fps",
+            json!({ "type": "number" }),
+            "Frame rate (default the document's)",
+            "Output frame rate (default the document's; a GIF's at most 30 unless asked)",
+        ),
+        (
+            "audio",
+            json!({ "type": "boolean" }),
+            "Mix the sound in (default true)",
+            "Mix the document's sound in (default true)",
+        ),
+        (
+            "audio_codec",
+            json!({ "type": "string", "enum": ["aac", "opus", "mp3", "flac", "pcm", "pcm-24"] }),
+            "Sound codec (default aac)",
+            "Sound codec (default aac; opus for webm; pcm with ProRes)",
+        ),
+        (
+            "audio_bitrate",
+            json!({ "type": ["number", "string"] }),
+            "Sound bits per second (or \"192k\")",
+            "Sound bits per second (or \"192k\")",
+        ),
+        (
+            "loops",
+            json!({ "type": "integer" }),
+            "GIF repeats (0: plays once)",
+            "GIF: times it plays again after the first (0: once; default forever)",
+        ),
+    ]
+}
+
+/// `props` with the export settings, described in full: `ultrafast_export`.
+fn with_export(props: Value) -> Value {
+    with_settings(props, true)
+}
+
+/// `props` with the export settings in a few words each: estimate and batch
+/// take the same settings as `ultrafast_export`, which describes them in
+/// full, so a client that loads every tool reads that once, not three times.
+fn with_export_brief(props: Value) -> Value {
+    with_settings(props, false)
+}
+
+fn with_settings(mut props: Value, full: bool) -> Value {
+    if let Some(p) = props.as_object_mut() {
+        for (name, mut schema, brief, description) in export_settings() {
+            schema["description"] = json!(if full { description } else { brief });
+            p.insert(name.to_string(), schema);
         }
     }
     props
@@ -103,9 +190,9 @@ const BEATS: &str = "The rhythm of a soundtrack: tempo (`bpm`), every beat, down
 
 const EDITS: &str = "Edits, applied in order and all or nothing. Each is an object with `edit` and its fields: set_param {node, param, value}, remove_param {node, param}, add_node {id, node}, add_layer {id, node} (adds the node over the current output: the quickest way to put something on screen), remove_node {id}, connect {node, port, source}, disconnect {node, port}, set_output {node}, set_format {format: the whole format}, set_timing {node, timing (null clears)}, set_component {name, component}. Examples: {\"edit\":\"set_param\",\"node\":\"title\",\"param\":\"color\",\"value\":\"#ff3366\"}; {\"edit\":\"add_layer\",\"id\":\"who\",\"node\":{\"op\":\"block\",\"params\":{\"kind\":\"lower_third\",\"name\":\"Mira Chen\",\"role\":\"PRODUCER\"},\"timing\":{\"offset\":1}}}; {\"edit\":\"remove_node\",\"id\":\"old_logo\"}.";
 
-const ESTIMATE: &str = "What exporting the document will cost before it runs: rendered minutes (1080p minutes; 720p counts half, 4K three), GPU seconds measured by rendering a sample of frames on this GPU, and the time to the first frame. Pass the export settings you will export with (size, quality, fps...): minutes are counted at the output size and frames timed with the quality level's motion blur. Nothing is encoded or stored.";
+const ESTIMATE: &str = "What exporting the document will cost before it runs: rendered minutes (1080p minutes; 720p counts half, 4K three), GPU seconds measured by rendering a sample of frames on this GPU, and the time to the first frame. Pass the settings you will export with (size, quality, fps...; `ultrafast_export` describes them in full): minutes are counted at the output size and frames timed with the quality level's motion blur. Nothing is encoded or stored.";
 
-const BATCH: &str = "One document, many videos: each row sets some of the document's params and becomes its own video. A key `node.param` sets that param (e.g. `title.title`), `format.width` / `format.height` / `format.fps` / `format.duration` the format, and a row may carry `edits` (an edit batch). `name` and other keys fill `{name}`-style placeholders in the output pattern; `{row}` is the row number from 1. Every row is checked before anything renders: a key naming a node or a param that isn't there is refused, with the nearest name.";
+const BATCH: &str = "One document, many videos: each row sets some of the document's params and becomes its own video. A key `node.param` sets that param (e.g. `title.title`), `format.width` / `format.height` / `format.fps` / `format.duration` the format, and a row may carry `edits` (an edit batch). `name` and other keys fill `{name}`-style placeholders in the output pattern; `{row}` is the row number from 1. Every row is checked before anything renders: a key naming a node or a param that isn't there is refused, with the nearest name. The export settings are `ultrafast_export`'s, described in full there.";
 
 const MEASURE: &str = "Glyph-by-glyph metrics of a line of text (pen positions, advances, ink boxes, ascent, descent), for laying type out by hand. `params` are `text` op params (text, font, size, weight, tracking, ...).";
 
@@ -263,7 +350,7 @@ pub fn local() -> Value {
             "Estimate a render",
             ESTIMATE,
             object(
-                with_export(json!({
+                with_export_brief(json!({
                     "path": path,
                     "from": { "type": "number", "description": "Start of the range in seconds (default 0)" },
                     "to": { "type": "number", "description": "End of the range in seconds (default: the whole film)" },
@@ -278,7 +365,7 @@ pub fn local() -> Value {
             "Batch render",
             &format!("{BATCH} Writes one video per row (replacing files that exist) and returns their paths."),
             object(
-                with_export(json!({
+                with_export_brief(json!({
                     "path": path,
                     "data": { "type": "string", "description": "A data file: .csv (header row, then a row per video), .json (a list of objects) or .jsonl" },
                     "rows": { "type": "array", "items": { "type": "object" }, "description": "The rows inline, instead of `data`" },
@@ -511,7 +598,7 @@ pub fn remote() -> Value {
             "Estimate a render",
             ESTIMATE,
             object(
-                with_export(json!({
+                with_export_brief(json!({
                     "document": doc,
                     "from": { "type": "number", "description": "Start of the range in seconds (default 0)" },
                     "to": { "type": "number", "description": "End of the range in seconds (default: the whole film)" },
@@ -528,7 +615,7 @@ pub fn remote() -> Value {
                 "{BATCH} Renders and stores one video per row (at most 20 rows a call) and returns a download link for each; nothing is overwritten."
             ),
             object(
-                with_export(json!({
+                with_export_brief(json!({
                     "document": doc,
                     "rows": { "type": "array", "items": { "type": "object" }, "maxItems": 20, "description": "One object per video, e.g. {\"name\": \"ana\", \"title.title\": \"Happy birthday, Ana\"}" }
                 })),
@@ -614,6 +701,30 @@ mod tests {
         }
         assert_eq!(local().as_array().unwrap().len(), 20);
         assert_eq!(remote().as_array().unwrap().len(), 16);
+    }
+
+    #[test]
+    fn estimate_and_batch_take_every_export_setting_in_a_few_words() {
+        for set in [local(), remote()] {
+            let props = |name: &str| {
+                set.as_array().unwrap().iter().find(|t| t["name"] == name).unwrap()["inputSchema"]["properties"].clone()
+            };
+            let export = props("ultrafast_export");
+            for name in ["ultrafast_estimate", "ultrafast_batch"] {
+                let p = props(name);
+                for (key, _, brief, full) in export_settings() {
+                    // The same schema (type, allowed values), every setting
+                    // described: briefly here, in full on export.
+                    let (mut a, mut b) = (p[key].clone(), export[key].clone());
+                    assert_eq!(a["description"], brief, "{name}.{key}");
+                    assert_eq!(b["description"], full, "export.{key}");
+                    assert!(brief.len() < full.len() || brief == full, "{key}");
+                    a.as_object_mut().unwrap().remove("description");
+                    b.as_object_mut().unwrap().remove("description");
+                    assert_eq!(a, b, "{name}.{key}");
+                }
+            }
+        }
     }
 
     #[test]
