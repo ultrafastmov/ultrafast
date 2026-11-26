@@ -110,18 +110,21 @@ call, a link per row), `profile`, `beats` (`audio`: an asset id or URL),
 `import_svg` (`svg`: the source text), `measure` and `outline`.
 
 Clients send the server's API key as `Authorization: Bearer <key>`; a call
-without one gets 401.
+without one gets 401. Keep the key in the client's environment rather than
+its config: in single quotes, `${ULTRAFAST_API_KEY}` stays a reference that
+Claude Code fills in when it connects.
 
 ```bash
 claude mcp add --transport http ultrafast https://video.example.com/mcp \
-  --header "Authorization: Bearer $ULTRAFAST_API_KEY"
+  --header 'Authorization: Bearer ${ULTRAFAST_API_KEY}'
 ```
 
 Codex: `url = "..."` and `bearer_token_env_var = "ULTRAFAST_API_KEY"`.
-Cursor: `"url"` with `"headers"`. Antigravity CLI: `agy mcp add --header
-"Authorization: Bearer $ULTRAFAST_API_KEY" ultrafast <url>` (it writes
+Cursor: `"url"` with `"headers"` (`${env:ULTRAFAST_API_KEY}`). Gemini CLI:
+`"httpUrl"` with `"headers"` (`$ULTRAFAST_API_KEY`). Antigravity CLI writes
 `"serverUrl"` with `"headers"` and sends the header as written, without
-expanding variables). Gemini CLI: `"httpUrl"` with `"headers"`.
+expanding variables, so the key itself sits in its `mcp_config.json`, which
+it leaves readable by every user: `chmod 600` that file.
 Claude's and ChatGPT's connectors sign in with OAuth rather than a key, so
 they use ultrafast Cloud.
 

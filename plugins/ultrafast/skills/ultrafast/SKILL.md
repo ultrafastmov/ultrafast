@@ -27,10 +27,12 @@ looked at.
      Absolute paths are safest; a relative one resolves against your project
      folder. Results name files by absolute path: tell the person those.
      Edit with `ultrafast_edit` or by writing the file; the server reloads it.
-   - Remote server (HTTP): tools take the whole `document` inline. Pass the
-     document `ultrafast_edit` returns to the next call. Media inside it are
-     `asset://` ids or https URLs, never local paths. `ultrafast_export`
-     returns a download link.
+   - Remote server (HTTP): tools take the whole `document` inline, and it
+     renders on that server. Unless the person asked for that server, tell
+     them before the first call that sends their document there, and wait
+     for their yes. Pass the document `ultrafast_edit` returns to the next
+     call. Media inside it are `asset://` ids or https URLs, never local
+     paths. `ultrafast_export` returns a download link.
 2. **No tools, but a shell**: run `uf --version`. If it prints a version, use
    the CLI (`uf` and `ultrafast` are the same command).
 3. **Neither**: tell the person how to install or connect ultrafast

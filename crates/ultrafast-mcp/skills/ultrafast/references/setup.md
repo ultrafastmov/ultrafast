@@ -1,14 +1,20 @@
 # Setting up ultrafast for an agent
 
+Each command here installs software or changes an agent's settings: show it
+to the person, and run it only when they ask you to.
+
 ## Install the engine
 
 One binary, `ultrafast`, with `uf` as its short name:
 
 ```bash
-cargo install ultrafast                    # from crates.io
-brew install ultrafastmov/tap/ultrafast    # macOS, prebuilt
-docker run --gpus all ghcr.io/ultrafastmov/ultrafast:latest info
+cargo install ultrafast --version 0.2.2 --locked   # from crates.io
+brew install ultrafastmov/tap/ultrafast            # macOS, prebuilt
+docker run --gpus all ghcr.io/ultrafastmov/ultrafast:0.2.2 info
 ```
+
+The cargo and Docker lines pin the release this guide is for; Homebrew
+installs the tap's newest. `uf --version` says which one you have.
 
 It renders with Metal on macOS (Apple silicon) and Vulkan on Linux and
 Windows (WSL2). `uf info` names the GPU it found. H.264 and HEVC exports
@@ -78,13 +84,16 @@ Raise it if exports time out: in Codex, add `tool_timeout_sec = 300` to the
 
 A self-hosted server (`ultrafast serve`, or the Docker image) answers MCP at
 `/mcp`, e.g. `https://video.example.com/mcp`. Clients send its API key as a
-bearer token.
+bearer token. Keep the key in the environment (`ULTRAFAST_API_KEY` here),
+out of command lines and config files: every client below except
+Antigravity CLI reads it from there when it connects.
 
-Claude Code:
+Claude Code (single quotes keep `${ULTRAFAST_API_KEY}` a reference, which
+Claude Code fills in from its environment when it connects):
 
 ```bash
 claude mcp add --transport http ultrafast https://video.example.com/mcp \
-  --header "Authorization: Bearer $ULTRAFAST_API_KEY"
+  --header 'Authorization: Bearer ${ULTRAFAST_API_KEY}'
 ```
 
 Codex:
@@ -94,16 +103,7 @@ codex mcp add ultrafast --url https://video.example.com/mcp \
   --bearer-token-env-var ULTRAFAST_API_KEY
 ```
 
-Antigravity CLI (it sends the header as written and doesn't expand
-variables, so the double quotes put the key itself in
-`~/.gemini/config/mcp_config.json`):
-
-```bash
-agy mcp add --header "Authorization: Bearer $ULTRAFAST_API_KEY" ultrafast \
-  https://video.example.com/mcp
-```
-
-Gemini CLI (single quotes keep `$ULTRAFAST_API_KEY` as a reference that
+Gemini CLI (single quotes keep `$ULTRAFAST_API_KEY` a reference that
 Gemini CLI reads from the environment when it connects):
 
 ```bash
@@ -119,8 +119,24 @@ Cursor:
   "headers": { "Authorization": "Bearer ${env:ULTRAFAST_API_KEY}" } } } }
 ```
 
+Antigravity CLI sends headers exactly as written, without expanding
+variables, so the key itself has to be saved in
+`~/.gemini/config/mcp_config.json`, a file it leaves readable by every user
+of the machine. Add the server to that file in an editor rather than on a
+command line, then make the file private:
+
+```json
+{ "mcpServers": { "ultrafast": { "serverUrl": "https://video.example.com/mcp",
+  "headers": { "Authorization": "Bearer <the key>" } } } }
+```
+
+```bash
+chmod 600 ~/.gemini/config/mcp_config.json
+```
+
 The remote tools take documents inline instead of file paths, and exports
-come back as download links.
+come back as download links. Everything a call sends, the document with its
+text and media links, goes to that server.
 
 ultrafast Cloud (`https://mcp.ultrafast.mov`, not open yet) serves the same
 tools with OAuth sign-in. That is what Claude's connectors (Settings →
@@ -132,7 +148,7 @@ Clients that load skills from MCP servers get this skill from the ultrafast
 server itself, local or remote, with nothing to add. Everywhere else:
 
 ```bash
-npx skills add ultrafastmov/ultrafast
+npx skills add ultrafastmov/ultrafast@v0.2.2
 ```
 
 It installs for Claude Code, Codex, Cursor, Gemini CLI and other agents.
@@ -140,7 +156,7 @@ Claude Code can also install the ultrafast plugin, which bundles this skill
 with the `uf mcp` server:
 
 ```bash
-claude plugin marketplace add ultrafastmov/ultrafast
+claude plugin marketplace add ultrafastmov/ultrafast@v0.2.2
 claude plugin install ultrafast@ultrafast
 ```
 
@@ -148,5 +164,10 @@ In Antigravity CLI the repository itself is the plugin, with the same skill
 and server:
 
 ```bash
-agy plugin install https://github.com/ultrafastmov/ultrafast
+agy plugin install https://github.com/ultrafastmov/ultrafast/tree/v0.2.2
 ```
+
+These pin the release this guide is for, and a pinned install stays on it.
+To follow every release instead, leave the version off:
+`ultrafastmov/ultrafast`, or `https://github.com/ultrafastmov/ultrafast` for
+Antigravity CLI.

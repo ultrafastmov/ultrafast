@@ -8,10 +8,12 @@
 The files: the root Cargo.toml (the workspace version and the workspace
 crates' dependency versions), Cargo.lock's entries for the workspace
 crates, the agent plugin manifests (plugin.json at the root, the Claude
-Code plugin's, gemini-extension.json) and the skill's metadata (every
-copy, the one the MCP crate serves included). The SDKs keep their own
-versions; server.json is a template that release CI fills in for each
-version.
+Code plugin's, gemini-extension.json), the skill's metadata (every
+copy, the one the MCP crate serves included) and the install commands in
+the skill's setup guide that pin a release (`cargo install ultrafast
+--version`, the Docker image's tag, `ultrafastmov/ultrafast@vX.Y.Z` and
+`.../tree/vX.Y.Z`). The SDKs keep their own versions; server.json is a
+template that release CI fills in for each version.
 """
 import pathlib
 import re
@@ -31,6 +33,18 @@ SKILLS = [
     "plugins/ultrafast-directory/skills/ultrafast/SKILL.md",
     "crates/ultrafast-mcp/skills/ultrafast/SKILL.md",
 ]
+# The setup guide's copies (the directory bundle's is its own, shorter one)
+# and the install commands in them that pin a release.
+PINNED = [
+    "skills/ultrafast/references/setup.md",
+    "plugins/ultrafast/skills/ultrafast/references/setup.md",
+    "plugins/ultrafast-directory/skills/ultrafast/references/setup.md",
+    "crates/ultrafast-mcp/skills/ultrafast/references/setup.md",
+]
+PIN = (
+    r"(cargo install ultrafast --version |ghcr\.io/ultrafastmov/ultrafast:"
+    r"|ultrafastmov/ultrafast@v|github\.com/ultrafastmov/ultrafast/tree/v)"
+)
 
 
 def crate_names():
@@ -67,6 +81,9 @@ def found():
     for f in SKILLS:
         m = re.search(rf'^  version: "({SEMVER})"', (ROOT / f).read_text(), re.M)
         out.append((f, "metadata.version", m.group(1) if m else "missing"))
+    for f in PINNED:
+        pins = re.findall(rf"{PIN}({SEMVER})", (ROOT / f).read_text())
+        out += [(f, f"pin {what.strip()}", v) for what, v in pins] or [(f, "pinned install", "missing")]
     return out
 
 
@@ -99,6 +116,9 @@ def set_version(new):
         write(f, rf'(^  "version": "){SEMVER}(")', rf"\g<1>{new}\2", 1)
     for f in SKILLS:
         write(f, rf'(^  version: "){SEMVER}(")', rf"\g<1>{new}\2", 1)
+    for f in PINNED:
+        pins = len(re.findall(rf"{PIN}{SEMVER}", (ROOT / f).read_text()))
+        write(f, rf"{PIN}{SEMVER}", rf"\g<1>{new}", max(pins, 1), 0)
     check()
 
 

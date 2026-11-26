@@ -126,9 +126,11 @@ by URL:
 
 ```bash
 claude mcp add --transport http ultrafast http://localhost:8080/mcp \
-  --header "Authorization: Bearer $ULTRAFAST_API_KEY"
+  --header 'Authorization: Bearer ${ULTRAFAST_API_KEY}'
 ```
 
+The single quotes keep the key out of the command line and Claude Code's
+config: it reads `ULTRAFAST_API_KEY` from its environment when it connects.
 Clients that can send a header connect this way. Connectors that only sign
 in with OAuth (Claude's and ChatGPT's) need ultrafast Cloud's
 `https://mcp.ultrafast.mov`, which is not open yet; see
