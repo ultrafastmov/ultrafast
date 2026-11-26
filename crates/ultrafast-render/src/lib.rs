@@ -1305,6 +1305,7 @@ impl Renderer {
                     structure_revision: 0,
                     instance: 0,
                     unread: Vec::new(),
+                    short_keys: false,
                 };
                 let (mut out, p) = layout::expand(&scoped, &mut self.fonts, &base);
                 problems.extend(p.into_iter().map(|(n, m)| (format!("{name}/{n}"), m)));
@@ -5187,6 +5188,7 @@ fn expand_everywhere(
         structure_revision: 0,
         instance: 0,
         unread: Vec::new(),
+        short_keys: false,
     };
     let inner: Vec<&String> = doc
         .components

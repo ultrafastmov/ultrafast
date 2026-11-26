@@ -99,6 +99,7 @@ pub enum Param {
     Text(String),
     Bool(bool),
     Animated {
+        #[serde(serialize_with = "write_keys")]
         keys: Vec<Key>,
         /// After the last key: start over, or play back and forth.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -298,6 +299,65 @@ pub struct Document {
     /// checks name them. Not content.
     #[serde(skip)]
     pub unread: Vec<UnreadKey>,
+    /// Whether it was read with keys written short (`[t, v, ease]`): then
+    /// [`Document::to_json`] writes its keys that way too. Not content.
+    #[serde(skip)]
+    pub short_keys: bool,
+}
+
+thread_local! {
+    /// Set while [`Document::to_json`] writes a document read with short keys.
+    static SHORT_KEYS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Keys as `{"t", "v", "ease"}` objects, or while a document read with short
+/// keys is written, as `[t, v]` and `[t, v, ease]` (a linear ease left out).
+fn write_keys<S: serde::Serializer>(keys: &[Key], s: S) -> Result<S::Ok, S::Error> {
+    if !SHORT_KEYS.with(std::cell::Cell::get) {
+        return keys.serialize(s);
+    }
+    struct Short<'a>(&'a Key);
+    impl Serialize for Short<'_> {
+        fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            use serde::ser::SerializeSeq;
+            let k = self.0;
+            let eased = k.ease != Ease::Linear;
+            let mut seq = s.serialize_seq(Some(2 + usize::from(eased)))?;
+            seq.serialize_element(&k.t)?;
+            match k.v.as_slice() {
+                [x] => seq.serialize_element(x)?,
+                v => seq.serialize_element(v)?,
+            }
+            if eased {
+                seq.serialize_element(&k.ease)?;
+            }
+            seq.end()
+        }
+    }
+    s.collect_seq(keys.iter().map(Short))
+}
+
+/// Whether a document's JSON writes any key short (`[t, v, ease]`).
+fn has_short_keys(doc: &serde_json::Value) -> bool {
+    fn params(v: &serde_json::Value) -> bool {
+        v.get("params").and_then(|p| p.as_object()).is_some_and(|p| {
+            p.values().any(|x| {
+                x.get("keys")
+                    .and_then(|k| k.as_array())
+                    .is_some_and(|k| k.iter().any(|k| k.is_array()))
+            })
+        })
+    }
+    let nodes = |v: &serde_json::Value| {
+        v.get("nodes")
+            .and_then(|n| n.as_object())
+            .is_some_and(|n| n.values().any(params))
+    };
+    nodes(doc)
+        || doc
+            .get("components")
+            .and_then(|c| c.as_object())
+            .is_some_and(|c| c.values().any(|c| nodes(c) || params(c)))
 }
 
 /// A key of a node, or of its `timing`, that the format doesn't have.
@@ -416,11 +476,21 @@ impl Document {
         doc.validate()?;
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
             doc.unread = unread_keys(&v);
+            doc.short_keys = has_short_keys(&v);
         }
         Ok(doc)
     }
 
+    /// The document as pretty JSON. Keys come out as they were read: as
+    /// `[t, v, ease]` if the document wrote any that way, else as objects.
     pub fn to_json(&self) -> String {
+        struct Reset(bool);
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                SHORT_KEYS.with(|s| s.set(self.0));
+            }
+        }
+        let _reset = Reset(SHORT_KEYS.with(|s| s.replace(self.short_keys)));
         serde_json::to_string_pretty(self).expect("document serializes")
     }
 
@@ -645,6 +715,22 @@ mod tests {
         // Layers write back as the list; every other node's inputs as a map.
         let json: serde_json::Value = serde_json::from_str(&long.to_json()).unwrap();
         assert_eq!(json["nodes"]["o"]["inputs"], serde_json::json!(["a", "b"]));
+        // Keys come back in the form they were read in.
+        let keys = |d: &Document| -> serde_json::Value {
+            serde_json::from_str::<serde_json::Value>(&d.to_json()).unwrap()["nodes"]["b"]["params"]["center"]["keys"]
+                .clone()
+        };
+        assert_eq!(
+            keys(&short),
+            serde_json::json!([[0.0, [1.0, 2.0], {"bezier": [0.2, 0.0, 0.0, 1.0]}], [0.5, [3.0, 4.0]]])
+        );
+        assert_eq!(
+            keys(&long)[1],
+            serde_json::json!({"t": 0.5, "v": [3.0, 4.0], "ease": "linear"})
+        );
+        assert_eq!(Document::from_json(&short.to_json()).unwrap(), short);
+        let scalar = serde_json::from_str::<serde_json::Value>(&short.to_json()).unwrap()["nodes"]["a"]["params"]["color"]["keys"][1].clone();
+        assert_eq!(scalar, serde_json::json!([1.0, [1.0, 1.0, 1.0, 1.0], "out_cubic"]));
         let pair = r#"{"op": "over", "inputs": {"fg": "a", "bg": "b"}}"#;
         let node: Node = serde_json::from_str(pair).unwrap();
         assert!(node.layers().is_none());
