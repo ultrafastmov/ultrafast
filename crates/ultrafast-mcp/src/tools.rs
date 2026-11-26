@@ -83,7 +83,7 @@ fn with_export(mut props: Value) -> Value {
     props
 }
 
-const OPS: &str = "The op vocabulary: every op ultrafast knows (generators, footage, type, shapes, 3D, particles, compositing, filters, captions, charts, blocks, looks), its input ports and params with types, defaults and docs. With no arguments it returns all of it as compact Markdown; `ops` returns the full JSON of just those ops. Read it before writing a document, and again when unsure of a param.";
+const OPS: &str = "The op vocabulary: every op ultrafast knows (generators, footage, type, shapes, 3D, particles, compositing, filters, captions, charts, blocks, looks). With no arguments: each op on one line, with its input ports and what it does. With `ops`: those ops' params in full (type, default, what each does). Look up every op you write before writing it, several in one call.";
 
 const NEW: &str = "Templates to start from: `vertical` (1080x1920 editorial), `title` (1920x1080 title over a shader world), `square` (1080x1080 risograph), `promo` (1080x1920, 13 s: title, stat, quote and end card blocks joined by transitions), `explainer` (1920x1080 on paper: chapter, key idea with a lower third, stat), `product` (a product reveal).";
 
@@ -126,7 +126,7 @@ fn ops_tool() -> Value {
         "Op reference",
         OPS,
         object(
-            json!({ "ops": { "type": "array", "items": { "type": "string" }, "description": "Op names to return in full JSON, e.g. [\"text\", \"captions\"]" } }),
+            json!({ "ops": { "type": "array", "items": { "type": "string" }, "description": "Op names to return with all their params, e.g. [\"text\", \"captions\"]" } }),
             &[],
         ),
         READ,

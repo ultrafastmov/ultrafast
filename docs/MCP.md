@@ -71,7 +71,7 @@ says to use an absolute path. Results name files by absolute path.
 
 | tool | does |
 |---|---|
-| `ultrafast_ops` | the op vocabulary as compact Markdown, or the full JSON of named ops (`ops: [...]`) |
+| `ultrafast_ops` | every op on one line (ports, what it does), or the params of named ops (`ops: [...]`), as Markdown |
 | `ultrafast_new` | write a template (`vertical`, `title`, `square`, `promo`, `explainer`, `product`) to a path |
 | `ultrafast_check` | problems in a document, static and render-time |
 | `ultrafast_frame` | one exact frame, returned as an image as the export shows it (black where nothing is drawn; `alpha: true` shows transparency as a checkerboard) |
