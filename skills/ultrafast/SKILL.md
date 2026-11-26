@@ -121,7 +121,7 @@ The format follows the output's extension; the settings are the same in
     "bg":     { "op": "gradient", "params": { "kind": "radial", "a": "#2b2250", "b": "#0b0a12" } },
     "title":  { "op": "block", "params": { "kind": "title", "kicker": "SATURDAYS", "title": "Learn the wheel" },
                 "timing": { "offset": 0.3 } },
-    "comp":   { "op": "over", "inputs": { "fg": "title", "bg": "bg" } },
+    "comp":   { "op": "over", "inputs": ["bg", "title"] },
     "finish": { "op": "grain", "inputs": { "source": "comp" }, "params": { "amount": 0.06 } }
   },
   "output": "finish"
@@ -131,10 +131,13 @@ The format follows the output's extension; the settings are the same in
 - `nodes` is a map of id to node. A node is `op`, `params`, `inputs` (other
   node ids on named ports) and optional `timing`. `output` names the last
   node.
-- Composite with `over` (`fg` over `bg`); effects take a `source`; cut
-  between shots with `transition` (`a`, `b`, `at`, `duration`, `kind`).
-- Any param can be animated:
-  `{"keys": [{"t": 0, "v": 0, "ease": "out_expo"}, {"t": 0.8, "v": 1}]}`,
+- Composite with `over`: its `inputs` are the layers, bottom first, each
+  over the ones before it (`["bg", "title", "logo"]`: one node for the
+  whole stack; before ultrafast 0.3.1, `{"fg": "title", "bg": "bg"}`).
+  Effects take a `source`; cut between shots with `transition` (`a`, `b`,
+  `at`, `duration`, `kind`).
+- Any param can be animated. A key is `[t, v]` or `[t, v, ease]`:
+  `{"keys": [[0, 0, "out_expo"], [0.8, 1]]}`,
   `{"wiggle": ...}`, `{"oscillate": ...}`, `{"audio": ...}` or
   `{"expr": "0.5 + 0.5 * sin(t * 3)"}`.
 - `timing`: `in`/`out` (when it shows), `offset` (where its time zero sits),

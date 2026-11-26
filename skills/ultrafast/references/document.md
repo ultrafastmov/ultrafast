@@ -36,8 +36,10 @@ ports) and optional `timing`.
   shaders, 3D scenes, particles.
 - **Effects** take `source`: `transform`, `crop`, `grade`, `adjust`, `blur`,
   `grain`, `bloom`, `vignette`, `stroke_outline`, `drop_shadow`, and more.
-- **Composites** take `fg` and `bg`: `over` (and blend modes); `transition`
-  takes `a` and `b`; `stack` takes `in0`, `in1`, ...
+- **Composites**: `over` takes a list of layers, bottom first, each over
+  the ones before it (`"inputs": ["bg", "title", "logo"]`), or `fg` and
+  `bg`; blend modes take `fg` and `bg`; `transition` takes `a` and `b`;
+  `stack` takes `in0`, `in1`, ...
 - `audio` nodes are mixed into the export wherever they are in the graph.
 
 `ultrafast_ops` (or `uf ops --index`) lists every op with its ports and what
@@ -54,22 +56,22 @@ A param is a constant or animated:
 
 ```json
 "size": 64
-"position": { "keys": [ { "t": 0, "v": [540, 2100], "ease": "out_expo" },
-                        { "t": 0.8, "v": [540, 960] } ] }
-"rotation": { "keys": [ { "t": 0, "v": 0 }, { "t": 1, "v": 10 } ], "repeat": "pingpong" }
+"position": { "keys": [ [0, [540, 2100], "out_expo"], [0.8, [540, 960]] ] }
+"rotation": { "keys": [ [0, 0], [1, 10] ], "repeat": "pingpong" }
 "position": { "wiggle": { "frequency": 2, "amplitude": 10, "base": [540, 960] } }
 "scale":    { "oscillate": { "frequency": 0.5, "amplitude": 0.05, "base": 1 } }
 "opacity":  { "expr": "0.5 + 0.5 * sin(t * 3)" }
 "scale":    { "audio": { "src": "song.mp3", "band": "low", "range": [1, 1.15] } }
 ```
 
-- **Keys**: `t` in seconds (the node's local time), `v` the value, `ease`
-  for the segment that starts at this key. Eases: `linear`, `hold`,
-  `in_quad`, `out_quad`, `in_out_quad`, `in_cubic`, `out_cubic`,
-  `in_out_cubic`, `in_sine`, `out_sine`, `in_out_sine`, `in_expo`,
-  `out_expo`, `in_out_expo`, `in_back`, `out_back`, `in_out_back`,
-  `out_elastic`, `out_bounce`, `spring`, `{"bezier": [x1, y1, x2, y2]}` or
-  `{"spring": [damping, stiffness]}`. `repeat`: `cycle` or `pingpong`.
+- **Keys**: `[t, v]` or `[t, v, ease]`: `t` in seconds (the node's local
+  time), `v` the value, `ease` for the segment that starts at this key
+  (`{"t": 0, "v": 1, "ease": "out_expo"}` reads the same). Eases:
+  `linear`, `hold`, `in_quad`, `out_quad`, `in_out_quad`, `in_cubic`,
+  `out_cubic`, `in_out_cubic`, `in_sine`, `out_sine`, `in_out_sine`,
+  `in_expo`, `out_expo`, `in_out_expo`, `in_back`, `out_back`,
+  `in_out_back`, `out_elastic`, `out_bounce`, `spring`,
+  `{"bezier": [x1, y1, x2, y2]}` or `{"spring": [damping, oscillations]}`. `repeat`: `cycle` or `pingpong`.
 - **Drivers**: `wiggle` (smooth noise: `frequency`, `amplitude`, `base`,
   `seed`, `octaves`), `oscillate` (`frequency`, `amplitude`, `base`,
   `phase`, `wave`), `audio` (follows a soundtrack band: `src`, `band`
@@ -138,6 +140,7 @@ in order, all or nothing:
 | `remove_node` | `id` |
 | `connect` | `node`, `port`, `source` |
 | `disconnect` | `node`, `port` |
+| `set_inputs` | `node`, `inputs`: all its inputs at once, a map of port to id or an `over`'s layers as a list |
 | `set_output` | `node` |
 | `set_format` | `format` (the whole format object) |
 | `set_timing` | `node`, `timing` (`null` clears it) |

@@ -14,12 +14,12 @@ times, and grain.
            "timing": { "offset": 0.3, "in": 0, "out": 4.2 } },
 "stat":  { "op": "block", "params": { "kind": "stat", "value": 12, "label": "seats a class" },
            "timing": { "offset": 4.2, "in": 4.2, "out": 8 } },
-"a":     { "op": "over", "inputs": { "fg": "title", "bg": "bg" } },
-"b":     { "op": "over", "inputs": { "fg": "stat", "bg": "bg" } },
+"a":     { "op": "over", "inputs": ["bg", "title"] },
+"b":     { "op": "over", "inputs": ["bg", "stat"] },
 "cut":   { "op": "transition", "inputs": { "a": "a", "b": "b" }, "params": { "kind": "push", "at": 3.9, "duration": 0.6 } },
 "words": { "op": "captions", "params": { "style": "karaoke", "safe": "social",
            "words": "0.4 0.8 Pottery\n0.8 1.1 class\n1.1 1.5 every\n1.5 2.1 Saturday." } },
-"cap":   { "op": "over", "inputs": { "fg": "words", "bg": "cut" } }
+"cap":   { "op": "over", "inputs": ["cut", "words"] }
 ```
 
 - The block's `timing.offset` is when its entrance starts; `in`/`out` bound
@@ -35,7 +35,7 @@ times, and grain.
 "graded": { "op": "grade", "inputs": { "source": "clip" }, "params": { "look": 2, "amount": 0.5 } },
 "words":  { "op": "captions", "params": { "src": "words.json", "style": "pop", "safe": "social", "background": "#000000b0" } },
 "sound":  { "op": "audio", "params": { "src": "interview.mp4", "start": 1 } },
-"top":    { "op": "over", "inputs": { "fg": "words", "bg": "graded" } },
+"top":    { "op": "over", "inputs": ["graded", "words"] },
 "out":    { "op": "vignette", "inputs": { "source": "top" } }
 ```
 
@@ -58,8 +58,8 @@ and `.vtt` work too.
 "headline": { "op": "text", "params": {
   "text": "Rendering got *fast*", "font": "Fraunces", "weight": 600, "size": 120, "color": "#16140f",
   "em_color": "#e2443b", "align": "center", "valign": "middle",
-  "position": { "keys": [ { "t": 0, "v": [960, 600], "ease": "out_expo" }, { "t": 0.8, "v": [960, 540] } ] },
-  "opacity": { "keys": [ { "t": 0, "v": 0 }, { "t": 0.5, "v": 1 } ] } } },
+  "position": { "keys": [ [0, [960, 600], "out_expo"], [0.8, [960, 540]] ] },
+  "opacity": { "keys": [ [0, 0], [0.5, 1] ] } } },
 "who":   { "op": "block", "params": { "kind": "lower_third", "name": "Mira Chen", "role": "Head of Product",
            "ink": "#16140f", "accent": "#e2443b" }, "timing": { "offset": 1, "in": 0, "out": 4.5 } },
 "chart": { "op": "block", "params": { "kind": "bar_chart", "title": "Frames per second",
@@ -81,7 +81,7 @@ and `.vtt` work too.
 "words": { "op": "captions", "params": { "src": "episode-words.json", "style": "karaoke", "background": "#000000b0" },
            "timing": { "offset": -754.2 } },
 "sound": { "op": "audio", "params": { "src": "episode.mp4", "start": 754.2, "duration": 28 } },
-"top":   { "op": "over", "inputs": { "fg": "words", "bg": "cam" } }
+"top":   { "op": "over", "inputs": ["cam", "words"] }
 ```
 
 - `clip_camera` tracks faces in the footage, follows whoever is talking with

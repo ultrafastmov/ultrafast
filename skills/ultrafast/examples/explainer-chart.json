@@ -30,33 +30,33 @@
         "valign": "middle",
         "position": {
           "keys": [
-            {
-              "t": 0,
-              "v": [
+            [
+              0,
+              [
                 960,
                 600
               ],
-              "ease": "out_expo"
-            },
-            {
-              "t": 0.8,
-              "v": [
+              "out_expo"
+            ],
+            [
+              0.8,
+              [
                 960,
                 540
               ]
-            }
+            ]
           ]
         },
         "opacity": {
           "keys": [
-            {
-              "t": 0,
-              "v": 0
-            },
-            {
-              "t": 0.5,
-              "v": 1
-            }
+            [
+              0,
+              0
+            ],
+            [
+              0.5,
+              1
+            ]
           ]
         }
       }
@@ -95,26 +95,20 @@
         "offset": 5
       }
     },
-    "s1a": {
-      "op": "over",
-      "inputs": {
-        "fg": "headline",
-        "bg": "paper"
-      }
-    },
     "s1": {
       "op": "over",
-      "inputs": {
-        "fg": "who",
-        "bg": "s1a"
-      }
+      "inputs": [
+        "paper",
+        "headline",
+        "who"
+      ]
     },
     "s2": {
       "op": "over",
-      "inputs": {
-        "fg": "chart",
-        "bg": "paper"
-      }
+      "inputs": [
+        "paper",
+        "chart"
+      ]
     },
     "cut": {
       "op": "transition",

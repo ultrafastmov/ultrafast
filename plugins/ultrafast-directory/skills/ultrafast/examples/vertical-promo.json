@@ -57,17 +57,17 @@
     },
     "a": {
       "op": "over",
-      "inputs": {
-        "fg": "title",
-        "bg": "bg"
-      }
+      "inputs": [
+        "bg",
+        "title"
+      ]
     },
     "b": {
       "op": "over",
-      "inputs": {
-        "fg": "stat",
-        "bg": "bg"
-      }
+      "inputs": [
+        "bg",
+        "stat"
+      ]
     },
     "cut": {
       "op": "transition",
@@ -83,10 +83,10 @@
     },
     "cap": {
       "op": "over",
-      "inputs": {
-        "fg": "words",
-        "bg": "cut"
-      }
+      "inputs": [
+        "cut",
+        "words"
+      ]
     },
     "finish": {
       "op": "grain",
