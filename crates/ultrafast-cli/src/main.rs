@@ -53,11 +53,15 @@ usage:
   ultrafast beats  <audio or video> [--band all|low|mid|high]
                                              tempo, beat grid, downbeats and onsets (JSON): cut on the beat
   ultrafast plan   <doc.json>                    print the fused render plan
-  ultrafast render <doc.json> [--at SECS] [--out frame.png] [--size 720p|1080p|4k|WxH | --scale S]
-                                             one frame as a PNG, drawn sharp at any size
+  ultrafast render <doc.json> [--at SECS] [--out frame.png] [--size 720p|1080p|4k|WxH | --scale S] [--alpha]
+                                             one frame as a PNG, drawn sharp at any size, as the export
+                                             shows it (black where nothing is drawn); --alpha keeps
+                                             transparency
   ultrafast sheet  <doc.json> [--at T,T,...] [--count N] [--columns C] [--out sheet.png]
                                              labeled contact sheet of frames, to review motion at a glance
-  ultrafast frames <doc.json> --out-dir DIR [--every N] [--size 720p|1080p|4k|WxH | --scale S]
+  ultrafast frames <doc.json> --out-dir DIR [--every N] [--size 720p|1080p|4k|WxH | --scale S] [--alpha]
+                                             every Nth frame as a PNG, like `render` (--alpha keeps
+                                             transparency)
   ultrafast edit   <doc.json> <edits.json> [--out doc.json]
                                              apply an edit batch, print change kind
   ultrafast inspect <doc.json> --at T [--point X,Y]
@@ -379,7 +383,12 @@ fn main() -> Result<()> {
             r.set_output_size(size);
             let (w, h) = r.frame_size(&doc);
             let setup = start.elapsed();
-            let (px, rep) = r.render_rgba8(&doc, t)?;
+            // As the export shows it, unless asked to keep transparency.
+            let (px, rep) = if has("--alpha") {
+                r.render_rgba8(&doc, t)?
+            } else {
+                r.render_opaque_rgba8(&doc, t)?
+            };
             let total = start.elapsed();
             write_png(Path::new(&out), w, h, &px)?;
             println!(
@@ -566,8 +575,14 @@ fn main() -> Result<()> {
             r.set_output_size(size);
             let (w, h) = r.frame_size(&doc);
             let n = doc.format.frame_count();
+            let alpha = has("--alpha");
             for f in (0..n).step_by(every as usize) {
-                let (px, _) = r.render_rgba8(&doc, doc.format.time_of(f))?;
+                let t = doc.format.time_of(f);
+                let (px, _) = if alpha {
+                    r.render_rgba8(&doc, t)?
+                } else {
+                    r.render_opaque_rgba8(&doc, t)?
+                };
                 write_png(&dir.join(format!("{f:05}.png")), w, h, &px)?;
             }
             println!("wrote {} frames to {}", n.div_ceil(every), dir.display());

@@ -662,9 +662,12 @@ class Ultrafast:
 
     # Looking
 
-    def frame(self, doc: DocumentLike, at: float = 0, format: str = "png") -> Image:
-        """The frame at ``at`` seconds, as PNG (or ``format="jpeg"``)."""
-        body = {"document": self.prepare(doc), "at": at, "format": format}
+    def frame(self, doc: DocumentLike, at: float = 0, format: str = "png", alpha: bool = False) -> Image:
+        """The frame at ``at`` seconds, as PNG (or ``format="jpeg"``), as a render shows it: black where
+        the document draws nothing. ``alpha=True`` keeps transparency (PNG only)."""
+        body: Dict[str, Any] = {"document": self.prepare(doc), "at": at, "format": format}
+        if alpha:
+            body["alpha"] = True
         resp = self._transport.request("POST", "/v1/frame", json_body=body, retry=True)
         return Image(resp.body, resp.content_type or "image/png", _receipt_header(resp.headers.get("X-Ultrafast-Receipt")))
 

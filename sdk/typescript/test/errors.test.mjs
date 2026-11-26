@@ -128,6 +128,16 @@ test("idempotent calls retry dropped connections", async () => {
   assert.ok(img.receipt.timings);
 });
 
+test("frames ask for alpha only when told to", async () => {
+  const r = new Ultrafast({ apiKey: "example-key", baseUrl: server.url, maxRetries: 0 });
+  const before = server.requestsTo("POST", "/v1/frame").length;
+  await r.frame(doc, { at: 0.5 });
+  await r.frame(doc, { at: 0.5, alpha: true });
+  const [plain, alpha] = server.requestsTo("POST", "/v1/frame").slice(before).map((r) => JSON.parse(r.raw.toString("utf8")));
+  assert.equal("alpha" in plain, false);
+  assert.equal(alpha.alpha, true);
+});
+
 test("a server that is not there is a ConnectionError", async () => {
   const r = new Ultrafast({ apiKey: "k", baseUrl: "http://127.0.0.1:9", maxRetries: 0 });
   await assert.rejects(r.me(), (e) => e instanceof sdk.ConnectionError && e.status === 0 && e.code === "connection_error");

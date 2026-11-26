@@ -330,6 +330,13 @@ class ClientTest(unittest.TestCase):
         self.uf.sheet(self.doc(), at=[0, 1.5])
         self.assertEqual(self.server.seen("/v1/sheet")[1].json["at"], [0, 1.5])
 
+    def test_frame_alpha_is_sent_only_when_asked_for(self):
+        self.uf.frame(self.doc(), at=0.5)
+        self.uf.frame(self.doc(), at=0.5, alpha=True)
+        plain, alpha = (r.json for r in self.server.seen("/v1/frame"))
+        self.assertNotIn("alpha", plain)
+        self.assertIs(alpha["alpha"], True)
+
     def test_estimate_without_price(self):
         self.server.usd_per_minute = None
         doc = self.doc()

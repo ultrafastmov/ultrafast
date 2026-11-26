@@ -250,14 +250,81 @@ pub fn check(r: &mut Renderer, doc: &Document) -> Value {
     json_text(&json!({ "issues": issues }))
 }
 
-/// `ultrafast_frame`.
+/// Renders frame `t` exactly as a video without alpha shows it (flattened
+/// over black), leaving the renderer's mode as it was.
+pub fn render_shown(r: &mut Renderer, doc: &Document, t: f64) -> Result<Vec<u8>, String> {
+    let mode = r.mode();
+    r.set_mode(Mode::Exact);
+    let px = r
+        .render_opaque_rgba8(doc, t)
+        .map(|(px, _)| px)
+        .map_err(|e| e.to_string());
+    r.set_mode(mode);
+    px
+}
+
+/// Straight-alpha sRGB pixels composited (in linear light) over a grey
+/// checkerboard of `cell` px squares: see-through areas show as such
+/// whatever a client puts behind an image.
+pub fn over_checkerboard(w: u32, rgba: &mut [u8], cell: u32) {
+    let lin: Vec<f32> = (0..256u32)
+        .map(|c| {
+            let c = c as f32 / 255.0;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        })
+        .collect();
+    let enc = |v: f32| {
+        let v = v.clamp(0.0, 1.0);
+        let s = if v <= 0.0031308 {
+            v * 12.92
+        } else {
+            1.055 * v.powf(1.0 / 2.4) - 0.055
+        };
+        (s * 255.0).round() as u8
+    };
+    let cell = cell.max(1);
+    let (dark, light) = (lin[0x5a], lin[0x8c]);
+    for (i, p) in rgba.chunks_exact_mut(4).enumerate() {
+        if p[3] == 255 {
+            continue;
+        }
+        let (x, y) = (i as u32 % w, i as u32 / w);
+        let g = if (x / cell + y / cell) % 2 == 0 { light } else { dark };
+        let a = p[3] as f32 / 255.0;
+        for c in 0..3 {
+            p[c] = enc(lin[p[c] as usize] * a + g * (1.0 - a));
+        }
+        p[3] = 255;
+    }
+}
+
+/// `ultrafast_frame`: the frame as the export shows it, black where the
+/// document draws nothing; with `alpha`, its transparency as a checkerboard.
 pub fn frame(r: &mut Renderer, doc: &Document, args: &Value) -> Result<Value, String> {
     let t = args.get("t").and_then(Value::as_f64).unwrap_or(0.0);
-    let max = args.get("max_size").and_then(Value::as_f64).unwrap_or(1024.0) as u32;
+    let max = (args.get("max_size").and_then(Value::as_f64).unwrap_or(1024.0) as u32).clamp(64, 4096);
+    let alpha = args.get("alpha").and_then(Value::as_bool).unwrap_or(false);
     let (w, h) = (doc.format.width, doc.format.height);
-    let px = render_exact(r, doc, t)?;
-    let (tw, th, small) = shrink(w, h, &px, max.clamp(64, 4096));
-    image(tw, th, &small, format!("t={t}s, {w}x{h} (shown at {tw}x{th})"))
+    let px = if alpha {
+        let mut px = render_exact(r, doc, t)?;
+        // Squares of 12 px as shown, whatever the image is shrunk by.
+        let k = (w.max(h) as f64 / max as f64).ceil().max(1.0) as u32;
+        over_checkerboard(w, &mut px, 12 * k);
+        px
+    } else {
+        render_shown(r, doc, t)?
+    };
+    let (tw, th, small) = shrink(w, h, &px, max);
+    let shown = if alpha {
+        ", transparent areas as a grey checkerboard"
+    } else {
+        ""
+    };
+    image(tw, th, &small, format!("t={t}s, {w}x{h} (shown at {tw}x{th}{shown})"))
 }
 
 /// `ultrafast_sheet`.

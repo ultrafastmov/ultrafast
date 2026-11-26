@@ -91,7 +91,7 @@ const CHECK: &str = "Problems in a document, before rendering it: unknown ops, m
 
 const REVIEW: &str = "Render the whole film and report what a viewer would trip over, measured on the final frames: text that never reaches readable contrast or dips below it, is on screen too briefly for its word count, runs off the frame, sits in the safe margin or under social-app buttons (`safe`: margin | social), overlaps other text, or is too small; and flashing above 3 per second (seizure risk). Each issue names a node, a time span and a fix. Run it before exporting and fix everything it finds.";
 
-const FRAME: &str = "Render one exact frame of the document and look at it (an image, longest side `max_size`).";
+const FRAME: &str = "Render one exact frame of the document and look at it (an image, longest side `max_size`), as the exported video shows it: black wherever the document draws nothing. For a transparent overlay (exported with `alpha`), `alpha: true` shows what is see-through as a grey checkerboard.";
 
 const SHEET: &str = "A labeled contact sheet of frames in one image: the fastest way to see a film's motion and pacing. Give `times` in seconds, or `count` evenly spaced frames (default 9).";
 
@@ -188,7 +188,8 @@ pub fn local() -> Value {
                 json!({
                     "path": path,
                     "t": { "type": "number", "description": "Time in seconds" },
-                    "max_size": { "type": "integer", "description": "Longest side of the returned image in px (default 1024)" }
+                    "max_size": { "type": "integer", "description": "Longest side of the returned image in px (default 1024)" },
+                    "alpha": { "type": "boolean", "description": "Show transparency as a grey checkerboard (default false: flattened over black, as an export without alpha)" }
                 }),
                 &["path", "t"]
             ),
@@ -436,7 +437,8 @@ pub fn remote() -> Value {
                 json!({
                     "document": doc,
                     "t": { "type": "number", "description": "Time in seconds" },
-                    "max_size": { "type": "integer", "description": "Longest side of the returned image in px (default 1024)" }
+                    "max_size": { "type": "integer", "description": "Longest side of the returned image in px (default 1024)" },
+                    "alpha": { "type": "boolean", "description": "Show transparency as a grey checkerboard (default false: flattened over black, as an export without alpha)" }
                 }),
                 &["document", "t"]
             ),

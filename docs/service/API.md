@@ -341,13 +341,15 @@ server without one. Estimates are free.
 ## POST /v1/frame
 
 ```json
-{ "document": {}, "at": 2.5, "format": "png" }
+{ "document": {}, "at": 2.5, "format": "png", "alpha": false }
 ```
 
 `200` with the frame at `at` seconds (`t` is accepted too) as `image/png`
 (default) or `image/jpeg`, and a compact receipt (inputs, timings,
-`warnings` as a render's receipt has them) in `X-Ultrafast-Receipt`. Frames
-are free.
+`warnings` as a render's receipt has them) in `X-Ultrafast-Receipt`. The
+frame is what a render without alpha shows: black wherever the document
+draws nothing. `"alpha": true` keeps transparency instead (PNG only; with
+JPEG it is `400`). Frames are free.
 
 ## POST /v1/sheet
 

@@ -819,6 +819,11 @@ impl Engine {
     }
 
     pub fn frame(&mut self, req: FrameRequest, grants: &Grants) -> Result<Reply, ApiError> {
+        if req.alpha && req.format == ImageFormat::Jpeg {
+            return Err(bad(
+                "JPEG has no alpha channel: ask for \"format\": \"png\" with \"alpha\": true",
+            ));
+        }
         let p0 = self.prepare(&req.document, None)?;
         if !(req.t >= 0.0 && req.t <= p0.doc.format.duration) {
             return Err(bad(format!(
@@ -845,9 +850,15 @@ impl Engine {
         let px = self.guarded(|r| {
             r.set_base_dir(&dir);
             r.prefetch_fonts(&doc);
-            r.render_rgba8(&doc, req.t)
-                .map(|(px, _)| px)
-                .map_err(|e| ApiError::new(500, "render_failed", format!("render failed: {e}")))
+            // As a render shows it (black where nothing is drawn), unless the
+            // caller keeps transparency.
+            if req.alpha {
+                r.render_rgba8(&doc, req.t)
+            } else {
+                r.render_opaque_rgba8(&doc, req.t)
+            }
+            .map(|(px, _)| px)
+            .map_err(|e| ApiError::new(500, "render_failed", format!("render failed: {e}")))
         });
         let found = self.renderer.diagnostics().to_vec();
         self.renderer.unpin_fonts();

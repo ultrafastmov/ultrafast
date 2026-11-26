@@ -339,13 +339,14 @@ fn renders_from_uploads_to_local_storage() {
             path: font_file(),
         }])
         .unwrap();
-    let (want, _) = reference.render_rgba8(&local_doc, 1.0).unwrap();
+    let (want, _) = reference.render_opaque_rgba8(&local_doc, 1.0).unwrap();
     let Reply::Bytes { body: png, .. } = engine
         .frame(
             FrameRequest {
                 document: doc.clone(),
                 t: 1.0,
                 format: ImageFormat::Png,
+                alpha: false,
             },
             &grants,
         )
@@ -493,4 +494,58 @@ fn renders_from_uploads_to_local_storage() {
     assert_eq!(e.status, 504);
     assert!(!m.dir.join("storage/renders/r7").exists());
     let _ = std::fs::remove_dir_all(&m.dir);
+}
+
+/// `POST /v1/frame` answers with the frame as a render shows it, black
+/// where the document draws nothing; `"alpha": true` keeps transparency
+/// (PNG only).
+#[test]
+fn frames_are_flattened_over_black_unless_alpha_is_asked_for() {
+    let dir = std::env::temp_dir().join(format!("ultrafast-service-frames-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cfg = Config {
+        cache_dir: dir.join("cache"),
+        cache_bytes: 1 << 28,
+        ..Config::for_tests(dir.clone())
+    };
+    let mut engine = Engine {
+        stores: Stores::new(&cfg.storage).unwrap(),
+        cache: Cache::new(&cfg.cache_dir, cfg.cache_bytes).unwrap(),
+        renderer: ultrafast_render::Renderer::new(ultrafast_gpu::Device::new().unwrap()).unwrap(),
+        start_s: Some(1.0),
+        cfg,
+    };
+    let grants = Grants { caller: "local".into() };
+    let doc = serde_json::json!({
+        "version": 1,
+        "format": {"width": 64, "height": 36, "fps": 30, "duration": 1},
+        "output": "box",
+        "nodes": {"box": {"op": "shape", "params": {"kind": "rect", "center": [32, 18], "size": [20, 10], "color": "#ffffff"}}}
+    });
+    let mut frame = |alpha: bool, format: ImageFormat| {
+        engine.frame(
+            FrameRequest {
+                document: doc.clone(),
+                t: 0.5,
+                format,
+                alpha,
+            },
+            &grants,
+        )
+    };
+    let corner = |reply: Reply| {
+        let Reply::Bytes { body, .. } = reply else {
+            panic!("expected an image")
+        };
+        let mut reader = png::Decoder::new(std::io::Cursor::new(body)).read_info().unwrap();
+        let mut px = vec![0u8; reader.output_buffer_size().unwrap()];
+        reader.next_frame(&mut px).unwrap();
+        [px[0], px[1], px[2], px[3]]
+    };
+    assert_eq!(corner(frame(false, ImageFormat::Png).unwrap()), [0, 0, 0, 255]);
+    assert_eq!(corner(frame(true, ImageFormat::Png).unwrap())[3], 0);
+    let e = frame(true, ImageFormat::Jpeg).err().expect("JPEG has no alpha");
+    assert_eq!(e.status, 400);
+    let _ = std::fs::remove_dir_all(&dir);
 }

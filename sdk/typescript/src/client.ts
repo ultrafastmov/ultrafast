@@ -114,6 +114,8 @@ export interface FrameOptions {
   /** Seconds (default 0). */
   at?: number;
   format?: "png" | "jpeg";
+  /** Keep transparency (PNG only). By default the frame is what a render shows: black where the document draws nothing. */
+  alpha?: boolean;
   signal?: AbortSignal;
 }
 
@@ -338,7 +340,8 @@ export class Ultrafast {
   /** One frame, at `at` seconds. */
   async frame(doc: DocumentInput, opts: FrameOptions = {}): Promise<Image> {
     const document = await this.prepare(doc);
-    return this.#image("/v1/frame", { document, at: opts.at ?? 0, format: opts.format }, opts.signal);
+    const body = { document, at: opts.at ?? 0, format: opts.format, ...(opts.alpha ? { alpha: true } : {}) };
+    return this.#image("/v1/frame", body, opts.signal);
   }
 
   /** A contact sheet: `count` frames over the film, or the times in `at`, each labeled with its time. */

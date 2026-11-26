@@ -98,7 +98,9 @@ The format follows the output's extension; the settings are the same in
   a vertical film stays vertical. `scale: 2` doubles it.
 - `fps` changes the frame rate; the film plays at the same speed.
 - Transparency needs a document without a full-frame background: drop the
-  `bg` node (or make it transparent), and check a frame.
+  `bg` node (or make it transparent), and check a frame with `alpha: true`
+  (`uf render --alpha`): frames are otherwise shown as the MP4 shows them,
+  black wherever nothing is drawn.
 - Settings that don't go together (alpha in an MP4, ProRes in an MP4, a GIF
   at 60 fps) are refused before anything renders, with the fix in the
   message.

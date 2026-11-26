@@ -74,7 +74,7 @@ says to use an absolute path. Results name files by absolute path.
 | `ultrafast_ops` | the op vocabulary as compact Markdown, or the full JSON of named ops (`ops: [...]`) |
 | `ultrafast_new` | write a template (`vertical`, `title`, `square`, `promo`, `explainer`, `product`) to a path |
 | `ultrafast_check` | problems in a document, static and render-time |
-| `ultrafast_frame` | one exact frame, returned as an image |
+| `ultrafast_frame` | one exact frame, returned as an image as the export shows it (black where nothing is drawn; `alpha: true` shows transparency as a checkerboard) |
 | `ultrafast_sheet` | a labeled contact sheet of frames, returned as an image |
 | `ultrafast_review` | renders the film and reports unreadable, too-brief, clipped, overlapping or tiny text, unsafe areas and seizure-risk flashing |
 | `ultrafast_inspect` | what is on screen at a time: each element's node, bounds and words |

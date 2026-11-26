@@ -91,7 +91,9 @@ background while the preview keeps playing).
 
 ## Looking at the result
 
-- `snapshot` renders one exact frame to PNG and returns its path.
+- `snapshot` renders one exact frame to PNG, as the export shows it (black
+  where nothing is drawn; `"alpha": true` keeps transparency), and returns
+  its path.
 - `contact` renders a grid of frames (`count` evenly spaced, or explicit
   `times`) into one PNG: the fastest way to review motion.
 - `bounds` returns the pixel bounds of a path or text node (for layout).
@@ -115,7 +117,7 @@ background while the preview keeps playing).
 | `play`, `pause` | | `playing` |
 | `seek` | `t` | `t` |
 | `rate` | `value` | `rate` |
-| `snapshot` | `t?`, `path?` | `path`, `width`, `height` |
+| `snapshot` | `t?`, `path?`, `alpha?` | `path`, `width`, `height` |
 | `contact` | `times?`, `count?`, `columns?`, `path?` | `path`, `times` |
 | `bounds` | `node` | `bounds` |
 | `stats` | | timings, transfers, kernels, diagnostics |

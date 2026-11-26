@@ -587,7 +587,8 @@ impl Session {
             }
             "snapshot" => {
                 let t = num("t").unwrap_or(self.t);
-                let px = self.render_exact(t)?;
+                let alpha = req.get("alpha").and_then(Value::as_bool).unwrap_or(false);
+                let px = self.render_exact_as(t, alpha)?;
                 let path = text("path").map(PathBuf::from).unwrap_or_else(|| {
                     std::env::temp_dir().join(format!("ultrafast-{}-{:.3}.png", self.doc.revision, t))
                 });
@@ -743,14 +744,23 @@ impl Session {
         }
     }
 
-    /// Renders frame `t` exactly (waits for kernels and resources).
+    /// Renders frame `t` exactly (waits for kernels and resources), as the
+    /// export shows it: flattened over black where nothing is drawn.
     pub fn render_exact(&mut self, t: f64) -> Result<Vec<u8>, String> {
+        self.render_exact_as(t, false)
+    }
+
+    /// Renders frame `t` exactly; with `alpha`, straight alpha (see-through
+    /// where nothing is drawn) instead of flattened over black.
+    pub fn render_exact_as(&mut self, t: f64, alpha: bool) -> Result<Vec<u8>, String> {
         self.renderer.set_mode(Mode::Exact);
-        let r = self
-            .renderer
-            .render_rgba8(&self.doc, t)
-            .map(|(px, _)| px)
-            .map_err(|e| e.to_string());
+        let r = if alpha {
+            self.renderer.render_rgba8(&self.doc, t)
+        } else {
+            self.renderer.render_opaque_rgba8(&self.doc, t)
+        }
+        .map(|(px, _)| px)
+        .map_err(|e| e.to_string());
         self.renderer.set_mode(Mode::Live);
         r
     }
@@ -842,8 +852,9 @@ pub fn contact_sheet(
             px[3] = 255;
         }
         for (i, &t) in times.iter().enumerate() {
+            // As the export shows it: black where the document draws nothing.
             let img = renderer
-                .render_rgba8(doc, t)
+                .render_opaque_rgba8(doc, t)
                 .map(|(px, _)| px)
                 .map_err(|e| e.to_string())?;
             let (ox, oy) = (gap + (i % cols) * (thumb_w + gap), gap + (i / cols) * (thumb_h + gap));
@@ -852,21 +863,19 @@ pub fn contact_sheet(
                 let (y0, y1) = (ty * fh / thumb_h, ((ty + 1) * fh / thumb_h).max(ty * fh / thumb_h + 1));
                 for tx in 0..thumb_w {
                     let (x0, x1) = (tx * fw / thumb_w, ((tx + 1) * fw / thumb_w).max(tx * fw / thumb_w + 1));
-                    let mut acc = [0u32; 4];
+                    let mut acc = [0u32; 3];
                     for y in y0..y1 {
                         for x in x0..x1 {
-                            let p = &img[(y * fw + x) * 4..(y * fw + x) * 4 + 4];
-                            for c in 0..4 {
+                            let p = &img[(y * fw + x) * 4..(y * fw + x) * 4 + 3];
+                            for c in 0..3 {
                                 acc[c] += p[c] as u32;
                             }
                         }
                     }
                     let n = ((y1 - y0) * (x1 - x0)) as u32;
                     let d = ((oy + ty) * w + ox + tx) * 4;
-                    let a = acc[3] / n;
                     for c in 0..3 {
-                        // Composite over the sheet background.
-                        sheet[d + c] = ((acc[c] / n * a + 24 * (255 - a)) / 255) as u8;
+                        sheet[d + c] = (acc[c] / n) as u8;
                     }
                     sheet[d + 3] = 255;
                 }

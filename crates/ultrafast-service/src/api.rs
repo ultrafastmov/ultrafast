@@ -184,6 +184,10 @@ pub struct FrameRequest {
     pub t: f64,
     #[serde(default)]
     pub format: ImageFormat,
+    /// Keep transparency (PNG only). Without it the frame is flattened over
+    /// black, as a render without alpha shows it.
+    #[serde(default)]
+    pub alpha: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
