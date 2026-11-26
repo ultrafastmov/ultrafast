@@ -538,7 +538,7 @@ impl Session {
             }
             "edit" => {
                 let v = req.get("edits").cloned().ok_or("`edit` needs `edits`")?;
-                let edits: Vec<Edit> = serde_json::from_value(v.clone()).map_err(|e| format!("bad edits: {e}"))?;
+                let edits: Vec<Edit> = ultrafast_graph::parse_edits(&v)?;
                 let mut resp = self.edit(&edits)?;
                 // Keys the edits' nodes and timings don't have were dropped.
                 let unread: Vec<Value> = ultrafast_graph::unread_in_edits(&v)

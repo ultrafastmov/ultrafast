@@ -21,6 +21,7 @@ usage:
   ultrafast new    <vertical|title|square|promo|explainer|product> <out.json>
                                              start a document from a template (edit, check, sheet, export)
   ultrafast ops                                  op vocabulary (JSON): ports, params, types, defaults
+  ultrafast ops --index | <op>... | --markdown   every op on one line | those ops' params | all, as Markdown
   ultrafast schema                               the document format as JSON Schema (draft 2020-12),
                                              for editors, validators and structured outputs
   ultrafast check  <doc.json>                    find problems without rendering: unknown ops,
@@ -201,6 +202,8 @@ fn main() -> Result<()> {
             "--alpha",
             "--json",
             "--cloud",
+            "--markdown",
+            "--index",
         ];
         let mut v = Vec::new();
         let mut i = 0;
@@ -241,7 +244,14 @@ fn main() -> Result<()> {
         }
         "ops" => {
             let vocab = serde_json::to_value(ultrafast_render::schema::vocabulary())?;
-            if args.iter().any(|a| a == "--markdown") {
+            if pos.len() > 1 {
+                // `uf ops text captions`: just those ops, as Markdown.
+                let r = ultrafast_mcp::core::ops(&serde_json::json!({ "ops": &pos[1..] }));
+                print!("{}", r["content"][0]["text"].as_str().unwrap_or(""));
+            } else if has("--index") {
+                // Every op on one line: what an agent reads first.
+                print!("{}", ultrafast_mcp::core::ops_index(&vocab, "uf ops text block"));
+            } else if args.iter().any(|a| a == "--markdown") {
                 // One line per op and per param: a compact reference for an
                 // agent's context (docs/OPS.md).
                 let mut md = String::from(
@@ -592,7 +602,9 @@ fn main() -> Result<()> {
         "edit" => {
             let mut doc = load(&doc_path()?)?;
             let edits_path = pos.get(2).context("missing <edits.json>")?;
-            let edits: Vec<Edit> = serde_json::from_str(&std::fs::read_to_string(edits_path)?)?;
+            let edits: Vec<Edit> =
+                ultrafast_graph::parse_edits(&serde_json::from_str(&std::fs::read_to_string(edits_path)?)?)
+                    .map_err(anyhow::Error::msg)?;
             let change = doc.apply(&edits)?;
             println!("{change:?}");
             if let Some(out) = flag("--out") {

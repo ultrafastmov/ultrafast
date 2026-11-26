@@ -26,11 +26,13 @@ pub enum Edit {
         node: Node,
     },
     RemoveNode {
+        #[serde(alias = "node")]
         id: NodeId,
     },
     Connect {
         node: NodeId,
         port: String,
+        #[serde(alias = "from")]
         source: NodeId,
     },
     Disconnect {
@@ -64,6 +66,41 @@ pub enum Change {
     Params,
     /// Graph shape, ops, format or animation-ness changed: plan is recompiled.
     Structure,
+}
+
+/// Reads an edit batch. When an edit is malformed, the message names it
+/// (its place in the batch and its kind) and the fields that kind takes, so
+/// one fix gets the batch through.
+pub fn parse_edits(v: &serde_json::Value) -> Result<Vec<Edit>, String> {
+    let items = v.as_array().ok_or("bad edits: `edits` is a list of edit objects")?;
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            serde_json::from_value(e.clone()).map_err(|err| {
+                let kind = e.get("edit").and_then(serde_json::Value::as_str).unwrap_or("");
+                let takes = match kind {
+                    "set_param" => "{node, param, value}",
+                    "remove_param" => "{node, param}",
+                    "add_node" | "add_layer" => "{id, node}",
+                    "remove_node" => "{id}",
+                    "connect" => "{node, port, source}",
+                    "disconnect" => "{node, port}",
+                    "set_output" => "{node}",
+                    "set_format" => "{format}",
+                    "set_timing" => "{node, timing}",
+                    "set_component" => "{name, component}",
+                    _ => "",
+                };
+                let takes = if takes.is_empty() {
+                    String::new()
+                } else {
+                    format!("; {kind} takes {takes}")
+                };
+                format!("bad edits: edit {} of {} ({kind}): {err}{takes}", i + 1, items.len())
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -329,6 +366,29 @@ impl Ord for Change {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_edits_takes_common_field_names_and_names_the_bad_edit() {
+        let v = serde_json::json!([
+            { "edit": "remove_node", "node": "a" },
+            { "edit": "connect", "node": "b", "port": "source", "from": "c" }
+        ]);
+        let e = parse_edits(&v).unwrap();
+        assert_eq!(e[0], Edit::RemoveNode { id: "a".into() });
+        assert_eq!(
+            e[1],
+            Edit::Connect {
+                node: "b".into(),
+                port: "source".into(),
+                source: "c".into()
+            }
+        );
+        let bad =
+            serde_json::json!([{ "edit": "remove_node", "id": "a" }, { "edit": "set_param", "node": "b", "value": 1 }]);
+        let msg = parse_edits(&bad).unwrap_err();
+        assert!(msg.contains("edit 2 of 2 (set_param)"), "{msg}");
+        assert!(msg.contains("set_param takes {node, param, value}"), "{msg}");
+    }
 
     #[test]
     fn diff_turns_one_version_into_the_next() {

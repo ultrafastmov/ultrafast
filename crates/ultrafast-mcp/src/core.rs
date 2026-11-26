@@ -142,71 +142,99 @@ pub fn document_value(v: Option<&Value>) -> Result<Value, String> {
     serde_json::from_str(&doc.to_json()).map_err(|e| e.to_string())
 }
 
-/// `ultrafast_ops`: Markdown of every op, or the JSON of the named ones.
+/// `ultrafast_ops`: with no `ops`, a one-line index of every op (name, input
+/// ports, what it does); with `ops`, those ops' params in full, as Markdown.
+/// The index is about a seventh of the whole reference, so an agent reads
+/// in full only the ops it uses.
 pub fn ops(args: &Value) -> Value {
     let vocab = ultrafast_render::schema::vocabulary();
+    let all: Vec<&Value> = vocab.as_array().into_iter().flatten().collect();
     match args.get("ops").and_then(Value::as_array) {
         Some(names) if !names.is_empty() => {
             let want: Vec<&str> = names.iter().filter_map(Value::as_str).collect();
-            let found: Vec<&Value> = vocab
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|op| want.contains(&op["op"].as_str().unwrap_or("")))
-                .collect();
-            let missing: Vec<&&str> = want
-                .iter()
-                .filter(|n| !found.iter().any(|op| op["op"] == ***n))
-                .collect();
-            let mut out = json!({ "ops": found });
-            if !missing.is_empty() {
-                out["unknown"] = json!(missing);
+            let mut md = String::from("Params: `name`: type = default - what it does.\n");
+            for op in all.iter().filter(|op| want.contains(&op["op"].as_str().unwrap_or(""))) {
+                md += &op_markdown(op);
             }
-            json_text(&out)
+            let missing: Vec<&str> = want
+                .iter()
+                .copied()
+                .filter(|n| !all.iter().any(|op| op["op"] == *n))
+                .collect();
+            if !missing.is_empty() {
+                md += &format!(
+                    "\nNot ops: {}. `ultrafast_ops` with no arguments lists them all.\n",
+                    missing.join(", ")
+                );
+            }
+            text(md)
         }
-        _ => text(ops_markdown(&vocab)),
+        _ => text(ops_index(&vocab, r#"ultrafast_ops {"ops": ["text", "block"]}"#)),
     }
 }
 
-/// One line per op and per param: a compact reference for an agent's
-/// context (what `uf ops --markdown` prints, docs/OPS.md).
+/// Every op on one line: its name, input ports and what it does. `lookup`
+/// is how to get an op's params (the tool call, or the command).
+pub fn ops_index(vocab: &Value, lookup: &str) -> String {
+    let mut md = format!(
+        "# ultrafast ops\n\nEvery op, with its input ports and what it does. Before you write an op, \
+         get its params with `{lookup}` (several at once).\n\n"
+    );
+    for op in vocab.as_array().into_iter().flatten() {
+        md += &format!("- `{}`: {}\n", op_heading(op), op["summary"].as_str().unwrap_or(""));
+    }
+    md
+}
+
+/// `name(port, ...)`.
+fn op_heading(op: &Value) -> String {
+    let ports: Vec<&str> = op["ports"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| p.as_str())
+        .collect();
+    format!(
+        "{}{}",
+        op["op"].as_str().unwrap_or(""),
+        if ports.is_empty() {
+            String::new()
+        } else {
+            format!("({})", ports.join(", "))
+        }
+    )
+}
+
+/// One op: a heading, what it does, and one line per param.
+fn op_markdown(op: &Value) -> String {
+    let mut md = format!("\n## {}\n{}\n", op_heading(op), op["summary"].as_str().unwrap_or(""));
+    for p in op["params"].as_array().into_iter().flatten() {
+        let default = p["default"].as_str().unwrap_or("");
+        md += &format!(
+            "- `{}`: {}{}{}\n",
+            p["name"].as_str().unwrap_or(""),
+            p["type"].as_str().unwrap_or(""),
+            if default.is_empty() {
+                String::new()
+            } else {
+                format!(" = {default}")
+            },
+            match p["doc"].as_str().unwrap_or("") {
+                "" => String::new(),
+                d => format!(" - {d}"),
+            }
+        );
+    }
+    md
+}
+
+/// One line per op and per param: the whole reference (what
+/// `uf ops --markdown` prints, docs/OPS.md).
 pub fn ops_markdown(vocab: &Value) -> String {
     let mut md =
         String::from("# ultrafast ops\n\nEvery op, its input ports and its params (type = default: what it does).\n");
     for op in vocab.as_array().into_iter().flatten() {
-        let ports: Vec<&str> = op["ports"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|p| p.as_str())
-            .collect();
-        md += &format!(
-            "\n## {}{}\n{}\n",
-            op["op"].as_str().unwrap_or(""),
-            if ports.is_empty() {
-                String::new()
-            } else {
-                format!("({})", ports.join(", "))
-            },
-            op["summary"].as_str().unwrap_or("")
-        );
-        for p in op["params"].as_array().into_iter().flatten() {
-            let default = p["default"].as_str().unwrap_or("");
-            md += &format!(
-                "- `{}`: {}{}{}\n",
-                p["name"].as_str().unwrap_or(""),
-                p["type"].as_str().unwrap_or(""),
-                if default.is_empty() {
-                    String::new()
-                } else {
-                    format!(" = {default}")
-                },
-                match p["doc"].as_str().unwrap_or("") {
-                    "" => String::new(),
-                    d => format!(" - {d}"),
-                }
-            );
-        }
+        md += &op_markdown(op);
     }
     md
 }
@@ -473,7 +501,7 @@ pub fn batch_jobs(
 /// tool sends (change kind and problems on touched nodes).
 pub fn edit(mut doc: Document, args: &Value) -> Result<(Document, Value), String> {
     let v = args.get("edits").cloned().unwrap_or(json!([]));
-    let edits: Vec<Edit> = serde_json::from_value(v.clone()).map_err(|e| format!("bad edits: {e}"))?;
+    let edits: Vec<Edit> = ultrafast_graph::parse_edits(&v)?;
     let change = doc.apply(&edits).map_err(|e| e.to_string())?;
     let mut issues = issues_json(&doc);
     // Keys the edits' nodes and timings don't have were dropped on the way in.
@@ -546,11 +574,30 @@ mod tests {
     #[test]
     fn ops_lookup_names_unknown_ops() {
         let r = ops(&json!({ "ops": ["text", "nope"] }));
-        let body: Value = serde_json::from_str(r["content"][0]["text"].as_str().unwrap()).unwrap();
-        assert_eq!(body["ops"][0]["op"], "text");
-        assert_eq!(body["unknown"][0], "nope");
-        let md = ops(&json!({}));
-        assert!(md["content"][0]["text"].as_str().unwrap().contains("## text"));
+        let md = r["content"][0]["text"].as_str().unwrap();
+        assert!(md.contains("## text\n"));
+        assert!(md.contains("- `font`: "));
+        assert!(!md.contains("## block"));
+        assert!(md.contains("Not ops: nope."));
+    }
+
+    #[test]
+    fn ops_index_lists_every_op_on_one_line() {
+        let vocab = ultrafast_render::schema::vocabulary();
+        let n = vocab.as_array().unwrap().len();
+        let r = ops(&json!({}));
+        let md = r["content"][0]["text"].as_str().unwrap();
+        assert_eq!(md.lines().filter(|l| l.starts_with("- `")).count(), n);
+        assert!(md.contains("- `over(fg, bg)`: "));
+        // No params: those come one op at a time.
+        assert!(!md.contains("- `font`"));
+        // Far smaller than the whole reference.
+        assert!(md.len() * 4 < ops_markdown(&vocab).len());
+        // Asking for every op gives the whole reference's sections.
+        let names: Vec<Value> = vocab.as_array().unwrap().iter().map(|o| o["op"].clone()).collect();
+        let full = ops(&json!({ "ops": names }));
+        let full = full["content"][0]["text"].as_str().unwrap();
+        assert_eq!(full.matches("\n## ").count(), n);
     }
 
     #[test]
