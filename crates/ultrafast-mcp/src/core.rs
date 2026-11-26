@@ -25,10 +25,11 @@ pub fn encode(w: u32, h: u32, rgba: &[u8]) -> Result<(Vec<u8>, &'static str), St
     let mut png = Vec::new();
     {
         let mut enc = png::Encoder::new(&mut png, w, h);
-        enc.set_color(png::ColorType::Rgba);
+        let (color, px) = ultrafast_live::png_pixels(rgba);
+        enc.set_color(color);
         enc.set_depth(png::BitDepth::Eight);
         enc.write_header()
-            .and_then(|mut wr| wr.write_image_data(rgba))
+            .and_then(|mut wr| wr.write_image_data(&px))
             .map_err(|e| e.to_string())?;
     }
     if png.len() <= PNG_LIMIT {

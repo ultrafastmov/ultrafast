@@ -354,10 +354,7 @@ fn renders_from_uploads_to_local_storage() {
     else {
         panic!("expected a frame");
     };
-    let decoder = png::Decoder::new(std::io::Cursor::new(png));
-    let mut reader = decoder.read_info().unwrap();
-    let mut got = vec![0u8; reader.output_buffer_size().unwrap()];
-    reader.next_frame(&mut got).unwrap();
+    let got = rgba_of(png);
     assert_eq!(
         psnr(&got, &want),
         99.0,
@@ -496,6 +493,19 @@ fn renders_from_uploads_to_local_storage() {
     let _ = std::fs::remove_dir_all(&m.dir);
 }
 
+/// A PNG's pixels as RGBA8 (an opaque frame comes as RGB).
+fn rgba_of(png: Vec<u8>) -> Vec<u8> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(png)).read_info().unwrap();
+    let mut px = vec![0u8; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut px).unwrap();
+    px.truncate(info.buffer_size());
+    match info.color_type {
+        png::ColorType::Rgba => px,
+        png::ColorType::Rgb => px.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+        c => panic!("unexpected PNG colour type {c:?}"),
+    }
+}
+
 /// `POST /v1/frame` answers with the frame as a render shows it, black
 /// where the document draws nothing; `"alpha": true` keeps transparency
 /// (PNG only).
@@ -538,9 +548,7 @@ fn frames_are_flattened_over_black_unless_alpha_is_asked_for() {
         let Reply::Bytes { body, .. } = reply else {
             panic!("expected an image")
         };
-        let mut reader = png::Decoder::new(std::io::Cursor::new(body)).read_info().unwrap();
-        let mut px = vec![0u8; reader.output_buffer_size().unwrap()];
-        reader.next_frame(&mut px).unwrap();
+        let px = rgba_of(body);
         [px[0], px[1], px[2], px[3]]
     };
     assert_eq!(corner(frame(false, ImageFormat::Png).unwrap()), [0, 0, 0, 255]);

@@ -970,14 +970,27 @@ pub fn read_doc(path: &Path) -> Result<Document, String> {
     Document::from_json(&s).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// RGBA8 pixels as a PNG takes them: RGB when nothing is see-through (an
+/// opaque frame carries no alpha channel a viewer could act on), RGBA
+/// otherwise.
+pub fn png_pixels(rgba: &[u8]) -> (png::ColorType, std::borrow::Cow<'_, [u8]>) {
+    if rgba.chunks_exact(4).all(|p| p[3] == 255) {
+        let rgb = rgba.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect();
+        (png::ColorType::Rgb, std::borrow::Cow::Owned(rgb))
+    } else {
+        (png::ColorType::Rgba, std::borrow::Cow::Borrowed(rgba))
+    }
+}
+
 pub fn write_png(path: &Path, w: u32, h: u32, rgba: &[u8]) -> Result<(), String> {
     let file = std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
-    enc.set_color(png::ColorType::Rgba);
+    let (color, px) = png_pixels(rgba);
+    enc.set_color(color);
     enc.set_depth(png::BitDepth::Eight);
     enc.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
     enc.write_header()
-        .and_then(|mut w| w.write_image_data(rgba))
+        .and_then(|mut w| w.write_image_data(&px))
         .map_err(|e| e.to_string())
 }
 

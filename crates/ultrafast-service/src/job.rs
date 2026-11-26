@@ -1023,10 +1023,11 @@ fn only_reads_from(doc: &Document, dir: &Path) -> Result<(), ApiError> {
 fn encode_png(w: u32, h: u32, rgba: &[u8]) -> anyhow::Result<Vec<u8>> {
     let mut out = Vec::new();
     let mut enc = png::Encoder::new(&mut out, w, h);
-    enc.set_color(png::ColorType::Rgba);
+    let (color, px) = ultrafast_live::png_pixels(rgba);
+    enc.set_color(color);
     enc.set_depth(png::BitDepth::Eight);
     enc.set_compression(png::Compression::Fast);
-    enc.write_header()?.write_image_data(rgba)?;
+    enc.write_header()?.write_image_data(&px)?;
     Ok(out)
 }
 
