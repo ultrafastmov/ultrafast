@@ -16,8 +16,8 @@ ultrafast: realtime GPU video composition engine
 
 usage:
   ultrafast info                                 show GPU device
-  ultrafast mcp                                  serve ultrafast to agents over MCP (stdio): ops, new, check,
-                                             frame and sheet (as images), edit, export, measure, outline
+  ultrafast mcp                                  serve ultrafast to agents over MCP (stdio): the tools (new, check,
+                                             frame and sheet as images, review, edit, export, ...) and the skill
   ultrafast new    <vertical|title|square|promo|explainer|product> <out.json>
                                              start a document from a template (edit, check, sheet, export)
   ultrafast ops                                  op vocabulary (JSON): ports, params, types, defaults
