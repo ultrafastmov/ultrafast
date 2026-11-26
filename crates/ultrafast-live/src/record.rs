@@ -62,6 +62,7 @@ pub fn summary(edits: &[Edit]) -> String {
         Edit::RemoveNode { id } => format!("- {id}"),
         Edit::Connect { node, port, source } => format!("{node}.{port} <- {source}"),
         Edit::Disconnect { node, port } => format!("{node}.{port} disconnected"),
+        Edit::SetInputs { node, .. } => format!("{node} inputs"),
         Edit::SetOutput { node } => format!("output = {node}"),
         Edit::SetFormat { .. } => "format changed".into(),
         Edit::SetTiming { node, .. } => format!("{node} timing"),
@@ -80,9 +81,10 @@ fn touched(edits: &[Edit]) -> Vec<String> {
         .filter_map(|e| match e {
             Edit::SetParam { node, .. } | Edit::RemoveParam { node, .. } => Some(node.clone()),
             Edit::AddNode { id, .. } | Edit::AddLayer { id, .. } => Some(id.clone()),
-            Edit::Connect { node, .. } | Edit::Disconnect { node, .. } | Edit::SetTiming { node, .. } => {
-                Some(node.clone())
-            }
+            Edit::Connect { node, .. }
+            | Edit::Disconnect { node, .. }
+            | Edit::SetInputs { node, .. }
+            | Edit::SetTiming { node, .. } => Some(node.clone()),
             _ => None,
         })
         .collect()

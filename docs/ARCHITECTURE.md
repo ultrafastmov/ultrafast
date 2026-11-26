@@ -101,8 +101,9 @@ A document is a set of nodes keyed by stable string ids, plus an output node.
 All mutation goes through `Edit`, which is serializable and batchable:
 
 `set_param`, `remove_param`, `add_node`, `add_layer` (a node laid over the
-current output), `remove_node`, `connect`, `disconnect`, `set_output`,
-`set_format`, `set_timing`, `set_component`.
+current output), `remove_node`, `connect`, `disconnect`, `set_inputs` (all of
+a node's inputs, an `over`'s layers as a list), `set_output`, `set_format`,
+`set_timing`, `set_component`.
 
 Each applied batch bumps a document **revision** and produces a `Change` set
 classified as:

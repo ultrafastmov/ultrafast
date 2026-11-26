@@ -210,7 +210,7 @@ fn layer_port(port: &str) -> Option<usize> {
 
 /// Inputs as a map of port to node id, or as a list of node ids, which are
 /// the ports `in0`, `in1`, ... in order.
-fn inputs_map_or_list<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<String, NodeId>, D::Error> {
+pub(crate) fn inputs_map_or_list<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<String, NodeId>, D::Error> {
     struct Inputs;
     impl<'de> serde::de::Visitor<'de> for Inputs {
         type Value = BTreeMap<String, NodeId>;
@@ -463,6 +463,14 @@ pub enum DocumentError {
         "{at} param `{param}`: {value} is not a param value (a number, vector, color or other text, bool, keys, expr, wiggle, oscillate or audio)"
     )]
     BadParam { at: String, param: String, value: String },
+    /// A param's keys parse but for one key, located.
+    #[error("{at} param `{param}`: key {key} of its `keys`: {why}")]
+    BadKey {
+        at: String,
+        param: String,
+        key: usize,
+        why: String,
+    },
 }
 
 impl Document {
@@ -599,6 +607,24 @@ fn locate_bad_param(s: &str) -> Option<DocumentError> {
                 .flatten()
             {
                 if serde_json::from_value::<Param>(p.clone()).is_err() {
+                    // One key wrong in otherwise good keys: say which and why.
+                    let keys = p.get("keys").and_then(serde_json::Value::as_array);
+                    for (i, key) in keys.into_iter().flatten().enumerate() {
+                        let why = match key.as_array() {
+                            Some(a) if !(2..=3).contains(&a.len()) => {
+                                Some(format!("{key} has {} items; a key is [t, v] or [t, v, ease]", a.len()))
+                            }
+                            _ => serde_json::from_value::<Key>(key.clone()).err().map(|e| e.to_string()),
+                        };
+                        if let Some(why) = why {
+                            return Some(DocumentError::BadKey {
+                                at: format!("{at}node `{id}`"),
+                                param: k.clone(),
+                                key: i + 1,
+                                why,
+                            });
+                        }
+                    }
                     let mut value = p.to_string();
                     if value.len() > 120 {
                         value = format!("{}...", &value[..value.floor_char_boundary(117)]);
@@ -692,9 +718,30 @@ impl Document {
 mod tests {
     use super::*;
 
-    /// Keys parsing drops are kept by name: a node's own (`text` beside
-    /// `params`) and its timing's (`duration`), in components too, and in
-    /// the nodes and timings an edit batch carries.
+    #[test]
+    fn a_bad_key_is_named() {
+        let doc = |keys: &str| {
+            Document::from_json(&format!(
+                r#"{{"version": 1, "format": {{"width": 8, "height": 8, "fps": 30, "duration": 1}}, "output": "s",
+                "nodes": {{"s": {{"op": "shape", "params": {{"center": {{"keys": {keys}}}}}}}}}}}"#
+            ))
+            .unwrap_err()
+            .to_string()
+        };
+        let e = doc(r#"[[0, [1, 2]], [1, [3, 4], "ease_in_out"]]"#);
+        assert!(
+            e.contains("key 2 of its `keys`") && e.contains("unknown ease `ease_in_out`"),
+            "{e}"
+        );
+        let e = doc(r#"[{"t": 0, "v": [1, 2], "ease": "ease_in_out"}]"#);
+        assert!(e.contains("key 1 of its `keys`") && e.contains("unknown ease"), "{e}");
+        let e = doc(r#"[[0, [1, 2]], [1, [3, 4], "out_cubic", 9]]"#);
+        assert!(
+            e.contains("key 2") && e.contains("a key is [t, v] or [t, v, ease]"),
+            "{e}"
+        );
+    }
+
     #[test]
     fn short_keys_and_layer_lists_read_as_the_long_forms() {
         let head = r#"{"version": 1, "format": {"width": 8, "height": 8, "fps": 30, "duration": 1}, "output": "o", "nodes": {"#;
@@ -762,6 +809,9 @@ mod tests {
         assert!(bad.contains("a list of node ids"), "{bad}");
     }
 
+    /// Keys parsing drops are kept by name: a node's own (`text` beside
+    /// `params`) and its timing's (`duration`), in components too, and in
+    /// the nodes and timings an edit batch carries.
     #[test]
     fn keys_the_format_lacks_are_named() {
         let doc = Document::from_json(

@@ -39,6 +39,14 @@ pub enum Edit {
         node: NodeId,
         port: String,
     },
+    /// Sets all of a node's inputs: a map of port to node id, or a list
+    /// (an `over`'s layers, bottom first). `set_param` on `inputs` reads as
+    /// this.
+    SetInputs {
+        node: NodeId,
+        #[serde(deserialize_with = "crate::inputs_map_or_list")]
+        inputs: std::collections::BTreeMap<String, NodeId>,
+    },
     SetOutput {
         node: NodeId,
     },
@@ -77,7 +85,12 @@ pub fn parse_edits(v: &serde_json::Value) -> Result<Vec<Edit>, String> {
         .iter()
         .enumerate()
         .map(|(i, e)| {
-            serde_json::from_value(e.clone()).map_err(|err| {
+            // An over's layers are its inputs, not a param: what an agent
+            // means by setting the `inputs` param is setting them.
+            let inputs = (e.get("edit").and_then(serde_json::Value::as_str) == Some("set_param")
+                && e.get("param").and_then(serde_json::Value::as_str) == Some("inputs"))
+            .then(|| serde_json::json!({ "edit": "set_inputs", "node": e.get("node"), "inputs": e.get("value") }));
+            serde_json::from_value(inputs.unwrap_or_else(|| e.clone())).map_err(|err| {
                 let kind = e.get("edit").and_then(serde_json::Value::as_str).unwrap_or("");
                 let takes = match kind {
                     "set_param" => "{node, param, value}",
@@ -86,6 +99,7 @@ pub fn parse_edits(v: &serde_json::Value) -> Result<Vec<Edit>, String> {
                     "remove_node" => "{id}",
                     "connect" => "{node, port, source}",
                     "disconnect" => "{node, port}",
+                    "set_inputs" => "{node, inputs}",
                     "set_output" => "{node}",
                     "set_format" => "{format}",
                     "set_timing" => "{node, timing}",
@@ -215,6 +229,15 @@ impl Document {
                 }
                 self.output = node.clone();
                 Change::Structure
+            }
+            Edit::SetInputs { node, inputs } => {
+                let n = self.node_mut(node)?;
+                if n.inputs == *inputs {
+                    Change::None
+                } else {
+                    n.inputs = inputs.clone();
+                    Change::Structure
+                }
             }
             Edit::SetTiming { node, timing } => {
                 let n = self.node_mut(node)?;
@@ -366,6 +389,31 @@ impl Ord for Change {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn set_inputs_and_set_param_on_inputs_set_a_nodes_inputs() {
+        let mut doc = Document::from_json(
+            r##"{"version":1,"format":{"width":8,"height":8,"fps":30,"duration":1},"output":"o",
+            "nodes":{"a":{"op":"solid"},"b":{"op":"solid"},"c":{"op":"solid"},
+                     "o":{"op":"over","inputs":{"fg":"b","bg":"a"}}}}"##,
+        )
+        .unwrap();
+        let edits = parse_edits(&serde_json::json!([
+            {"edit": "set_param", "node": "o", "param": "inputs", "value": ["a", "b", "c"]}
+        ]))
+        .unwrap();
+        assert_eq!(doc.apply(&edits).unwrap(), Change::Structure);
+        assert_eq!(doc.nodes["o"].layers().unwrap(), ["a", "b", "c"]);
+        let edits = parse_edits(&serde_json::json!([
+            {"edit": "set_inputs", "node": "o", "inputs": {"fg": "c", "bg": "a"}}
+        ]))
+        .unwrap();
+        doc.apply(&edits).unwrap();
+        assert_eq!(doc.nodes["o"].inputs["fg"], "c");
+        assert!(doc.nodes["o"].layers().is_none());
+        let bad = parse_edits(&serde_json::json!([{"edit": "set_inputs", "node": "o", "inputs": 3}])).unwrap_err();
+        assert!(bad.contains("set_inputs takes {node, inputs}"), "{bad}");
+    }
 
     #[test]
     fn parse_edits_takes_common_field_names_and_names_the_bad_edit() {

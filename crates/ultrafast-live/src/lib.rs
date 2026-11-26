@@ -445,7 +445,7 @@ impl Session {
                 Edit::SetParam { node, .. } | Edit::RemoveParam { node, .. } => node,
                 Edit::AddNode { id, .. } | Edit::AddLayer { id, .. } => id,
                 Edit::Connect { node, .. } | Edit::Disconnect { node, .. } => node,
-                Edit::SetTiming { node, .. } => node,
+                Edit::SetInputs { node, .. } | Edit::SetTiming { node, .. } => node,
                 _ => continue,
             };
             if self.doc.nodes.contains_key(n) && !touched.contains(n) {
