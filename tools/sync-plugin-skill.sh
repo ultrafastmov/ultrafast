@@ -4,7 +4,9 @@
 # and security policy: plugins/ultrafast (the Claude Code marketplace plugin,
 # skill plus the local MCP server) and plugins/ultrafast-directory (the
 # skill-only bundle listed in Claude's plugin directory). Each plugin installs
-# from its own folder. `--check` only reports a difference.
+# from its own folder. plugins/dsh (the DeepSeek Harness plugin) has no skill
+# and gets the license files and security policy only. `--check` only
+# reports a difference.
 #
 # One file differs on purpose: the directory bundle keeps its own
 # references/setup.md, which installs `uf` and stops there. The directory
@@ -15,6 +17,7 @@ set -e
 cd "$(dirname "$0")/.."
 FILES="LICENSE LICENSE-APACHE LICENSE-MIT SECURITY.md"
 PLUGINS="plugins/ultrafast plugins/ultrafast-directory"
+NO_SKILL="plugins/dsh"
 DIRECTORY=plugins/ultrafast-directory
 OWN_SETUP=skills/ultrafast/references/setup.md
 if [ "$1" = "--check" ]; then
@@ -30,6 +33,9 @@ if [ "$1" = "--check" ]; then
     fi
     for f in $FILES; do diff "$f" "$p/$f"; done
   done
+  for p in $NO_SKILL; do
+    for f in $FILES; do diff "$f" "$p/$f"; done
+  done
   echo "plugin skills, licenses and SECURITY.md are in sync"
   exit 0
 fi
@@ -43,4 +49,8 @@ for p in $PLUGINS; do
   if [ "$p" = "$DIRECTORY" ]; then cp "$own" "$p/$OWN_SETUP"; fi
   for f in $FILES; do cp "$f" "$p/$f"; done
   echo "copied skills/ultrafast and $FILES -> $p"
+done
+for p in $NO_SKILL; do
+  for f in $FILES; do cp "$f" "$p/$f"; done
+  echo "copied $FILES -> $p"
 done

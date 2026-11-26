@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ultrafast",
+    "description": "Write videos as JSON documents and render them on the GPU with ultrafast. Registers the local uf mcp server: check, preview frames, review and export MP4, WebM, ProRes or GIF. Needs the uf binary on PATH."
+  }
+}

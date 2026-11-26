@@ -1,0 +1,42 @@
+{
+  "name": "dsh-ultrafast",
+  "version": "0.1.0",
+  "description": "ultrafast for DeepSeek Harness: registers the uf mcp server so the agent can write, check, preview and export videos as JSON documents on the GPU.",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.mjs",
+    "cordis.patch.yml",
+    "locale",
+    "README.md"
+  ],
+  "homepage": "https://ultrafast.mov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ultrafastmov/ultrafast.git",
+    "directory": "plugins/dsh"
+  },
+  "license": "Apache-2.0 OR MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "mcp",
+    "video",
+    "ultrafast"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "dsh": ">=0.2.2-rc.5 <0.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
