@@ -35,6 +35,11 @@ pub trait Backend: Send + Sync {
         let _ = (caller, id);
         Err("this server does not read media outside documents".into())
     }
+    /// Whether the MCP server serves the ultrafast skill with its tools
+    /// ([`Toolbox::skills`]).
+    fn skills(&self) -> bool {
+        true
+    }
 }
 
 /// The remote tools for one caller.
@@ -65,6 +70,10 @@ fn blank() -> Value {
 impl Toolbox for Remote<'_> {
     fn tools(&self) -> Value {
         crate::tools::remote()
+    }
+
+    fn skills(&self) -> bool {
+        self.backend.skills()
     }
 
     fn call(&mut self, name: &str, args: &Value) -> Result<Value, String> {

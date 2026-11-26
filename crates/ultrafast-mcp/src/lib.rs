@@ -2,6 +2,8 @@
 //!
 //! - [`rpc`]: the JSON-RPC 2.0 side of MCP (initialize, tools/list,
 //!   tools/call), shared by every transport, and the stdio loop.
+//! - [`skills`]: the ultrafast skill, built in and served over MCP (the
+//!   `io.modelcontextprotocol/skills` extension, and as resources).
 //! - [`tools`]: the tool definitions with their safety annotations: the
 //!   local set (documents are files) and the remote set (documents travel
 //!   inline in the call, media as asset ids or https URLs).
@@ -16,4 +18,5 @@ pub mod core;
 pub mod http;
 pub mod remote;
 pub mod rpc;
+pub mod skills;
 pub mod tools;

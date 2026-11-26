@@ -2,7 +2,8 @@
   "mcpServers": {
     "ultrafast": {
       "command": "uf",
-      "args": ["mcp"]
+      "args": ["mcp"],
+      "env": { "ULTRAFAST_MCP_SKILL": "0" }
     }
   }
 }

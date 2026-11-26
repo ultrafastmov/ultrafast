@@ -134,6 +134,11 @@ in with OAuth (Claude's and ChatGPT's) need ultrafast Cloud's
 `https://mcp.ultrafast.mov`, which is not open yet; see
 [docs/MCP.md](../MCP.md).
 
+The server also serves the ultrafast skill with the tools, to clients that
+load skills from MCP servers and as `skill://` resources
+([docs/MCP.md](../MCP.md#the-skill-over-mcp)); `ULTRAFAST_MCP_SKILL=0`
+serves the tools alone.
+
 ## Untrusted callers
 
 Documents can carry shaders and scripts. Scripts are bounded (no files,

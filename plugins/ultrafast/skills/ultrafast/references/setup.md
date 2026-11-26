@@ -128,6 +128,9 @@ Connectors, on web, desktop and mobile) and the ChatGPT app use.
 
 ## Add this skill
 
+Clients that load skills from MCP servers get this skill from the ultrafast
+server itself, local or remote, with nothing to add. Everywhere else:
+
 ```bash
 npx skills add ultrafastmov/ultrafast
 ```

@@ -26,7 +26,9 @@ pub fn run(port: Option<u16>, host: Option<String>) -> Result<()> {
     server::run(
         cfg,
         server::Options {
-            mounts: vec![Arc::new(McpMount)],
+            mounts: vec![Arc::new(McpMount {
+                skills: ultrafast_mcp::skills::wanted(),
+            })],
             on_listen: None,
         },
     )
@@ -37,8 +39,11 @@ pub fn new_key() {
     println!("uf_live_{}", ultrafast_service::util::random_base62(32));
 }
 
-/// The remote MCP server (Streamable HTTP; the API key as its bearer token).
-struct McpMount;
+/// The remote MCP server (Streamable HTTP; the API key as its bearer token),
+/// with the ultrafast skill unless `ULTRAFAST_MCP_SKILL=0`.
+struct McpMount {
+    skills: bool,
+}
 
 impl Mount for McpMount {
     fn claims(&self, method: &str, path: &str) -> bool {
@@ -57,6 +62,7 @@ impl Mount for McpMount {
             &Backend {
                 svc,
                 base: svc.base_url(&req.headers),
+                skills: self.skills,
             },
         );
         HttpResponse {
@@ -71,6 +77,7 @@ impl Mount for McpMount {
 struct Backend<'a> {
     svc: &'a Handle,
     base: String,
+    skills: bool,
 }
 
 impl ultrafast_mcp::http::Backend for Backend<'_> {
@@ -106,6 +113,10 @@ impl ultrafast_mcp::http::Backend for Backend<'_> {
 
     fn asset_path(&self, caller: &str, id: &str) -> Result<PathBuf, String> {
         self.svc.asset_path(caller, id).map_err(|e| e.message)
+    }
+
+    fn skills(&self) -> bool {
+        self.skills
     }
 }
 

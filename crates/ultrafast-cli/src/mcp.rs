@@ -5,7 +5,9 @@
 //! renderer are in `ultrafast_mcp`, shared with the remote server.
 //!
 //! JSON-RPC 2.0, one message per line on stdin/stdout. Anything else
-//! written to stdout while serving goes to stderr instead.
+//! written to stdout while serving goes to stderr instead. The server also
+//! serves the ultrafast skill (`ultrafast_mcp::skills`) unless
+//! `ULTRAFAST_MCP_SKILL=0`, which the plugins that ship the skill set.
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -19,6 +21,7 @@ use ultrafast_mcp::rpc::{Info, Roots, Toolbox, json_text, text};
 struct Local {
     sessions: HashMap<PathBuf, Session>,
     roots: Roots,
+    skills: bool,
 }
 
 /// The arguments of each tool that are file paths, absolute or relative to
@@ -137,6 +140,10 @@ impl Toolbox for Local {
 
     fn roots(&mut self) -> Option<&mut Roots> {
         Some(&mut self.roots)
+    }
+
+    fn skills(&self) -> bool {
+        self.skills
     }
 
     fn needs_roots(&self, name: &str, a: &Value) -> bool {
@@ -414,6 +421,7 @@ pub fn serve() -> Result<()> {
     let mut server = Local {
         sessions: HashMap::new(),
         roots: Roots::default(),
+        skills: ultrafast_mcp::skills::wanted(),
     };
     let info = Info::new(ultrafast_mcp::tools::instructions(false));
     ultrafast_mcp::rpc::serve_stdio(&mut server, &info)?;

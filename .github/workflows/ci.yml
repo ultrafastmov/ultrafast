@@ -109,6 +109,16 @@ jobs:
         with:
           toolchain: stable
       - run: cargo package --workspace --no-verify --locked
+      # `uf mcp` and `uf serve` build the skill in (crates/ultrafast-mcp/src/skills.rs):
+      # the MCP crate's package must carry every file of it.
+      - name: The MCP crate carries the skill it serves
+        run: |
+          crate=$(ls target/package/ultrafastmov-mcp-*.crate)
+          listed=$(tar -tzf "$crate")
+          for f in $(cd skills/ultrafast && find . -type f | sed 's|^\./||'); do
+            echo "$listed" | grep -q "^ultrafastmov-mcp-[^/]*/skills/ultrafast/$f\$" || { echo "$crate lacks skills/ultrafast/$f"; exit 1; }
+          done
+          echo "$crate carries the skill's $(cd skills/ultrafast && find . -type f | wc -l) files"
       # One version everywhere it is written (packaging/version.py set X.Y.Z).
       - run: python3 packaging/version.py check
       # The MCP Registry checks the README crates.io shows for this line.

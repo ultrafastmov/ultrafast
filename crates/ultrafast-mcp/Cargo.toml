@@ -2,7 +2,7 @@
 # `ultrafast-mcp` on crates.io is an unrelated MCP library; the code still
 # imports this crate as `ultrafast_mcp`.
 name = "ultrafastmov-mcp"
-description = "ultrafast as Model Context Protocol tools: the stdio server behind `uf mcp` and the Streamable HTTP server that `uf serve` mounts at /mcp"
+description = "ultrafast as Model Context Protocol tools, with its agent skill: the stdio server behind `uf mcp` and the Streamable HTTP server that `uf serve` mounts at /mcp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,6 +25,7 @@ serde_json.workspace = true
 png.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 base64 = "0.23"
+sha2 = "0.11"
 
 [dev-dependencies]
 tiny_http = "0.12"

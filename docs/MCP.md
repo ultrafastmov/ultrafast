@@ -11,9 +11,10 @@ ultrafast serves agents as Model Context Protocol tools two ways:
 
 Both speak MCP 2024-11-05 through 2025-11-25 (with `initialize`) and the
 stateless 2026-07-28 (`server/discover`, the version in every request's
-`_meta`). The code is in `crates/ultrafast-mcp`; the CLI's stdio server is
-`crates/ultrafast-cli/src/mcp.rs` and the service mounts the HTTP handler in
-`crates/ultrafast-cli/src/serve.rs`.
+`_meta`), and both serve the ultrafast skill with their tools
+([below](#the-skill-over-mcp)). The code is in `crates/ultrafast-mcp`; the
+CLI's stdio server is `crates/ultrafast-cli/src/mcp.rs` and the service
+mounts the HTTP handler in `crates/ultrafast-cli/src/serve.rs`.
 
 ## Local: `uf mcp`
 
@@ -136,6 +137,31 @@ development server on this machine's GPU:
 ULTRAFAST_API_KEYS=uf_test_dev cargo run --release -p ultrafastmov-mcp --example dev_server -- 8765
 ```
 
+## The skill over MCP
+
+Both servers serve the ultrafast skill (`skills/ultrafast`) next to their
+tools, so an agent that adds the server has nothing else to install:
+
+- Hosts that load skills from MCP servers (the
+  [`io.modelcontextprotocol/skills`](https://github.com/modelcontextprotocol/ext-skills)
+  extension: fast-agent, and Claude Code as its rollout reaches accounts,
+  where it shows as `ultrafast:ultrafast`) find it with `skills/list`: its
+  frontmatter, and every file's SHA-256 digest and size, which they check
+  what they read against. They load it when a task calls for it.
+- Every other client can read it as resources: `skill://ultrafast/SKILL.md`
+  and the files beside it (`resources/list`, `resources/read`). The
+  server's instructions end by pointing there, for an agent that doesn't
+  have the skill loaded.
+
+The skill is built into the binary (from the MCP crate's copy,
+`crates/ultrafast-mcp/skills/ultrafast`, which `tools/sync-plugin-skill.sh`
+keeps identical to `skills/ultrafast`), so it always matches the server's
+version. `ULTRAFAST_MCP_SKILL=0` turns it off and serves the tools alone. The
+plugins and extensions below ship the skill themselves, so their server
+configs set it and their hosts don't load the skill twice; set it too if you
+installed the skill with `npx skills add` and your client loads skills from
+MCP servers.
+
 ## Skill and plugins
 
 - `skills/ultrafast/`: the agent skill (the document format, the
@@ -146,8 +172,8 @@ ULTRAFAST_API_KEYS=uf_test_dev cargo run --release -p ultrafastmov-mcp --example
   listed by `.claude-plugin/marketplace.json`:
   `claude plugin marketplace add ultrafastmov/ultrafast`, then
   `claude plugin install ultrafast@ultrafast`. Its copies of the skill, the
-  license files and SECURITY.md are kept in sync by
-  `tools/sync-plugin-skill.sh` (`--check` in CI).
+  license files and SECURITY.md (and the MCP crate's copy of the skill) are
+  kept in sync by `tools/sync-plugin-skill.sh` (`--check` in CI).
 - `mcp_config.json`: `agy plugin install
   https://github.com/ultrafastmov/ultrafast` adds `uf mcp` and the skill to
   Antigravity CLI. It reads a plugin's servers from this file, not from
@@ -174,4 +200,6 @@ What was run against these servers (November 2026):
 | Gemini CLI 0.70 | stdio and HTTP (`httpUrl` + header) | connected (`gemini mcp list`); no model run: Gemini CLI refuses personal Google accounts |
 | Cursor CLI 2026.11.19 | stdio (`.cursor/mcp.json`) | ready, all 20 tools listed (`agent mcp list-tools`); no model run (no Cursor sign-in) |
 | Codex 0.169 + skill | stdio | from a one-line `codex exec` request (`default_tools_approval_mode = "approve"`): ops, check, sheet, review, inspect and export, then a fix and a square copy in a second turn; without the approval line Codex refused edit and export, and the model rendered with FFmpeg instead |
+| fast-agent 0.10.67 | stdio and HTTP (`ultrafast serve`) | the skill over MCP: `server/discover`, `skills/list`, then `/skills add ultrafast` read all six files, matched every SHA-256 digest and installed a copy byte-identical to `skills/ultrafast`; with `ULTRAFAST_MCP_SKILL=0` in the server's `env`, no skill was offered |
+| Claude Code 2.1.325 | stdio | given only the server (its skills rollout not on for the account): followed the instructions to `skill://ultrafast/SKILL.md`, read it as a resource, then template, edits, check (clean) and a sheet |
 | Claude Desktop | stdio | not run |

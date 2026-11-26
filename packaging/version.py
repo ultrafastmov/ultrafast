@@ -8,9 +8,10 @@
 The files: the root Cargo.toml (the workspace version and the workspace
 crates' dependency versions), Cargo.lock's entries for the workspace
 crates, the agent plugin manifests (plugin.json at the root, the Claude
-Code plugin's, gemini-extension.json) and the skill's metadata (both
-copies). The SDKs keep their own versions; server.json is a template that
-release CI fills in for each version.
+Code plugin's, gemini-extension.json) and the skill's metadata (every
+copy, the one the MCP crate serves included). The SDKs keep their own
+versions; server.json is a template that release CI fills in for each
+version.
 """
 import pathlib
 import re
@@ -28,6 +29,7 @@ SKILLS = [
     "skills/ultrafast/SKILL.md",
     "plugins/ultrafast/skills/ultrafast/SKILL.md",
     "plugins/ultrafast-directory/skills/ultrafast/SKILL.md",
+    "crates/ultrafast-mcp/skills/ultrafast/SKILL.md",
 ]
 
 

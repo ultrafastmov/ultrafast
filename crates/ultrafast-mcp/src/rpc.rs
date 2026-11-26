@@ -1,8 +1,10 @@
 //! The JSON-RPC 2.0 side of MCP, independent of transport: one message in,
 //! at most one message out. [`serve_stdio`] runs it over stdin/stdout, one
 //! message per line, for `uf mcp`; [`crate::http`] runs it over Streamable
-//! HTTP.
+//! HTTP. Besides the tools, a server serves the ultrafast skill
+//! ([`crate::skills`]) unless its [`Toolbox`] says not to.
 
+use crate::skills;
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -49,6 +51,13 @@ pub trait Toolbox {
     /// relative one). Asked only while the roots are unknown.
     fn needs_roots(&self, _name: &str, _args: &Value) -> bool {
         false
+    }
+    /// Whether the server also serves the ultrafast skill: its files as
+    /// `skill://ultrafast/...` resources, and its `skills/list` entry for
+    /// hosts that load skills from MCP servers ([`crate::skills`]). On
+    /// unless turned off (by a plugin that ships the skill itself).
+    fn skills(&self) -> bool {
+        true
     }
 }
 
@@ -243,17 +252,21 @@ pub fn handle(msg: &Value, tb: &mut dyn Toolbox, info: &Info) -> Option<Reply> {
             }
             Ok(json!({
                 "protocolVersion": negotiate(params.get("protocolVersion").and_then(Value::as_str)),
-                "capabilities": { "tools": { "listChanged": false } },
+                "capabilities": capabilities(tb, json!({ "listChanged": false })),
                 "serverInfo": server_info(info),
-                "instructions": info.instructions,
+                "instructions": instructions(tb, info),
             }))
         }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tb.tools() })),
         "tools/call" => call(&params, tb).map_err(|(c, m, _)| (c, m)),
+        "resources/list" => Ok(json!({ "resources": resources(tb) })),
+        // These protocols' code for a resource that isn't there.
+        "resources/read" => read(&params, tb, -32002),
+        "skills/list" if tb.skills() => Ok(json!({ "skills": skills::list() })),
+        "skills/get" if tb.skills() => skill(&params),
         // Not offered, but some clients ask anyway: answer with nothing
         // rather than an error they log.
-        "resources/list" => Ok(json!({ "resources": [] })),
         "resources/templates/list" => Ok(json!({ "resourceTemplates": [] })),
         "prompts/list" => Ok(json!({ "prompts": [] })),
         "logging/setLevel" => Ok(json!({})),
@@ -270,6 +283,50 @@ pub fn handle(msg: &Value, tb: &mut dyn Toolbox, info: &Info) -> Option<Reply> {
 
 fn server_info(info: &Info) -> Value {
     json!({ "name": info.name, "title": info.title, "version": info.version, "websiteUrl": "https://ultrafast.mov" })
+}
+
+/// What the server offers: its tools (`tools` is their capability), and
+/// the skill as resources and through the skills extension.
+fn capabilities(tb: &dyn Toolbox, tools: Value) -> Value {
+    let mut caps = json!({ "tools": tools });
+    if tb.skills() {
+        caps["resources"] = json!({});
+        caps["extensions"] = json!({ skills::EXTENSION: {} });
+    }
+    caps
+}
+
+/// The server's instructions, ending with where to read the skill when it
+/// serves it.
+fn instructions(tb: &dyn Toolbox, info: &Info) -> String {
+    if tb.skills() {
+        format!("{} {}", info.instructions, skills::POINTER)
+    } else {
+        info.instructions.clone()
+    }
+}
+
+/// The `resources/list` entries: the skill's files, if it serves them.
+fn resources(tb: &dyn Toolbox) -> Vec<Value> {
+    if tb.skills() { skills::resources() } else { Vec::new() }
+}
+
+/// `resources/read`: a file of the skill, or error `missing`.
+fn read(params: &Value, tb: &dyn Toolbox, missing: i64) -> Result<Value, (i64, String)> {
+    let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
+    match skills::read(uri).filter(|_| tb.skills()) {
+        Some(contents) => Ok(json!({ "contents": [contents] })),
+        None => Err((missing, format!("Resource not found: {uri}"))),
+    }
+}
+
+/// `skills/get`: the skill's entry, by the URI of its SKILL.md.
+fn skill(params: &Value) -> Result<Value, (i64, String)> {
+    let uri = params.get("uri").and_then(Value::as_str).unwrap_or("");
+    match skills::get(uri) {
+        Some(skill) => Ok(json!({ "skill": skill })),
+        None => Err((-32602, format!("No skill is served at {uri}"))),
+    }
 }
 
 /// `tools/call`: the result, or a protocol error (code, message, data).
@@ -348,11 +405,20 @@ fn stateless(id: Value, method: &str, params: &Value, tb: &mut dyn Toolbox, info
     if meta.and_then(|m| m.get(META_CAPS)).is_none() {
         return fail(-32602, format!("`{method}` needs _meta.{META_CAPS}"), None);
     }
+    // Built in with the binary: cached as long as the tool list.
+    let cached = |r: Result<Value, (i64, String)>| {
+        r.map(|mut v| {
+            v["ttlMs"] = json!(TTL_MS);
+            v["cacheScope"] = json!("public");
+            v
+        })
+        .map_err(|(code, message)| (code, message, None))
+    };
     let result = match method {
         "server/discover" => Ok(json!({
             "supportedVersions": VERSIONS,
-            "capabilities": { "tools": {} },
-            "instructions": info.instructions,
+            "capabilities": capabilities(tb, json!({})),
+            "instructions": instructions(tb, info),
             "ttlMs": TTL_MS,
             "cacheScope": "public",
         })),
@@ -361,7 +427,10 @@ fn stateless(id: Value, method: &str, params: &Value, tb: &mut dyn Toolbox, info
             Some(ask) => Ok(ask),
             None => call(params, tb),
         },
-        "resources/list" => Ok(json!({ "resources": [], "ttlMs": TTL_MS, "cacheScope": "public" })),
+        "resources/list" => cached(Ok(json!({ "resources": resources(tb) }))),
+        "resources/read" => cached(read(params, tb, -32602)),
+        "skills/list" if tb.skills() => cached(Ok(json!({ "skills": skills::list() }))),
+        "skills/get" if tb.skills() => cached(skill(params)),
         "resources/templates/list" => Ok(json!({ "resourceTemplates": [], "ttlMs": TTL_MS, "cacheScope": "public" })),
         "prompts/list" => Ok(json!({ "prompts": [], "ttlMs": TTL_MS, "cacheScope": "public" })),
         m => Err((-32601, format!("unknown method `{m}`"), None)),
@@ -703,5 +772,139 @@ mod tests {
             handle(&bare, &mut Echo, &info()).unwrap().message["error"]["code"],
             -32602
         );
+    }
+
+    /// A server that doesn't serve the skill.
+    struct NoSkill;
+    impl Toolbox for NoSkill {
+        fn tools(&self) -> Value {
+            Echo.tools()
+        }
+        fn call(&mut self, name: &str, args: &Value) -> Result<Value, String> {
+            Echo.call(name, args)
+        }
+        fn skills(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn the_skill_over_the_stateless_era() {
+        let ask =
+            |tb: &mut dyn Toolbox, method: &str, params: Value| handle(&modern(method, params), tb, &info()).unwrap();
+        let r = ask(&mut Echo, "server/discover", json!({}));
+        let res = &r.message["result"];
+        assert_eq!(res["capabilities"]["resources"], json!({}));
+        assert_eq!(
+            res["capabilities"]["extensions"]["io.modelcontextprotocol/skills"],
+            json!({})
+        );
+        assert!(res["instructions"].as_str().unwrap().ends_with(skills::POINTER));
+        let r = ask(&mut Echo, "skills/list", json!({}));
+        let res = &r.message["result"];
+        assert_eq!(res["resultType"], "complete");
+        assert!(res["ttlMs"].is_u64() && res["cacheScope"] == "public");
+        assert_eq!(res["skills"][0]["uri"], "skill://ultrafast/SKILL.md");
+        assert_eq!(res["skills"][0]["frontmatter"]["name"], "ultrafast");
+        let entry = res["skills"][0].clone();
+        let r = ask(&mut Echo, "skills/get", json!({ "uri": "skill://ultrafast/SKILL.md" }));
+        assert_eq!(r.message["result"]["skill"], entry);
+        assert!(r.message["result"]["ttlMs"].is_u64());
+        let r = ask(&mut Echo, "skills/get", json!({ "uri": "skill://nope/SKILL.md" }));
+        assert_eq!((r.status, r.message["error"]["code"].as_i64()), (400, Some(-32602)));
+        // Every file the entry lists reads back as the size it gives.
+        let r = ask(&mut Echo, "resources/list", json!({}));
+        let listed = r.message["result"]["resources"].as_array().unwrap().clone();
+        assert_eq!(listed.len(), entry["resources"].as_array().unwrap().len());
+        for (file, res) in entry["resources"].as_array().unwrap().iter().zip(&listed) {
+            assert_eq!(file["uri"], res["uri"]);
+            let r = ask(&mut Echo, "resources/read", json!({ "uri": file["uri"] }));
+            let result = &r.message["result"];
+            assert_eq!(result["resultType"], "complete");
+            assert!(result["ttlMs"].is_u64());
+            let c = &result["contents"][0];
+            assert_eq!(c["uri"], file["uri"]);
+            assert_eq!(c["mimeType"], res["mimeType"]);
+            assert_eq!(c["text"].as_str().unwrap().len() as u64, file["size"].as_u64().unwrap());
+        }
+        let r = ask(
+            &mut Echo,
+            "resources/read",
+            json!({ "uri": "skill://ultrafast/missing.md" }),
+        );
+        assert_eq!((r.status, r.message["error"]["code"].as_i64()), (400, Some(-32602)));
+        // Turned off: none of it, and unknown methods for the extension's.
+        let r = ask(&mut NoSkill, "server/discover", json!({}));
+        let res = &r.message["result"];
+        assert_eq!(res["capabilities"], json!({ "tools": {} }));
+        assert_eq!(res["instructions"], "test");
+        let r = ask(&mut NoSkill, "resources/list", json!({}));
+        assert_eq!(r.message["result"]["resources"], json!([]));
+        let r = ask(
+            &mut NoSkill,
+            "resources/read",
+            json!({ "uri": "skill://ultrafast/SKILL.md" }),
+        );
+        assert_eq!(r.message["error"]["code"], -32602);
+        for m in ["skills/list", "skills/get"] {
+            let r = ask(&mut NoSkill, m, json!({ "uri": "skill://ultrafast/SKILL.md" }));
+            assert_eq!((r.status, r.message["error"]["code"].as_i64()), (404, Some(-32601)));
+        }
+    }
+
+    #[test]
+    fn the_skill_over_initialize_sessions() {
+        let ask = |tb: &mut dyn Toolbox, method: &str, params: Value| {
+            handle(
+                &json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }),
+                tb,
+                &info(),
+            )
+            .unwrap()
+            .message
+        };
+        let init = json!({ "protocolVersion": "2025-11-25", "capabilities": {} });
+        let r = ask(&mut Echo, "initialize", init.clone());
+        let caps = &r["result"]["capabilities"];
+        assert_eq!(caps["tools"]["listChanged"], false);
+        assert_eq!(caps["resources"], json!({}));
+        assert_eq!(caps["extensions"]["io.modelcontextprotocol/skills"], json!({}));
+        assert!(r["result"]["instructions"].as_str().unwrap().ends_with(skills::POINTER));
+        let r = ask(&mut Echo, "resources/list", json!({}));
+        assert_eq!(r["result"]["resources"][0]["uri"], "skill://ultrafast/SKILL.md");
+        assert!(r["result"].get("ttlMs").is_none());
+        let r = ask(
+            &mut Echo,
+            "resources/read",
+            json!({ "uri": "skill://ultrafast/SKILL.md" }),
+        );
+        assert!(
+            r["result"]["contents"][0]["text"]
+                .as_str()
+                .unwrap()
+                .starts_with("---\nname: ultrafast\n")
+        );
+        let r = ask(
+            &mut Echo,
+            "resources/read",
+            json!({ "uri": "skill://ultrafast/missing.md" }),
+        );
+        assert_eq!(r["error"]["code"], -32002);
+        let r = ask(&mut Echo, "skills/list", json!({}));
+        assert_eq!(r["result"]["skills"][0]["uri"], "skill://ultrafast/SKILL.md");
+        let r = ask(&mut Echo, "skills/get", json!({ "uri": "skill://ultrafast/SKILL.md" }));
+        assert_eq!(r["result"]["skill"]["uri"], "skill://ultrafast/SKILL.md");
+        // Turned off.
+        let r = ask(&mut NoSkill, "initialize", init);
+        assert_eq!(
+            r["result"]["capabilities"],
+            json!({ "tools": { "listChanged": false } })
+        );
+        assert_eq!(r["result"]["instructions"], "test");
+        assert_eq!(
+            ask(&mut NoSkill, "resources/list", json!({}))["result"]["resources"],
+            json!([])
+        );
+        assert_eq!(ask(&mut NoSkill, "skills/list", json!({}))["error"]["code"], -32601);
     }
 }
