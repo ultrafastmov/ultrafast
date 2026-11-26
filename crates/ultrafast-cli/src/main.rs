@@ -522,7 +522,7 @@ fn main() -> Result<()> {
                 Some(doc_file) => {
                     let mut doc = load(Path::new(&doc_file))?;
                     doc.components.insert(name.clone(), imp.component);
-                    std::fs::write(&doc_file, serde_json::to_string_pretty(&doc)?)?;
+                    std::fs::write(&doc_file, doc.to_json())?;
                     println!(
                         "added component `{name}` ({:.0}x{:.0} px) to {doc_file}: place it with {{\"op\": \"{name}\", \"params\": {{\"position\": [x, y]}}}}",
                         imp.size[0], imp.size[1]
@@ -556,7 +556,7 @@ fn main() -> Result<()> {
                 Some(doc_file) => {
                     let mut doc = load(Path::new(&doc_file))?;
                     doc.components.insert(name.clone(), imp.component);
-                    std::fs::write(&doc_file, serde_json::to_string_pretty(&doc)?)?;
+                    std::fs::write(&doc_file, doc.to_json())?;
                     println!(
                         "added component `{name}` ({:.0}x{:.0} px, {:.2} s) to {doc_file}: place it with {{\"op\": \"{name}\", \"params\": {{\"position\": [x, y]}}, \"timing\": {{\"loop\": {:.3}}}}}",
                         imp.size[0], imp.size[1], imp.duration, imp.duration
