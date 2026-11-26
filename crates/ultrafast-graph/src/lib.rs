@@ -16,7 +16,7 @@ mod vals;
 
 pub use canonical::canonical_json;
 pub use curve::{Ease, Key};
-pub use edit::{Change, Edit, EditError};
+pub use edit::{Change, Edit, EditError, parse_edits};
 pub use flatten::{Component, Flat};
 pub use timing::{Timing, resolve_chain};
 pub use vals::Vals;
