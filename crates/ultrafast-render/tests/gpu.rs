@@ -779,3 +779,37 @@ fn on_demand_kernels_render_the_same() {
         .count();
     assert_eq!(off, 0, "op by op: {off} bytes differ");
 }
+
+/// An exact render doesn't depend on how far kernel compiles got: a blur
+/// read by a fused group is kept at reduced resolution only once that
+/// group's kernel is ready, and an exact render waits for it to be, so the
+/// first frame from a cold renderer matches the same frame rendered again
+/// once every kernel is built.
+#[test]
+fn blur_reader_compiling_renders_the_same() {
+    // The reader is a shader whose source is new to this run, so no
+    // pipeline cache has it and it is still compiling as the blur is drawn.
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let code = format!(
+        "// {nonce}\nfloat4 shade(float2 pos, float px) {{ return input(0, pos + float2(sin(pos.y * 0.07) * 9.0, 0.0)) * 0.6; }}"
+    );
+    let doc = serde_json::json!({"version":1,"format":{"width":256,"height":256,"fps":30,"duration":1},
+        "output":"out","nodes":{
+          "bg":{"op":"gradient","params":{"a":"#201810","b":"#604030","start":[0,0],"end":[0,256]}},
+          "s":{"op":"shape","params":{"kind":"circle","size":[90,140],"color":"#fff1e0",
+               "center":{"keys":[{"t":0,"v":[128,150]},{"t":1,"v":[128,90]}]}}},
+          "soft":{"op":"blur","inputs":{"source":"s"},"params":{"radius":18}},
+          "w":{"op":"shader","inputs":{"in0":"soft"},"params":{"code":code}},
+          "out":{"op":"over","inputs":{"fg":"w","bg":"bg"}}}});
+    let d = Document::from_json(&doc.to_string()).unwrap();
+    let mut r = Renderer::new_on_demand(Device::new().unwrap()).unwrap();
+    let (cold, _) = r.render_rgba8(&d, 0.0).unwrap();
+    // Another time first, so the blur is drawn again rather than reused.
+    r.render_rgba8(&d, 0.5).unwrap();
+    let (warm, _) = r.render_rgba8(&d, 0.0).unwrap();
+    let off = cold.iter().zip(&warm).filter(|(a, b)| a != b).count();
+    assert_eq!(off, 0, "{off} bytes differ between the cold and the warm frame");
+}
