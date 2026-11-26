@@ -40,9 +40,9 @@ ports) and optional `timing`.
   takes `a` and `b`; `stack` takes `in0`, `in1`, ...
 - `audio` nodes are mixed into the export wherever they are in the graph.
 
-`ultrafast_ops` (or `uf ops --markdown`) lists every op with its ports and
-params (type, default, what it does). Ask for full detail on a few ops with
-`ultrafast_ops {"ops": ["text", "captions"]}`.
+`ultrafast_ops` (or `uf ops --index`) lists every op with its ports and what
+it does. Get the params (type, default, what each does) of the ops you use
+with `ultrafast_ops {"ops": ["text", "captions"]}` (or `uf ops text captions`).
 
 Generators (`solid`, `gradient`, `noise`, shaders) are infinite: crop or
 transform them to make panels. Text and paths stay vector until rasterized,

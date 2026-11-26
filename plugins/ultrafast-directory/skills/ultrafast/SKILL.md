@@ -43,7 +43,7 @@ looked at.
 | step | MCP | CLI |
 |---|---|---|
 | start | `ultrafast_new` (`vertical`, `title`, `square`, `promo`, `explainer`, `product`) or write the JSON | `uf new promo film.json` |
-| vocabulary | `ultrafast_ops` (all ops as Markdown), `ultrafast_ops {"ops": ["captions"]}` for full detail | `uf ops --markdown` |
+| vocabulary | `ultrafast_ops` (every op on one line), `ultrafast_ops {"ops": ["text", "captions"]}` for their params | `uf ops --index`, `uf ops text captions` |
 | check | `ultrafast_check` | `uf check film.json` |
 | look | `ultrafast_sheet` (whole film), `ultrafast_frame` (one moment) | `uf sheet film.json --count 9 --out sheet.png`, `uf render film.json --at 2.5 --out f.png` |
 | find | `ultrafast_inspect` (what is on screen at `t`, and which node) | `uf inspect film.json --at 2.5` |
@@ -56,7 +56,8 @@ looked at.
 Rules:
 
 - **Read the op before you use it.** Params are exact: look up any op you
-  haven't used in this session with `ultrafast_ops` (`ops: [...]`).
+  haven't used in this session with `ultrafast_ops` (`ops: [...]`, several
+  in one call).
 - **Check until clean.** Fix every error and warning `check` reports.
 - **Look before you speak.** Make a contact sheet after the first draft and
   after every visual change. Compare it with what was asked: words, timing,
@@ -207,4 +208,5 @@ from: [examples/](examples/).
 - [references/document.md](references/document.md): the document format in full.
 - [references/recipes.md](references/recipes.md): tested patterns (vertical promo, captions over footage, explainer with a chart, beat cuts, voiceover).
 - [references/setup.md](references/setup.md): install `uf` and connect Claude Code, Claude Desktop, Codex, Cursor, Antigravity CLI, Gemini CLI or a remote server.
-- The full op list comes from `ultrafast_ops` or `uf ops --markdown`. The JSON Schema comes from `uf schema` and is published at https://ultrafast.mov/schema/v1.json.
+- The op list comes from `ultrafast_ops` or `uf ops --index`, and every
+  param of every op from `uf ops --markdown`. The JSON Schema comes from `uf schema` and is published at https://ultrafast.mov/schema/v1.json.
