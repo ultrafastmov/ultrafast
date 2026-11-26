@@ -39,12 +39,14 @@ pub struct Flat {
 impl Document {
     /// Whether rendering needs [`Document::flatten`] (components or timing).
     pub fn needs_flatten(&self) -> bool {
-        // Audio drivers are baked into keyframes on the flattened copy.
+        // Audio drivers are baked into keyframes on the flattened copy, and
+        // an `over`'s layers become a chain of two-input `over`s there.
         !self.components.is_empty()
-            || self
-                .nodes
-                .values()
-                .any(|n| n.timing.is_some() || n.params.values().any(|p| matches!(p, Param::Audio { .. })))
+            || self.nodes.values().any(|n| {
+                n.timing.is_some()
+                    || n.params.values().any(|p| matches!(p, Param::Audio { .. }))
+                    || n.layers().is_some()
+            })
     }
 
     pub fn flatten(&self) -> Result<Flat, DocumentError> {
@@ -235,6 +237,11 @@ impl Document {
                         .iter()
                         .map(|(port, src)| Ok((port.clone(), resolve_input(src)?)))
                         .collect::<Result<_, DocumentError>>()?;
+                    if let Some(layers) = n.layers() {
+                        let layers: Vec<NodeId> = layers.into_iter().cloned().collect();
+                        lay_over(&flat_id, &layers, &n, &node_chain, out, chains);
+                        continue;
+                    }
                     if !node_chain.is_empty() {
                         chains.insert(flat_id.clone(), node_chain);
                     }
@@ -243,6 +250,53 @@ impl Document {
             }
         }
         Ok(ids)
+    }
+}
+
+/// An `over`'s layers as the chain of two-input `over`s it stands for:
+/// each layer over the ones under it, with the node's params and timing.
+/// The top of the chain keeps the node's id; the links under it are
+/// `<id>/__layer1`, `<id>/__layer2`, ... One layer goes over nothing.
+fn lay_over(
+    id: &str,
+    layers: &[NodeId],
+    node: &Node,
+    chain: &[Timing],
+    out: &mut BTreeMap<NodeId, Node>,
+    chains: &mut HashMap<NodeId, Vec<Timing>>,
+) {
+    let mut under = layers[0].clone();
+    let mut rest = &layers[1..];
+    if rest.is_empty() {
+        let clear = format!("{id}/__clear");
+        out.insert(
+            clear.clone(),
+            Node {
+                op: "solid".into(),
+                params: [("color".to_string(), Param::Text("#00000000".into()))].into(),
+                ..Default::default()
+            },
+        );
+        under = clear;
+        rest = layers;
+    }
+    for (k, layer) in rest.iter().enumerate() {
+        let link = if k + 1 == rest.len() {
+            id.to_string()
+        } else {
+            format!("{id}/__layer{}", k + 1)
+        };
+        let over = Node {
+            op: "over".into(),
+            params: node.params.clone(),
+            inputs: [("fg".to_string(), layer.clone()), ("bg".to_string(), under)].into(),
+            timing: node.timing,
+        };
+        if !chain.is_empty() {
+            chains.insert(link.clone(), chain.to_vec());
+        }
+        out.insert(link.clone(), over);
+        under = link;
     }
 }
 
@@ -314,6 +368,44 @@ mod tests {
         assert_eq!(resolve_chain(gate, 2.0), Some(1.0));
         assert_eq!(resolve_chain(&flat.chains["a/dot"], 2.0), Some(1.0));
         assert!(!flat.chains.contains_key("b/dot"));
+    }
+
+    #[test]
+    fn an_overs_layers_are_a_chain_of_overs() {
+        let doc = Document::from_json(
+            r##"{"version":1,"format":{"width":8,"height":8,"fps":30,"duration":1},"output":"out",
+            "components":{"card":{"inputs":["under"],"output":"stack","nodes":{
+              "dot":{"op":"solid"},
+              "stack":{"op":"over","inputs":["$under","dot"]}}}},
+            "nodes":{
+              "bg":{"op":"solid"},"a":{"op":"solid"},"b":{"op":"solid"},
+              "out":{"op":"over","inputs":["bg","a","b","c"],"params":{"space":"srgb"},"timing":{"in":0.5}},
+              "c":{"op":"card","inputs":{"under":"bg"}},
+              "one":{"op":"over","inputs":["a"]}}}"##,
+        )
+        .unwrap();
+        assert!(doc.needs_flatten());
+        assert_eq!(doc.nodes["out"].layers().unwrap(), ["bg", "a", "b", "c"]);
+        let flat = doc.flatten().unwrap();
+        let n = &flat.doc.nodes;
+        let link = |id: &str| {
+            (
+                n[id].op.as_str(),
+                n[id].inputs["fg"].as_str(),
+                n[id].inputs["bg"].as_str(),
+            )
+        };
+        assert_eq!(link("out/__layer1"), ("over", "a", "bg"));
+        assert_eq!(link("out/__layer2"), ("over", "b", "out/__layer1"));
+        assert_eq!(link("out"), ("over", "c/stack", "out/__layer2"));
+        assert_eq!(link("c/stack"), ("over", "c/dot", "bg"));
+        // Every link has the node's params and its window: outside it, each
+        // passes its bg on, down to the bottom layer.
+        for id in ["out", "out/__layer1", "out/__layer2"] {
+            assert_eq!(n[id].params["space"], Param::Text("srgb".into()));
+            assert_eq!(resolve_chain(&flat.chains[id], 0.2), None);
+        }
+        assert_eq!(link("one"), ("over", "a", "one/__clear"));
     }
 
     #[test]

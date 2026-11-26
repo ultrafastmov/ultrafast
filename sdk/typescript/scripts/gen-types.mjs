@@ -62,6 +62,12 @@ function alts(s, ind, self) {
       if (s.pattern?.startsWith("^\\$")) return ["`$${string}`"];
       return ["string"];
     case "array": {
+      if (s.prefixItems) {
+        const parts = s.prefixItems.map((p) => ts(p, ind));
+        const out = [];
+        for (let n = s.minItems ?? parts.length; n <= parts.length; n++) out.push(`[${parts.slice(0, n).join(", ")}]`);
+        return out;
+      }
       const item = ts(s.items, ind);
       const min = s.minItems ?? 0;
       const max = s.maxItems;
@@ -164,7 +170,7 @@ function paramType(s) {
 const ops = defs.node.allOf.map((r) => {
   const op = r.if.properties.op.const;
   const then = r.then.properties;
-  return { op, name: pascal(op), params: then.params ?? {}, ports: Object.keys(then.inputs?.properties ?? {}) };
+  return { op, name: pascal(op), params: then.params ?? {}, ports: Object.keys(then.inputs?.properties ?? {}), layers: Boolean(then.inputs?.items) };
 });
 
 out += `/** Every op name. */
@@ -190,6 +196,7 @@ for (const o of ops) {
   out += `}\n\n`;
   out += `/** A \`${o.op}\` node. */\nexport interface ${o.name}Node {\n  op: ${JSON.stringify(o.op)};\n  params?: ${o.name}Params;\n`;
   if (o.ports.includes("*")) out += `  /** Any port names, each the id of the node feeding it. */\n  inputs?: Record<string, string>;\n`;
+  else if (o.layers) out += `  /** Port name to the id of the node feeding it, or the ids of the layers, bottom first. */\n  inputs?: { ${o.ports.map((p) => `${prop(p)}?: string`).join("; ")} } | string[];\n`;
   else if (o.ports.length) out += `  /** Port name to the id of the node feeding it. */\n  inputs?: { ${o.ports.map((p) => `${prop(p)}?: string`).join("; ")} };\n`;
   out += `  timing?: Timing;\n}\n\n`;
 }

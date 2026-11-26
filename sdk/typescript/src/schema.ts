@@ -6,7 +6,7 @@ export type HexColor = `#${string}`;
 
 /** One form of `Animated`. */
 export interface AnimatedKeys {
-  keys: Key[];
+  keys: (Key | KeyTuple)[];
   /** after the last key */
   repeat?: "cycle" | "pingpong";
 }
@@ -147,6 +147,9 @@ export interface Key {
   /** a number, a list or a #hex colour */
   v: number | number[] | HexColor;
 }
+
+/** a key written short: [t, v] or [t, v, ease] */
+export type KeyTuple = [number, number | number[] | HexColor] | [number, number | number[] | HexColor, Ease];
 
 export interface Timing {
   /** on screen from this time (parent seconds) */
@@ -716,8 +719,8 @@ export interface OverParams {
 export interface OverNode {
   op: "over";
   params?: OverParams;
-  /** Port name to the id of the node feeding it. */
-  inputs?: { bg?: string; fg?: string };
+  /** Port name to the id of the node feeding it, or the ids of the layers, bottom first. */
+  inputs?: { bg?: string; fg?: string } | string[];
   timing?: Timing;
 }
 
@@ -2415,7 +2418,7 @@ export interface ComponentNode {
   /** The component's name. */
   op: string;
   params?: Record<string, Value>;
-  inputs?: Record<string, string>;
+  inputs?: Record<string, string> | string[];
   timing?: Timing;
 }
 

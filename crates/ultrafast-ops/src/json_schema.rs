@@ -94,7 +94,16 @@ pub fn json_schema() -> Value {
                     )
                 })
                 .collect();
-            then["properties"]["inputs"] = json!({ "type": "object", "properties": ports });
+            then["properties"]["inputs"] = if o["op"] == "over" {
+                json!({
+                    "type": ["object", "array"],
+                    "description": "fg and bg, or a list of layers, bottom first: each goes over the ones before it",
+                    "properties": ports,
+                    "items": { "type": "string" },
+                })
+            } else {
+                json!({ "type": "object", "properties": ports })
+            };
         }
         rules.push(json!({
             "if": { "properties": { "op": { "const": o["op"] } }, "required": ["op"] },
@@ -103,7 +112,30 @@ pub fn json_schema() -> Value {
     }
 
     let num = json!({ "type": "number" });
-    json!({
+    let key_value = json!({
+        "description": "a number, a list or a #hex colour",
+        "anyOf": [num, { "type": "array", "items": num }, { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }],
+    });
+    let key_tuple = json!({
+        "type": "array",
+        "description": "a key written short: [t, v] or [t, v, ease]",
+        "prefixItems": [
+            { "type": "number", "description": "seconds" },
+            key_value.clone(),
+            { "$ref": "#/$defs/ease", "description": "the ease into the next key. Default: linear." },
+        ],
+        "minItems": 2,
+        "maxItems": 3,
+    });
+    let node_inputs = json!({
+        "description": "port name to the id of the node feeding it; a list is the ports in0, in1, ... in order (an `over`'s layers, bottom first)",
+        "anyOf": [
+            { "type": "object", "additionalProperties": { "type": "string" } },
+            { "type": "array", "items": { "type": "string" } },
+        ],
+    });
+    let any_key = json!({ "anyOf": [{ "$ref": "#/$defs/key" }, { "$ref": "#/$defs/key_tuple" }] });
+    let mut schema = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": ID,
         "title": "ultrafast document, version 1",
@@ -156,11 +188,7 @@ pub fn json_schema() -> Value {
                         "anyOf": [{ "enum": names }, { "type": "string" }],
                     },
                     "params": { "type": "object" },
-                    "inputs": {
-                        "type": "object",
-                        "description": "port name to the id of the node feeding it",
-                        "additionalProperties": { "type": "string" },
-                    },
+                    "inputs": node_inputs,
                     "timing": { "$ref": "#/$defs/timing" },
                 },
                 "allOf": rules,
@@ -230,10 +258,7 @@ pub fn json_schema() -> Value {
                 "required": ["t", "v"],
                 "properties": {
                     "t": { "type": "number", "description": "seconds" },
-                    "v": {
-                        "description": "a number, a list or a #hex colour",
-                        "anyOf": [num, { "type": "array", "items": num }, { "type": "string", "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" }],
-                    },
+                    "v": key_value,
                     "ease": { "$ref": "#/$defs/ease", "description": "the ease into the next key. Default: linear." },
                 },
             },
@@ -244,7 +269,7 @@ pub fn json_schema() -> Value {
                     {
                         "required": ["keys"],
                         "properties": {
-                            "keys": { "type": "array", "items": { "$ref": "#/$defs/key" }, "minItems": 1 },
+                            "keys": { "type": "array", "items": any_key, "minItems": 1 },
                             "repeat": { "enum": ["cycle", "pingpong"], "description": "after the last key" },
                         },
                     },
@@ -306,7 +331,10 @@ pub fn json_schema() -> Value {
                 ],
             },
         },
-    })
+    });
+    // Outside the literal above, which is at the macro's recursion limit.
+    schema["$defs"]["key_tuple"] = key_tuple;
+    schema
 }
 
 /// The schema of one param type as the vocabulary spells it (`number`,

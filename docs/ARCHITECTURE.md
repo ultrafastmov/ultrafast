@@ -79,8 +79,14 @@ A document is a set of nodes keyed by stable string ids, plus an output node.
   **animation curve** (keyframes with easing, optionally repeating or
   ping-ponging), `wiggle`, `oscillate`, an expression of `t`, or the
   soundtrack's loudness in a band. Any param can be animated without changing
-  node type.
-- **Inputs** are named image ports referencing other node ids.
+  node type. A key is `{"t": 0.3, "v": [120, 380], "ease": "out_expo"}`, or
+  the same written short as `[0.3, [120, 380], "out_expo"]`.
+- **Inputs** are named image ports referencing other node ids. An `over`
+  also takes a list, its layers bottom first (`"inputs": ["bg", "disc",
+  "title"]`): flattening turns it into the chain of two-input `over`s it
+  stands for, each with the node's params and timing, so it renders as that
+  chain would. A list reads as the ports `in0`, `in1`, ... and an `over`
+  writes it back as the list.
 - **Components** are reusable subgraphs with their own params and inputs; a
   node whose `op` names one is an instance.
 - **Timing**: any node can have a window (`in` / `out`) and a local clock

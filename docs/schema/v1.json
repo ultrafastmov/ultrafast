@@ -7,7 +7,14 @@
           "properties": {
             "keys": {
               "items": {
-                "$ref": "#/$defs/key"
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/key"
+                  },
+                  {
+                    "$ref": "#/$defs/key_tuple"
+                  }
+                ]
               },
               "minItems": 1,
               "type": "array"
@@ -396,6 +403,40 @@
         "v"
       ],
       "type": "object"
+    },
+    "key_tuple": {
+      "description": "a key written short: [t, v] or [t, v, ease]",
+      "maxItems": 3,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "description": "seconds",
+          "type": "number"
+        },
+        {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            {
+              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+              "type": "string"
+            }
+          ],
+          "description": "a number, a list or a #hex colour"
+        },
+        {
+          "$ref": "#/$defs/ease",
+          "description": "the ease into the next key. Default: linear."
+        }
+      ],
+      "type": "array"
     },
     "node": {
       "allOf": [
@@ -2862,6 +2903,10 @@
           "then": {
             "properties": {
               "inputs": {
+                "description": "fg and bg, or a list of layers, bottom first: each goes over the ones before it",
+                "items": {
+                  "type": "string"
+                },
                 "properties": {
                   "bg": {
                     "description": "id of the node on this port",
@@ -2872,7 +2917,10 @@
                     "type": "string"
                   }
                 },
-                "type": "object"
+                "type": [
+                  "object",
+                  "array"
+                ]
               },
               "params": {
                 "properties": {
@@ -11094,11 +11142,21 @@
       ],
       "properties": {
         "inputs": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "port name to the id of the node feeding it",
-          "type": "object"
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "port name to the id of the node feeding it; a list is the ports in0, in1, ... in order (an `over`'s layers, bottom first)"
         },
         "op": {
           "anyOf": [

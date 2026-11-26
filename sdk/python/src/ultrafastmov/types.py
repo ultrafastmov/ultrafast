@@ -48,8 +48,12 @@ class Key(TypedDict, total=False):
     v: Union[float, Numbers, str]  # a number, a list or a #hex colour
 
 
+#: a key written short: [t, v] or [t, v, ease]
+KeyTuple = List[Any]
+
+
 class AnimatedKeys(TypedDict, total=False):
-    keys: List[Key]
+    keys: List[Union[Key, KeyTuple]]
     repeat: Literal['cycle', 'pingpong']  # after the last key
 
 
@@ -118,7 +122,7 @@ Timing = TypedDict(
 
 
 class Node(TypedDict, total=False):
-    inputs: Dict[str, str]  # port name to the id of the node feeding it
+    inputs: Union[Dict[str, str], List[str]]  # port name to the id of the node feeding it; a list is the ports in0, in1, ... in order (an `over`'s layers, bottom first)
     op: str  # an op or the name of a component
     params: Dict[str, Any]
     timing: Timing
@@ -1281,6 +1285,7 @@ __all__ = [
     'EaseSpring',
     'Ease',
     'Key',
+    'KeyTuple',
     'AnimatedKeys',
     'AnimatedExpr',
     'Value',

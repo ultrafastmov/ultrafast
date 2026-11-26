@@ -166,7 +166,7 @@ multiply alpha
 - `opacity`: number = 1 - 0..1
 
 ## over(fg, bg)
-fg over bg (Porter-Duff)
+fg over bg (Porter-Duff); or `inputs` as a list of layers, bottom first, each over the ones before it
 - `opacity`: number = 1 - fg opacity
 - `space`: enum(linear|srgb) = linear - blend space
 

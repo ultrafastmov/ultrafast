@@ -163,23 +163,112 @@ impl Param {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 pub struct Node {
     /// Operation name, for example `solid`, `shape`, `over`.
     pub op: String,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(default)]
     pub params: BTreeMap<String, Param>,
-    /// Named image inputs, mapping port name to source node id.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// Named image inputs, mapping port name to source node id. Written as
+    /// a list, they are the ports `in0`, `in1`, ... in order: an `over`
+    /// takes its layers that way, bottom first (see [`Node::layers`]).
+    #[serde(default, deserialize_with = "inputs_map_or_list")]
     pub inputs: BTreeMap<String, NodeId>,
     /// Visibility window and local time (see [`Timing`]).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub timing: Option<Timing>,
 }
 
 impl Node {
     pub fn is_animated(&self) -> bool {
         self.params.values().any(Param::is_animated)
+    }
+
+    /// An `over` whose inputs are a list of layers (ports `in0`, `in1`,
+    /// ...): the layers, bottom first. Each paints over the ones before it
+    /// with the node's params, as a chain of two-input `over`s would.
+    /// `None` for any other node, an `over` on `fg` and `bg` included.
+    pub fn layers(&self) -> Option<Vec<&NodeId>> {
+        if self.op != "over" || self.inputs.is_empty() {
+            return None;
+        }
+        let mut layers = Vec::with_capacity(self.inputs.len());
+        for (port, id) in &self.inputs {
+            layers.push((layer_port(port)?, id));
+        }
+        layers.sort_by_key(|(k, _)| *k);
+        Some(layers.into_iter().map(|(_, id)| id).collect())
+    }
+}
+
+/// The number of a layer port: `in0` is 0, `in12` is 12 (and `in01` none).
+fn layer_port(port: &str) -> Option<usize> {
+    let k: usize = port.strip_prefix("in")?.parse().ok()?;
+    (port.len() == 2 + k.to_string().len()).then_some(k)
+}
+
+/// Inputs as a map of port to node id, or as a list of node ids, which are
+/// the ports `in0`, `in1`, ... in order.
+fn inputs_map_or_list<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<String, NodeId>, D::Error> {
+    struct Inputs;
+    impl<'de> serde::de::Visitor<'de> for Inputs {
+        type Value = BTreeMap<String, NodeId>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a map of port name to node id, or a list of node ids (an `over`'s layers, bottom first)")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut m: A) -> Result<Self::Value, A::Error> {
+            let mut out = BTreeMap::new();
+            while let Some((port, id)) = m.next_entry::<String, NodeId>()? {
+                out.insert(port, id);
+            }
+            Ok(out)
+        }
+        fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut s: A) -> Result<Self::Value, A::Error> {
+            let mut out = BTreeMap::new();
+            while let Some(id) = s.next_element::<NodeId>()? {
+                out.insert(format!("in{}", out.len()), id);
+            }
+            Ok(out)
+        }
+    }
+    d.deserialize_any(Inputs)
+}
+
+/// Writes a node as it derives, except that an `over`'s layers
+/// ([`Node::layers`], numbered `in0` up without a gap) are written back as
+/// the list they were read from.
+impl Serialize for Node {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let as_list = self
+            .layers()
+            .is_some_and(|l| (0..l.len()).all(|k| self.inputs.contains_key(&format!("in{k}"))));
+        let fields = 1
+            + usize::from(!self.params.is_empty())
+            + usize::from(!self.inputs.is_empty())
+            + usize::from(self.timing.is_some());
+        let mut st = s.serialize_struct("Node", fields)?;
+        st.serialize_field("op", &self.op)?;
+        if self.params.is_empty() {
+            st.skip_field("params")?;
+        } else {
+            st.serialize_field("params", &self.params)?;
+        }
+        if self.inputs.is_empty() {
+            st.skip_field("inputs")?;
+        } else if as_list {
+            let layers: Vec<&NodeId> = (0..self.inputs.len())
+                .map(|k| &self.inputs[&format!("in{k}")])
+                .collect();
+            st.serialize_field("inputs", &layers)?;
+        } else {
+            st.serialize_field("inputs", &self.inputs)?;
+        }
+        match &self.timing {
+            Some(t) => st.serialize_field("timing", t)?,
+            None => st.skip_field("timing")?,
+        }
+        st.end()
     }
 }
 
@@ -536,6 +625,57 @@ mod tests {
     /// Keys parsing drops are kept by name: a node's own (`text` beside
     /// `params`) and its timing's (`duration`), in components too, and in
     /// the nodes and timings an edit batch carries.
+    #[test]
+    fn short_keys_and_layer_lists_read_as_the_long_forms() {
+        let head = r#"{"version": 1, "format": {"width": 8, "height": 8, "fps": 30, "duration": 1}, "output": "o", "nodes": {"#;
+        let short = Document::from_json(&format!(
+            r##"{head}"a": {{"op": "solid", "params": {{"color": {{"keys": [[0, "#000000"], [1, "#ffffff", "out_cubic"]]}}}}}},
+              "b": {{"op": "shape", "params": {{"center": {{"keys": [[0, [1, 2], {{"bezier": [0.2, 0, 0, 1]}}], [0.5, [3, 4]]], "repeat": "cycle"}}}}}},
+              "o": {{"op": "over", "inputs": ["a", "b"]}}}}}}"##
+        ))
+        .unwrap();
+        let long = Document::from_json(&format!(
+            r##"{head}"a": {{"op": "solid", "params": {{"color": {{"keys": [{{"t": 0, "v": "#000000"}}, {{"t": 1, "v": "#ffffff", "ease": "out_cubic"}}]}}}}}},
+              "b": {{"op": "shape", "params": {{"center": {{"keys": [{{"t": 0, "v": [1, 2], "ease": {{"bezier": [0.2, 0, 0, 1]}}}}, {{"t": 0.5, "v": [3, 4]}}], "repeat": "cycle"}}}}}},
+              "o": {{"op": "over", "inputs": {{"in0": "a", "in1": "b"}}}}}}}}"##
+        ))
+        .unwrap();
+        assert_eq!(short, long);
+        assert_eq!(short.nodes["o"].layers().unwrap(), ["a", "b"]);
+        // Layers write back as the list; every other node's inputs as a map.
+        let json: serde_json::Value = serde_json::from_str(&long.to_json()).unwrap();
+        assert_eq!(json["nodes"]["o"]["inputs"], serde_json::json!(["a", "b"]));
+        let pair = r#"{"op": "over", "inputs": {"fg": "a", "bg": "b"}}"#;
+        let node: Node = serde_json::from_str(pair).unwrap();
+        assert!(node.layers().is_none());
+        assert_eq!(
+            serde_json::to_value(&node).unwrap(),
+            serde_json::from_str::<serde_json::Value>(pair).unwrap()
+        );
+        // A stack's numbered ports stay a map, as an over with a gap does.
+        let stack: Node = serde_json::from_str(r#"{"op": "stack", "inputs": ["a", "b"]}"#).unwrap();
+        assert_eq!(
+            serde_json::to_value(&stack).unwrap()["inputs"],
+            serde_json::json!({"in0": "a", "in1": "b"})
+        );
+        let gap: Node = serde_json::from_str(r#"{"op": "over", "inputs": {"in0": "a", "in2": "b"}}"#).unwrap();
+        assert_eq!(gap.layers().unwrap(), ["a", "b"]);
+        assert_eq!(
+            serde_json::to_value(&gap).unwrap()["inputs"],
+            serde_json::json!({"in0": "a", "in2": "b"})
+        );
+        assert!(
+            serde_json::from_str::<Node>(r#"{"op": "over", "inputs": {"in01": "a"}}"#)
+                .unwrap()
+                .layers()
+                .is_none()
+        );
+        let bad = serde_json::from_str::<Node>(r#"{"op": "over", "inputs": "a"}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(bad.contains("a list of node ids"), "{bad}");
+    }
+
     #[test]
     fn keys_the_format_lacks_are_named() {
         let doc = Document::from_json(

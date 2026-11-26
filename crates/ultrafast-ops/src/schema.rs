@@ -438,7 +438,7 @@ const SCHEMAS: &[OpSchema] = &[
     },
     OpSchema {
         name: "over",
-        summary: "fg over bg (Porter-Duff)",
+        summary: "fg over bg (Porter-Duff); or `inputs` as a list of layers, bottom first, each over the ones before it",
         ports: &["fg", "bg"],
         params: &[
             ("opacity", "number", "1", "fg opacity"),
@@ -1623,7 +1623,15 @@ pub fn check(doc: &Document) -> Vec<Issue> {
                     }
                 }
             }
-            if schema.ports != ["*"] {
+            if let Some(layers) = node.layers() {
+                if layers.len() == 1 {
+                    issue(
+                        &path,
+                        "warning",
+                        "one layer: an `over` lists its layers bottom first, two or more".into(),
+                    );
+                }
+            } else if schema.ports != ["*"] {
                 for p in node.inputs.keys() {
                     if !schema.ports.contains(&p.as_str()) {
                         issue(
@@ -2021,6 +2029,35 @@ mod tests {
         let mut doc = doc;
         doc.nodes.get_mut("pic").unwrap().timing = doc.nodes["cut"].timing;
         assert!(!check(&doc).iter().any(|i| i.severity == "warning"));
+    }
+
+    #[test]
+    fn check_reads_an_overs_layers() {
+        let doc = Document::from_json(
+            r##"{"version":1,"format":{"width":8,"height":8,"fps":30,"duration":1},"output":"o",
+            "nodes":{"a":{"op":"solid"},"b":{"op":"shape","params":{"opacity":{"keys":[[0,0],[0.5,1,"out_cubic"]]}}},
+                     "o":{"op":"over","inputs":["a","b","one"],"params":{"space":"srgb"}},
+                     "one":{"op":"over","inputs":["b"]},
+                     "mixed":{"op":"over","inputs":{"fg":"a","bg":"b","in0":"a"}}}}"##,
+        )
+        .unwrap();
+        let text: Vec<String> = check(&doc)
+            .iter()
+            .map(|i| format!("{}: {}", i.node, i.message))
+            .collect();
+        assert!(
+            !text.iter().any(|t| t.starts_with("o:") || t.starts_with("b:")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter().any(|t| t.starts_with("one:") && t.contains("one layer")),
+            "{text:?}"
+        );
+        assert!(
+            text.iter()
+                .any(|t| t.starts_with("mixed:") && t.contains("no input `in0`")),
+            "{text:?}"
+        );
     }
 
     #[test]
