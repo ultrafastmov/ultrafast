@@ -1,6 +1,6 @@
 {
   "name": "dsh-ultrafast",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ultrafast for DeepSeek Harness: registers the uf mcp server so the agent can write, check, preview and export videos as JSON documents on the GPU.",
   "type": "module",
   "main": "./index.mjs",
@@ -32,7 +32,7 @@
   ],
   "engines": {
     "node": ">=22.0.0",
-    "dsh": ">=0.2.2-rc.5 <0.3.0"
+    "dsh": ">=0.2.2-rc.5"
   },
   "dsh": {
     "bundle": {

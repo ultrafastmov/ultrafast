@@ -1,0 +1,10 @@
+# GitHub reads only the repository's root .github/dependabot.yml, which keeps
+# the Actions and Cargo.lock current. This copy is for plugin scanners that
+# rate plugins/dsh as a package of its own. The plugin has no dependencies
+# (package-lock.json lists only itself), so npm updates have nothing to find.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
