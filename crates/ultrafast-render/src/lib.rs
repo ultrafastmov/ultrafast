@@ -1756,7 +1756,15 @@ impl Renderer {
         }
         self.seen_revision = Some((doc.instance, doc.revision));
         let sig = plan::signature(doc, chains);
-        if same_view && self.active.as_ref().is_some_and(|a| a.plan.signature == sig) {
+        if same_view
+            && let Some(active) = self.active.as_mut()
+            && active.plan.signature == sig
+        {
+            // Timing is a value like any other: a new offset, speed or window
+            // keeps the plan, and its nodes take their new timing chains.
+            for pn in &mut active.plan.nodes {
+                pn.chain = chains.and_then(|c| c.get(&pn.id)).cloned().unwrap_or_default();
+            }
             return Ok(false);
         }
         let plan = plan::compile(doc, chains)?;
