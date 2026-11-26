@@ -471,10 +471,15 @@ pub fn batch_jobs(
 /// Applies an edit batch. Returns the edited document and the report the
 /// tool sends (change kind and problems on touched nodes).
 pub fn edit(mut doc: Document, args: &Value) -> Result<(Document, Value), String> {
-    let edits: Vec<Edit> = serde_json::from_value(args.get("edits").cloned().unwrap_or(json!([])))
-        .map_err(|e| format!("bad edits: {e}"))?;
+    let v = args.get("edits").cloned().unwrap_or(json!([]));
+    let edits: Vec<Edit> = serde_json::from_value(v.clone()).map_err(|e| format!("bad edits: {e}"))?;
     let change = doc.apply(&edits).map_err(|e| e.to_string())?;
-    let report = json!({ "change": format!("{change:?}").to_lowercase(), "issues": issues_json(&doc) });
+    let mut issues = issues_json(&doc);
+    // Keys the edits' nodes and timings don't have were dropped on the way in.
+    for u in ultrafast_graph::unread_in_edits(&v) {
+        issues.push(json!({ "node": u.node, "severity": "warning", "message": ultrafast_render::schema::unread_message(&doc, &u) }));
+    }
+    let report = json!({ "change": format!("{change:?}").to_lowercase(), "issues": issues });
     Ok((doc, report))
 }
 
@@ -563,6 +568,20 @@ mod tests {
         let bad = batch_rows(&json!({ "rows": [ { "title.txet": "x" } ] }), None).unwrap();
         let e = batch_jobs(&doc, &bad, "{row}.mp4").unwrap_err();
         assert!(e.starts_with("row 1: `title.txet`:"), "{e}");
+    }
+
+    #[test]
+    fn edits_name_the_keys_they_drop() {
+        let doc = Document::from_json(ultrafast_ops::templates::get("title").unwrap()).unwrap();
+        let add = json!({ "edits": [{ "edit": "add_layer", "id": "wash", "node": { "op": "solid", "params": { "color": "#ff0000" }, "timing": { "offset": 1, "duration": 2 } } }] });
+        let (_, rep) = edit(doc, &add).unwrap_or_else(|e| panic!("{e}"));
+        let issues = rep["issues"].as_array().unwrap();
+        assert!(
+            issues
+                .iter()
+                .any(|i| i["node"] == "wash" && i["message"].as_str().unwrap().contains("has no `duration`")),
+            "{rep}"
+        );
     }
 
     #[test]

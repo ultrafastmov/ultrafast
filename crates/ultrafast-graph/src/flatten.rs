@@ -74,6 +74,7 @@ impl Document {
             revision: self.revision,
             structure_revision: self.structure_revision,
             instance: self.instance,
+            unread: Vec::new(),
         };
         // Flattened nodes carry no timing of their own: it lives in chains.
         for n in doc.nodes.values_mut() {

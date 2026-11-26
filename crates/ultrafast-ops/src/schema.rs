@@ -1505,11 +1505,72 @@ pub struct Issue {
     pub message: String,
 }
 
+/// What to say about a node key (or `timing.` key) the format doesn't have,
+/// which reading the document dropped.
+pub fn unread_message(doc: &Document, u: &ultrafast_graph::UnreadKey) -> String {
+    let near = |names: &[&str], k: &str| {
+        names
+            .iter()
+            .min_by_key(|n| edit_distance(n, k))
+            .filter(|n| edit_distance(n, k) <= 2)
+            .map(|n| n.to_string())
+    };
+    let node = match u.node.split_once('/') {
+        Some((c, id)) => doc.components.get(c).and_then(|c| c.nodes.get(id)),
+        None => doc.nodes.get(&u.node),
+    };
+    if let Some(k) = u.key.strip_prefix("timing.") {
+        if matches!(k, "duration" | "length" | "dur") {
+            let t = node.and_then(|n| n.timing);
+            return match (t.and_then(|t| t.in_point), t.and_then(|t| t.out_point)) {
+                (_, Some(_)) => format!("`timing` has no `{k}`; it is ignored (the window is `in` to `out`)"),
+                (Some(_), None) => format!(
+                    "`timing` has no `{k}`, so this node stays on from `in` to the end: give it `out` too (where \
+                     it ends, in its parent's seconds)"
+                ),
+                (None, None) => format!(
+                    "`timing` has no `{k}`, so this node has no window and shows from the start: give it `in` \
+                     and `out` instead, in its parent's seconds (from 0.5 s for 3 s: \
+                     {{\"in\": 0.5, \"out\": 3.5, \"offset\": 0.5}})"
+                ),
+            };
+        }
+        let hint = match k {
+            "start" | "begin" | "from" => Some("in".to_string()),
+            "end" | "stop" | "until" | "to" => Some("out".to_string()),
+            "delay" | "at" => Some("offset".to_string()),
+            "rate" => Some("speed".to_string()),
+            _ => near(ultrafast_graph::TIMING_KEYS, k),
+        };
+        let hint = hint.map(|n| format!(" (did you mean `{n}`?)")).unwrap_or_default();
+        return format!(
+            "`timing` has no `{k}`{hint}; it is ignored. Timing takes `in` and `out` (a window, in its parent's \
+             seconds), `offset`, `speed` and `loop`"
+        );
+    }
+    let k = u.key.as_str();
+    let op = node.map(|n| n.op.as_str()).unwrap_or("");
+    if find(op).is_some_and(|s| op_param(s, k).is_some()) {
+        return format!("`{k}` is a param of `{op}`: put it in `params`; here it is ignored");
+    }
+    let hint = near(ultrafast_graph::NODE_KEYS, k)
+        .map(|n| format!(" (did you mean `{n}`?)"))
+        .unwrap_or_default();
+    format!("a node has no `{k}`{hint}; it is ignored. A node has `op`, `params`, `inputs` and `timing`")
+}
+
 /// Static checks agents can run before rendering: unknown ops, misspelled
 /// params (with suggestions), wrong value shapes, missing inputs, unused
-/// nodes.
+/// nodes, and keys of a node or its timing that reading it dropped.
 pub fn check(doc: &Document) -> Vec<Issue> {
     let mut out = Vec::new();
+    for u in &doc.unread {
+        out.push(Issue {
+            node: u.node.clone(),
+            severity: "warning",
+            message: unread_message(doc, u),
+        });
+    }
     let mut issue = |node: &str, severity: &'static str, message: String| {
         out.push(Issue {
             node: node.to_string(),
@@ -1871,6 +1932,30 @@ mod tests {
         for d in crate::ops::OPS {
             assert!(find(d.name).is_some(), "no schema for {}", d.name);
         }
+    }
+
+    /// Keys reading drops are warned about, with what to write instead.
+    #[test]
+    fn keys_reading_drops_are_warned_about() {
+        let doc = Document::from_json(
+            r#"{"version":1,"format":{"width":100,"height":100,"fps":30,"duration":4},"output":"o",
+            "nodes":{
+              "t":{"op":"text","text":"Hi","params":{"text":"Hi"},"timing":{"offset":0.5,"duration":2}},
+              "u":{"op":"solid","timing":{"in":1,"duration":2,"delay":1}},
+              "o":{"op":"over","input":{"fg":"t"},"inputs":{"fg":"t","bg":"u"}}}}"#,
+        )
+        .unwrap();
+        let said: Vec<(String, String)> = check(&doc)
+            .into_iter()
+            .filter(|i| i.severity == "warning")
+            .map(|i| (i.node, i.message))
+            .collect();
+        let has = |node: &str, words: &str| said.iter().any(|(n, m)| n == node && m.contains(words));
+        assert!(has("t", "`text` is a param of `text`: put it in `params`"), "{said:?}");
+        assert!(has("t", "has no `duration`, so this node has no window"), "{said:?}");
+        assert!(has("u", "stays on from `in` to the end: give it `out`"), "{said:?}");
+        assert!(has("u", "has no `delay` (did you mean `offset`?)"), "{said:?}");
+        assert!(has("o", "a node has no `input` (did you mean `inputs`?)"), "{said:?}");
     }
 
     #[test]

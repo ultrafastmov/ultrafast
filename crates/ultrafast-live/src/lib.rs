@@ -419,6 +419,8 @@ impl Session {
             // hitch), and the player outlines what changed.
             Ok(doc) => {
                 self.poll_media(false);
+                // What the file says that reading it drops, as it says it now.
+                self.doc.unread = doc.unread.clone();
                 let edits = self.doc.diff(&doc);
                 if edits.is_empty() {
                     return;
@@ -507,8 +509,7 @@ impl Session {
             "get" => Ok(json!({ "doc": serde_json::to_value(&self.doc).unwrap(), "revision": self.doc.revision })),
             "set" => {
                 let v = req.get("doc").ok_or("`set` needs `doc`")?;
-                let doc: Document = serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
-                doc.validate().map_err(|e| e.to_string())?;
+                let doc = Document::from_json(&v.to_string()).map_err(|e| e.to_string())?;
                 self.replace(doc);
                 Ok(json!({ "revision": self.doc.revision }))
             }
@@ -536,9 +537,24 @@ impl Session {
                 Ok(json!({ "path": path }))
             }
             "edit" => {
-                let edits: Vec<Edit> = serde_json::from_value(req.get("edits").cloned().ok_or("`edit` needs `edits`")?)
-                    .map_err(|e| format!("bad edits: {e}"))?;
-                self.edit(&edits)
+                let v = req.get("edits").cloned().ok_or("`edit` needs `edits`")?;
+                let edits: Vec<Edit> = serde_json::from_value(v.clone()).map_err(|e| format!("bad edits: {e}"))?;
+                let mut resp = self.edit(&edits)?;
+                // Keys the edits' nodes and timings don't have were dropped.
+                let unread: Vec<Value> = ultrafast_graph::unread_in_edits(&v)
+                    .iter()
+                    .map(|u| json!({ "node": u.node, "severity": "warning", "message": ultrafast_render::schema::unread_message(&self.doc, u) }))
+                    .collect();
+                if !unread.is_empty() {
+                    let mut issues = resp
+                        .get("issues")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    issues.extend(unread);
+                    resp["issues"] = json!(issues);
+                }
+                Ok(resp)
             }
             "describe" => {
                 let nodes: Vec<Value> = self

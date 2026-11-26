@@ -204,6 +204,80 @@ pub struct Document {
     /// [`Document::apply`] so the revision tracks every change.
     #[serde(skip, default = "next_instance")]
     pub instance: u64,
+    /// Keys of its nodes (or their `timing`) that the format doesn't have,
+    /// found when it was read: parsing drops them without a word, so
+    /// checks name them. Not content.
+    #[serde(skip)]
+    pub unread: Vec<UnreadKey>,
+}
+
+/// A key of a node, or of its `timing`, that the format doesn't have.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadKey {
+    /// The node (`component/node` inside a component).
+    pub node: NodeId,
+    /// The key: a node's own (`text`), or its timing's (`timing.duration`).
+    pub key: String,
+}
+
+/// The keys a node has.
+pub const NODE_KEYS: &[&str] = &["op", "params", "inputs", "timing"];
+/// The keys a node's `timing` has.
+pub const TIMING_KEYS: &[&str] = &["in", "out", "offset", "speed", "loop"];
+
+/// The keys of a node's JSON (and of its `timing`) that the format doesn't
+/// have, which parsing drops.
+pub fn unread_node_keys(node: &serde_json::Value, id: &str) -> Vec<UnreadKey> {
+    let mut out = Vec::new();
+    let Some(o) = node.as_object() else { return out };
+    let mut push = |key: String| {
+        out.push(UnreadKey {
+            node: id.to_string(),
+            key,
+        })
+    };
+    for k in o.keys().filter(|k| !NODE_KEYS.contains(&k.as_str())) {
+        push(k.clone());
+    }
+    if let Some(t) = o.get("timing").and_then(|t| t.as_object()) {
+        for k in t.keys().filter(|k| !TIMING_KEYS.contains(&k.as_str())) {
+            push(format!("timing.{k}"));
+        }
+    }
+    out
+}
+
+/// Every unread key of a document's nodes and its components' nodes.
+pub fn unread_keys(doc: &serde_json::Value) -> Vec<UnreadKey> {
+    let mut out = Vec::new();
+    let nodes = |v: &serde_json::Value| v.get("nodes").and_then(|n| n.as_object()).cloned().unwrap_or_default();
+    for (id, n) in nodes(doc) {
+        out.extend(unread_node_keys(&n, &id));
+    }
+    if let Some(cs) = doc.get("components").and_then(|c| c.as_object()) {
+        for (name, c) in cs {
+            for (id, n) in nodes(c) {
+                out.extend(unread_node_keys(&n, &format!("{name}/{id}")));
+            }
+        }
+    }
+    out
+}
+
+/// Unread keys in an edit batch's JSON: the nodes it adds and the timings
+/// it sets (parsing the batch drops them as it does a document's).
+pub fn unread_in_edits(edits: &serde_json::Value) -> Vec<UnreadKey> {
+    let mut out = Vec::new();
+    for e in edits.as_array().into_iter().flatten() {
+        let id = |k: &str| e.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if let Some(n) = e.get("node").filter(|n| n.is_object()) {
+            out.extend(unread_node_keys(n, &id("id")));
+        }
+        if let Some(t) = e.get("timing").filter(|t| t.is_object()) {
+            out.extend(unread_node_keys(&serde_json::json!({ "timing": t }), &id("node")));
+        }
+    }
+    out
 }
 
 /// Content equality: version, format, output and nodes. Revisions and
@@ -244,13 +318,16 @@ pub enum DocumentError {
 
 impl Document {
     pub fn from_json(s: &str) -> Result<Self, DocumentError> {
-        let doc: Document = match serde_json::from_str(s) {
+        let mut doc: Document = match serde_json::from_str(s) {
             Ok(d) => d,
             // serde's message for a bad param names neither the node nor the
             // param (and a one-line document's column says little): find it.
             Err(e) => return Err(locate_bad_param(s).unwrap_or(DocumentError::Parse(e))),
         };
         doc.validate()?;
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
+            doc.unread = unread_keys(&v);
+        }
         Ok(doc)
     }
 
@@ -455,6 +532,42 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Keys parsing drops are kept by name: a node's own (`text` beside
+    /// `params`) and its timing's (`duration`), in components too, and in
+    /// the nodes and timings an edit batch carries.
+    #[test]
+    fn keys_the_format_lacks_are_named() {
+        let doc = Document::from_json(
+            r#"{"version": 1, "format": {"width": 8, "height": 8, "fps": 30, "duration": 1}, "output": "a",
+            "nodes": {"a": {"op": "solid", "text": "hi", "timing": {"in": 0.5, "duration": 2}}},
+            "components": {"card": {"output": "x", "nodes": {"x": {"op": "solid", "timing": {"start": 1}}}}}}"#,
+        )
+        .unwrap();
+        let keys: Vec<(&str, &str)> = doc.unread.iter().map(|u| (u.node.as_str(), u.key.as_str())).collect();
+        assert_eq!(
+            keys,
+            [("a", "text"), ("a", "timing.duration"), ("card/x", "timing.start")]
+        );
+        assert_eq!(
+            doc.nodes["a"].timing.and_then(|t| t.in_point),
+            Some(0.5),
+            "the rest still reads"
+        );
+        let edits = serde_json::json!([
+            {"edit": "add_layer", "id": "w", "node": {"op": "solid", "timing": {"duration": 1}}},
+            {"edit": "set_timing", "node": "a", "timing": {"in": 1, "length": 2}},
+            {"edit": "set_param", "node": "a", "param": "color", "value": "#fff"}
+        ]);
+        let found: Vec<(String, String)> = unread_in_edits(&edits).into_iter().map(|u| (u.node, u.key)).collect();
+        assert_eq!(
+            found,
+            [
+                ("w".into(), "timing.duration".into()),
+                ("a".into(), "timing.length".into())
+            ]
+        );
+    }
 
     #[test]
     fn keys_given_twice_are_found() {
